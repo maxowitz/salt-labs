@@ -154,28 +154,17 @@
       will-change: -webkit-mask-image, opacity;
     }
 
-    /* Click ripples */
-    .ripples { z-index: 0; overflow: hidden; }
-    .ripple {
-      position: absolute;
-      left: var(--rx, 50%);
-      top: var(--ry, 50%);
-      width: 12px;
-      height: 12px;
-      margin: -6px 0 0 -6px;
-      border-radius: 50%;
-      border: 1.5px solid rgba(6, 40, 66, 0.55);
-      background: radial-gradient(closest-side,
-        rgba(255, 221, 163, 0.22),
-        rgba(255, 221, 163, 0) 70%);
-      transform-origin: center;
-      animation: rippleOut 900ms var(--ease-out-expo) forwards;
-      will-change: transform, opacity, border-color;
-    }
-    @keyframes rippleOut {
-      0%   { transform: scale(0.6);  opacity: 0.9; }
-      60%  { opacity: 0.4; }
-      100% { transform: scale(46);   opacity: 0; border-color: rgba(6, 40, 66, 0); }
+    /* Heat-trace canvas — click-and-hold to paint warm ink that trails
+       off as the canvas is gently erased each frame. Fixed full-screen,
+       pointer-events disabled so it never blocks card clicks, multiply
+       blend so it reads as a warm stain on both offwhite and white. */
+    .heat-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      opacity: 0.92;
     }
 
     /* =========================================================
@@ -610,7 +599,7 @@
   <!-- Interactive background layers (cursor-driven) -->
   <div class="aurora" aria-hidden="true"></div>
   <div class="dotfield" aria-hidden="true"></div>
-  <div class="ripples" aria-hidden="true"></div>
+  <canvas class="heat-canvas" id="heatCanvas" aria-hidden="true"></canvas>
 
 
   <!-- Header -->
@@ -899,20 +888,115 @@
     })();
 
     // ==========================================================
-    // 4. CLICK RIPPLES
-    //    Spawn a ripple at pointerdown; cleans itself up.
+    // 4. HEAT-TRACE CANVAS
+    //    Click-and-hold to paint warm ink. Stroke width tapers with
+    //    speed — slow moves pool thicker, fast moves trail thinner.
+    //    Every frame, a light alpha-subtract wipe fades the whole
+    //    canvas, so marks dissipate naturally over ~2 seconds.
     // ==========================================================
     (function () {
-      const layer = document.querySelector('.ripples');
-      if (!layer) return;
-      window.addEventListener('pointerdown', (e) => {
-        const r = document.createElement('span');
-        r.className = 'ripple';
-        r.style.setProperty('--rx', e.clientX + 'px');
-        r.style.setProperty('--ry', e.clientY + 'px');
-        layer.appendChild(r);
-        setTimeout(() => r.remove(), 950);
-      }, { passive: true });
+      const canvas = document.getElementById('heatCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      let w = 0, h = 0;
+      function resize() {
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      let drawing = false;
+      let lastX = 0, lastY = 0, lastT = 0;
+      let penWidth = 10;
+
+      // Warm rust/amber ink — reads as a thermal mark on both
+      // offwhite and pure white surfaces under multiply blend.
+      const INK = 'rgba(210, 75, 39, 0.42)';
+      const INK_SOFT = 'rgba(245, 139, 136, 0.28)';
+
+      function start(e) {
+        drawing = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        lastT = performance.now();
+        penWidth = 10;
+        // Anchor dot where the touch begins
+        ctx.save();
+        ctx.fillStyle = INK;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = INK_SOFT;
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function segment(e) {
+        if (!drawing) return;
+        const x = e.clientX, y = e.clientY;
+        const now = performance.now();
+        const dt = Math.max(1, now - lastT);
+        const dist = Math.hypot(x - lastX, y - lastY);
+        const speed = dist / dt; // px/ms
+
+        // Slow hand = thicker pool, fast hand = finer trail
+        const targetW = Math.max(2.4, Math.min(14, 14 - speed * 2.6));
+        penWidth = penWidth * 0.7 + targetW * 0.3;
+
+        ctx.save();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = penWidth;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = INK_SOFT;
+
+        // Quadratic smoothing via midpoint so strokes feel inked, not jaggy
+        const mx = (lastX + x) / 2;
+        const my = (lastY + y) / 2;
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.quadraticCurveTo(lastX, lastY, mx, my);
+        ctx.stroke();
+        ctx.restore();
+
+        lastX = x; lastY = y; lastT = now;
+      }
+
+      function end() { drawing = false; }
+
+      window.addEventListener('pointerdown', start, { passive: true });
+      window.addEventListener('pointermove', segment, { passive: true });
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+      window.addEventListener('pointerleave', end);
+      // Guard against the pointer being released outside the window
+      window.addEventListener('blur', end);
+
+      // Continuous fade — faster when actively drawing so the trail
+      // stays tight behind the pen; slower after release so the full
+      // stroke lingers briefly before dissolving.
+      function fade() {
+        if (!reduced) {
+          const alpha = drawing ? 0.028 : 0.018;
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+          ctx.fillRect(0, 0, w, h);
+          ctx.restore();
+        }
+        requestAnimationFrame(fade);
+      }
+      requestAnimationFrame(fade);
     })();
 
     // ==========================================================
