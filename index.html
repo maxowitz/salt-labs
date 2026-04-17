@@ -62,97 +62,58 @@
       overflow-x: hidden;
     }
 
-    /* Subtle grain texture (VSL hallmark) */
+    /* Velocity-modulated grain (VSL hallmark texture, reactive).
+       Opacity ramps with smoothed pointer velocity; parallax offset
+       nudges against the motion direction. Page *feels* movement
+       without a cursor-anchored element. --vel, --vel-x, --vel-y
+       are updated via JS (range 0..1 for --vel). */
     body::before {
+      content: "";
+      position: fixed;
+      inset: -24px;
+      pointer-events: none;
+      z-index: 2;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 220px 220px;
+      background-position:
+        calc(var(--vel-x, 0) * -8px)
+        calc(var(--vel-y, 0) * -8px);
+      opacity: calc(0.04 + var(--vel, 0) * 0.085);
+      transition:
+        opacity 380ms var(--ease-soft),
+        background-position 220ms var(--ease-soft);
+      will-change: opacity, background-position;
+    }
+
+    /* Ambient gradient wash — drifts on its own, cursor biases direction.
+       Exists-with-or-without-you motion, keeping the page alive when still. */
+    body::after {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
-      z-index: 2;
-      opacity: 0.045;
-      mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      z-index: 0;
+      background:
+        radial-gradient(1200px 900px at 30% 20%, rgba(255, 221, 163, 0.22), transparent 55%),
+        radial-gradient(1100px 800px at 80% 85%, rgba(141, 206, 168, 0.14), transparent 55%);
+      transform: translate3d(
+        calc(var(--vel-x, 0) * -14px),
+        calc(var(--vel-y, 0) * -14px),
+        0
+      );
+      animation: ambient-drift 26s ease-in-out infinite alternate;
+      transition: transform 900ms var(--ease-soft);
+    }
+    @keyframes ambient-drift {
+      0%   { filter: hue-rotate(0deg); transform-origin: 30% 30%; }
+      50%  { filter: hue-rotate(-4deg); }
+      100% { filter: hue-rotate(2deg); transform-origin: 70% 70%; }
     }
 
     ::selection { background: var(--navy); color: var(--offwhite); }
     a { color: inherit; text-decoration: none; }
     img, svg { display: block; max-width: 100%; }
-
-    /* =========================================================
-       INTERACTIVE BACKGROUND
-       Two fixed layers follow the cursor:
-         .aurora   — cream/mint/teal spotlight lagging behind the cursor
-         .dotfield — navy dot grid revealed inside the spotlight
-         .ripples  — click-spawned expanding rings
-       --mx/--my          = lerped cursor position (px)
-       --speed (0..1)     = smoothed pointer velocity
-       --vx/--vy          = unit velocity vector (for motion stretch)
-       ========================================================= */
-    .aurora,
-    .dotfield,
-    .ripples {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-    }
-
-    /* Heat-sensitive spot.
-       --heat (0..1) ramps up on pointer activity, decays on stillness.
-       The spot ONLY shows where the cursor has been, then fades away. */
-    .aurora {
-      z-index: 0;
-      background:
-        radial-gradient(
-          calc(360px + var(--speed, 0) * 120px) circle
-          at var(--mx, 50%) var(--my, 50%),
-          rgba(255, 221, 163, calc(0.28 + var(--heat, 0) * 0.32)),
-          rgba(250, 200, 197, 0.12) 30%,
-          rgba(141, 206, 168, 0.10) 55%,
-          transparent 75%
-        );
-      opacity: calc(0.25 + var(--heat, 0) * 0.75);
-      filter:
-        blur(calc(6px - var(--heat, 0) * 3px))
-        saturate(calc(0.9 + var(--heat, 0) * 0.35));
-      will-change: filter, background, opacity;
-    }
-
-    /* Faint secondary heat trail — lags further than the main spot */
-    .aurora::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(
-        calc(260px + var(--speed, 0) * 140px) circle
-        at var(--tx, 50%) var(--ty, 50%),
-        rgba(255, 221, 163, 0.18),
-        transparent 72%
-      );
-      opacity: calc(var(--heat, 0) * 0.7);
-      filter: blur(18px);
-      mix-blend-mode: multiply;
-      pointer-events: none;
-    }
-
-    .dotfield {
-      z-index: 0;
-      background-image: radial-gradient(rgba(6, 40, 66, 0.28) 1px, transparent 1.4px);
-      background-size: 26px 26px;
-      -webkit-mask-image: radial-gradient(
-        calc(300px + var(--heat, 0) * 140px) circle
-        at var(--mx, 50%) var(--my, 50%),
-        rgba(0,0,0, calc(0.5 + var(--heat, 0) * 0.45)),
-        transparent 70%
-      );
-      mask-image: radial-gradient(
-        calc(300px + var(--heat, 0) * 140px) circle
-        at var(--mx, 50%) var(--my, 50%),
-        rgba(0,0,0, calc(0.5 + var(--heat, 0) * 0.45)),
-        transparent 70%
-      );
-      opacity: calc(0.35 + var(--heat, 0) * 0.55);
-      will-change: -webkit-mask-image, opacity;
-    }
 
     /* Heat-trace canvas — click-and-hold to paint warm ink that trails
        off as the canvas is gently erased each frame. Fixed full-screen,
@@ -596,9 +557,7 @@
 </head>
 <body>
 
-  <!-- Interactive background layers (cursor-driven) -->
-  <div class="aurora" aria-hidden="true"></div>
-  <div class="dotfield" aria-hidden="true"></div>
+  <!-- Heat-trace canvas — activated by click-and-hold drawing -->
   <canvas class="heat-canvas" id="heatCanvas" aria-hidden="true"></canvas>
 
 
@@ -796,33 +755,24 @@
     })();
 
     // ==========================================================
-    // 3. HEAT-SENSITIVE BACKGROUND
-    //    Spot doesn't snap to the cursor — it lags like warm material
-    //    absorbing touch. Intensity ramps on movement, decays on rest.
-    //    A secondary trail layer follows even slower, so a fast swipe
-    //    leaves a visible thermal residue that fades after ~1.5s.
-    //    No idle orbit: heat is reactive, it doesn't wander on its own.
+    // 3. VELOCITY-MODULATED GRAIN
+    //    No cursor-anchored element. Grain opacity and a gentle
+    //    parallax offset track smoothed pointer velocity — the
+    //    page *feels* motion without chasing it. Values decay on
+    //    rest so the surface settles back to quiet baseline.
     // ==========================================================
     (function () {
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const root = document.documentElement;
 
-      // Start the spot off-screen so it doesn't glow before first touch.
-      let pointerX = -9999, pointerY = -9999;
-      let mx = window.innerWidth / 2, my = window.innerHeight / 2;  // primary spot (slow)
-      let tx = mx, ty = my;                                         // trail spot (slower)
-      let targetX = mx, targetY = my;
-      let hasTouched = false;
+      let lastX = window.innerWidth / 2;
+      let lastY = window.innerHeight / 2;
+      let lastT = performance.now();
 
-      // Heat intensity 0..1 — ramps up on pointer activity, decays on rest
-      let heat = 0;
-
-      // Velocity tracking (smoothed) — for the speed-driven size/softness
-      let lastX = mx, lastY = my, lastT = performance.now();
       let vxSmooth = 0, vySmooth = 0;
-      let speedSmooth = 0;
+      let velSmooth = 0;
 
-      function onPointerMove(e) {
+      function onMove(e) {
         const now = performance.now();
         const dt = Math.max(1, now - lastT);
         const rawVx = (e.clientX - lastX) / dt;
@@ -830,57 +780,27 @@
         vxSmooth = vxSmooth * 0.82 + rawVx * 0.18;
         vySmooth = vySmooth * 0.82 + rawVy * 0.18;
         lastX = e.clientX; lastY = e.clientY; lastT = now;
-
-        targetX = e.clientX;
-        targetY = e.clientY;
-
-        if (!hasTouched) {
-          // First touch — start the spot near the cursor instead of off-screen
-          mx = targetX; my = targetY;
-          tx = targetX; ty = targetY;
-          hasTouched = true;
-        }
-
-        pointerX = e.clientX;
-        pointerY = e.clientY;
-
-        // Inject heat proportional to speed (plus a baseline for slow moves)
-        const contact = Math.min(Math.hypot(rawVx, rawVy) * 0.35 + 0.12, 0.6);
-        heat = Math.min(1, heat + contact);
       }
-
-      window.addEventListener('pointermove', onPointerMove, { passive: true });
-      window.addEventListener('pointerleave', () => { pointerX = -9999; pointerY = -9999; });
+      window.addEventListener('pointermove', onMove, { passive: true });
 
       function frame() {
-        // Slow, syrup-like lerp toward the pointer — the "heat spot" never catches up fully
-        const easeSpot  = reduced ? 1 : 0.045;
-        const easeTrail = reduced ? 1 : 0.022;
-
-        mx += (targetX - mx) * easeSpot;
-        my += (targetY - my) * easeSpot;
-        tx += (mx - tx) * easeTrail;
-        ty += (my - ty) * easeTrail;
-
-        // Heat decays continuously — stronger decay when the pointer is still
-        const stillDist = Math.hypot(targetX - mx, targetY - my);
-        const decay = stillDist < 2 ? 0.015 : 0.006;
-        heat = Math.max(0, heat - decay);
-
-        // Velocity → smoothed speed 0..1
+        // Smoothed speed 0..1 (clamped to ~2.2 px/ms)
         const rawSpeed = Math.hypot(vxSmooth, vySmooth);
         const target = Math.min(rawSpeed / 2.2, 1);
-        speedSmooth += (target - speedSmooth) * 0.12;
-        // Velocity damps when not touched
+        velSmooth += (target - velSmooth) * 0.12;
+
+        // Velocity decays toward zero when the pointer is still
         vxSmooth *= 0.92;
         vySmooth *= 0.92;
 
-        root.style.setProperty('--mx', mx + 'px');
-        root.style.setProperty('--my', my + 'px');
-        root.style.setProperty('--tx', tx + 'px');
-        root.style.setProperty('--ty', ty + 'px');
-        root.style.setProperty('--heat', heat.toFixed(3));
-        root.style.setProperty('--speed', speedSmooth.toFixed(3));
+        // Unit direction × magnitude (range roughly -1..1)
+        const mag = Math.max(rawSpeed, 0.0001);
+        const nx = (vxSmooth / mag) * velSmooth;
+        const ny = (vySmooth / mag) * velSmooth;
+
+        root.style.setProperty('--vel', reduced ? '0' : velSmooth.toFixed(3));
+        root.style.setProperty('--vel-x', reduced ? '0' : nx.toFixed(3));
+        root.style.setProperty('--vel-y', reduced ? '0' : ny.toFixed(3));
 
         requestAnimationFrame(frame);
       }
@@ -919,6 +839,7 @@
       let drawing = false;
       let lastX = 0, lastY = 0, lastT = 0;
       let penWidth = 10;
+      let lastStrokeT = 0;
 
       // Warm rust/amber ink — reads as a thermal mark on both
       // offwhite and pure white surfaces under multiply blend.
@@ -930,6 +851,7 @@
         lastX = e.clientX;
         lastY = e.clientY;
         lastT = performance.now();
+        lastStrokeT = lastT;
         penWidth = 10;
         // Anchor dot where the touch begins
         ctx.save();
@@ -969,7 +891,7 @@
         ctx.stroke();
         ctx.restore();
 
-        lastX = x; lastY = y; lastT = now;
+        lastX = x; lastY = y; lastT = now; lastStrokeT = now;
       }
 
       function end() { drawing = false; }
@@ -982,17 +904,40 @@
       // Guard against the pointer being released outside the window
       window.addEventListener('blur', end);
 
-      // Continuous fade — faster when actively drawing so the trail
-      // stays tight behind the pen; slower after release so the full
-      // stroke lingers briefly before dissolving.
+      // Continuous fade. Alpha ramps with time since last stroke so
+      // the trail settles briefly after release, then dissolves fully
+      // inside ~2.5s. The destination-out wipe is asymptotic, so we
+      // also run a hard clearRect once fully idle to zero the buffer.
+      let cleared = true;
       function fade() {
         if (!reduced) {
-          const alpha = drawing ? 0.028 : 0.018;
+          const now = performance.now();
+          const idle = now - lastStrokeT;
+          let alpha;
+          if (drawing) {
+            alpha = 0.028;
+            cleared = false;
+          } else if (idle < 300) {
+            alpha = 0.022;
+            cleared = false;
+          } else {
+            // Ramp from 0.022 → 0.14 over the next 2 seconds
+            const t = Math.min(1, (idle - 300) / 2000);
+            alpha = 0.022 + t * t * 0.12;
+            cleared = false;
+          }
+
           ctx.save();
           ctx.globalCompositeOperation = 'destination-out';
           ctx.fillStyle = `rgba(0,0,0,${alpha})`;
           ctx.fillRect(0, 0, w, h);
           ctx.restore();
+
+          // After ~2.8s idle, do one full clear to zero any sub-pixel residue
+          if (!drawing && !cleared && idle > 2800) {
+            ctx.clearRect(0, 0, w, h);
+            cleared = true;
+          }
         }
         requestAnimationFrame(fade);
       }
