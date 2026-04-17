@@ -79,58 +79,156 @@
     img, svg { display: block; max-width: 100%; }
 
     /* =========================================================
+       INTRO VEIL
+       Navy curtain with the VSL mark, lifts to reveal the hub.
+       ========================================================= */
+    .intro-veil {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: var(--navy);
+      display: grid;
+      place-items: center;
+      transition:
+        opacity 1.1s var(--ease-out-expo),
+        transform 1.3s var(--ease-out-expo),
+        clip-path 1.3s var(--ease-out-expo),
+        visibility 1.3s;
+      overflow: hidden;
+    }
+    .intro-veil::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.08;
+      mix-blend-mode: screen;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    .intro-veil__mark {
+      width: clamp(90px, 10vw, 140px);
+      color: var(--cream);
+      transform: translateY(14px) scale(0.96);
+      opacity: 0;
+      animation: introMark 1.2s var(--ease-out-expo) 0.15s forwards;
+    }
+    .intro-veil__mark svg { width: 100%; height: auto; }
+    .intro-veil__mark svg path { fill: currentColor; }
+    @keyframes introMark {
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .intro-veil.lift {
+      opacity: 0;
+      transform: scale(1.06);
+      clip-path: circle(0% at 50% 42%);
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* =========================================================
        INTERACTIVE BACKGROUND
-       Two fixed layers that follow the cursor:
-         .aurora   — soft cream/teal spotlight that lags behind the cursor
-         .dotfield — faint navy dot grid, revealed only inside the spotlight
-       The --mx / --my custom properties are updated via rAF-lerped JS.
+       Two fixed layers follow the cursor:
+         .aurora   — cream/mint/teal spotlight lagging behind the cursor
+         .dotfield — navy dot grid revealed inside the spotlight
+         .ripples  — click-spawned expanding rings
+       --mx/--my          = lerped cursor position (px)
+       --speed (0..1)     = smoothed pointer velocity
+       --vx/--vy          = unit velocity vector (for motion stretch)
        ========================================================= */
     .aurora,
-    .dotfield {
+    .dotfield,
+    .ripples {
       position: fixed;
       inset: 0;
       pointer-events: none;
-      will-change: background-position, -webkit-mask-position;
     }
 
     .aurora {
       z-index: 0;
       background:
         radial-gradient(
-          520px circle at var(--mx, 50%) var(--my, 50%),
-          rgba(255, 221, 163, 0.42),
+          calc(520px + var(--speed, 0) * 180px) circle
+          at var(--mx, 50%) var(--my, 50%),
+          rgba(255, 221, 163, calc(0.42 + var(--speed, 0) * 0.18)),
           rgba(141, 206, 168, 0.18) 38%,
           rgba(76, 172, 209, 0.08) 60%,
           transparent 72%
         );
-      transition: background 120ms linear;
+      filter:
+        saturate(calc(1 + var(--speed, 0) * 0.35))
+        brightness(calc(1 + var(--speed, 0) * 0.05));
+      transform:
+        translate3d(calc(var(--vx, 0) * 24px), calc(var(--vy, 0) * 24px), 0);
+      transition:
+        filter 220ms var(--ease-soft),
+        transform 180ms var(--ease-soft);
+      will-change: filter, transform, background;
     }
 
     .dotfield {
       z-index: 0;
       background-image: radial-gradient(rgba(6, 40, 66, 0.28) 1px, transparent 1.4px);
       background-size: 26px 26px;
-      background-position: 0 0;
+      background-position:
+        calc(var(--vx, 0) * -12px)
+        calc(var(--vy, 0) * -12px);
       -webkit-mask-image: radial-gradient(
-        360px circle at var(--mx, 50%) var(--my, 50%),
-        rgba(0,0,0,0.9),
+        calc(360px + var(--speed, 0) * 160px) circle
+        at var(--mx, 50%) var(--my, 50%),
+        rgba(0,0,0,0.92),
         transparent 70%
       );
       mask-image: radial-gradient(
-        360px circle at var(--mx, 50%) var(--my, 50%),
-        rgba(0,0,0,0.9),
+        calc(360px + var(--speed, 0) * 160px) circle
+        at var(--mx, 50%) var(--my, 50%),
+        rgba(0,0,0,0.92),
         transparent 70%
       );
-      opacity: 0.9;
+      opacity: 0.92;
+      transition: background-position 220ms var(--ease-soft);
+      will-change: background-position, -webkit-mask-image;
     }
 
-    /* When user is idle (no pointer movement for a moment), gently breathe */
-    .aurora.idle {
-      animation: aurora-breathe 8s ease-in-out infinite;
+    /* Long-idle ambient glow — a second, slower breathing gradient */
+    .aurora.idle-deep::after {
+      content: "";
+      position: absolute;
+      inset: -10%;
+      pointer-events: none;
+      background:
+        radial-gradient(70% 60% at 50% 45%,
+          rgba(255, 221, 163, 0.16),
+          transparent 65%);
+      opacity: 0;
+      animation: idleGlow 9s var(--ease-out-expo) infinite alternate;
     }
-    @keyframes aurora-breathe {
-      0%, 100% { filter: saturate(1)     brightness(1); }
-      50%      { filter: saturate(1.08)  brightness(1.04); }
+    @keyframes idleGlow {
+      0%   { opacity: 0;    transform: scale(0.96) translateY(0); }
+      100% { opacity: 0.9;  transform: scale(1.04) translateY(-8px); }
+    }
+
+    /* Click ripples */
+    .ripples { z-index: 0; overflow: hidden; }
+    .ripple {
+      position: absolute;
+      left: var(--rx, 50%);
+      top: var(--ry, 50%);
+      width: 12px;
+      height: 12px;
+      margin: -6px 0 0 -6px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(6, 40, 66, 0.55);
+      background: radial-gradient(closest-side,
+        rgba(255, 221, 163, 0.22),
+        rgba(255, 221, 163, 0) 70%);
+      transform-origin: center;
+      animation: rippleOut 900ms var(--ease-out-expo) forwards;
+      will-change: transform, opacity, border-color;
+    }
+    @keyframes rippleOut {
+      0%   { transform: scale(0.6);  opacity: 0.9; }
+      60%  { opacity: 0.4; }
+      100% { transform: scale(46);   opacity: 0; border-color: rgba(6, 40, 66, 0); }
     }
 
     /* =========================================================
@@ -151,8 +249,18 @@
       padding: 96px 0 64px;
       text-align: center;
       opacity: 0;
-      transform: translateY(20px);
-      animation: fadeUp 0.8s var(--ease-out-expo) forwards;
+      transform: translateY(24px);
+      filter: blur(6px);
+      transition:
+        opacity 1s var(--ease-out-expo),
+        transform 1.1s var(--ease-out-expo),
+        filter 1s var(--ease-out-expo);
+    }
+    body.ready .header {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+      transition-delay: 0.1s;
     }
 
     .logo-stack {
@@ -224,6 +332,12 @@
     }
 
     .product-card {
+      --tilt-x: 0deg;
+      --tilt-y: 0deg;
+      --lift: 0px;
+      --glow-x: 50%;
+      --glow-y: 50%;
+      --glow-a: 0;
       background: var(--offwhite);
       border: 1px solid rgba(6, 40, 66, 0.10);
       border-radius: 20px;
@@ -235,33 +349,63 @@
       position: relative;
       overflow: hidden;
       isolation: isolate;
-      transition:
-        transform 0.5s var(--ease-out-expo),
-        box-shadow 0.5s var(--ease-out-expo),
-        border-color 0.4s var(--ease-soft),
-        background 0.4s var(--ease-soft);
       cursor: pointer;
       box-shadow: 0 1px 2px rgba(6, 40, 66, 0.03);
+      transform-style: preserve-3d;
+      transform:
+        perspective(1000px)
+        rotateX(var(--tilt-x))
+        rotateY(var(--tilt-y))
+        translateY(var(--lift))
+        translateY(40px);
       opacity: 0;
-      transform: translateY(30px);
-      will-change: transform, box-shadow;
+      filter: blur(10px);
+      transition:
+        transform 0.6s var(--ease-out-expo),
+        box-shadow 0.5s var(--ease-out-expo),
+        border-color 0.4s var(--ease-soft),
+        background 0.4s var(--ease-soft),
+        filter 0.9s var(--ease-out-expo),
+        opacity 0.9s var(--ease-out-expo);
+      will-change: transform, box-shadow, filter;
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
     }
 
-    .product-card.in-view { animation: fadeUp 0.8s var(--ease-out-expo) forwards; }
-    .product-card.in-view:nth-child(1) { animation-delay: 0.15s; }
-    .product-card.in-view:nth-child(2) { animation-delay: 0.25s; }
-    .product-card.in-view:nth-child(3) { animation-delay: 0.35s; }
-    .product-card.in-view:nth-child(4) { animation-delay: 0.45s; }
-
-    @keyframes fadeUp {
-      to { opacity: 1; transform: translateY(0); }
+    /* Inner glow that follows the cursor within a hovered card */
+    .product-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(
+        260px circle at var(--glow-x) var(--glow-y),
+        rgba(255, 221, 163, 0.45),
+        transparent 70%
+      );
+      opacity: var(--glow-a);
+      transition: opacity 0.35s var(--ease-soft);
+      z-index: 0;
     }
+    .product-card > * { position: relative; z-index: 1; }
+
+    body.ready .product-card.in-view {
+      opacity: 1;
+      filter: blur(0);
+      transform:
+        perspective(1000px)
+        rotateX(var(--tilt-x))
+        rotateY(var(--tilt-y))
+        translateY(var(--lift));
+    }
+    body.ready .product-card.in-view:nth-child(1) { transition-delay: 0.15s, 0s, 0s, 0s, 0.15s, 0.15s; }
+    body.ready .product-card.in-view:nth-child(2) { transition-delay: 0.28s, 0s, 0s, 0s, 0.28s, 0.28s; }
+    body.ready .product-card.in-view:nth-child(3) { transition-delay: 0.41s, 0s, 0s, 0s, 0.41s, 0.41s; }
+    body.ready .product-card.in-view:nth-child(4) { transition-delay: 0.54s, 0s, 0s, 0s, 0.54s, 0.54s; }
 
     .product-card:hover {
-      transform: translateY(-6px);
-      box-shadow: 0 30px 60px -30px rgba(6, 40, 66, 0.28);
+      --lift: -6px;
+      box-shadow: 0 34px 60px -30px rgba(6, 40, 66, 0.3);
       border-color: rgba(6, 40, 66, 0.18);
       background: #ffffff;
     }
@@ -373,8 +517,15 @@
     .quick-links {
       padding: 0 0 72px;
       opacity: 0;
-      transform: translateY(20px);
-      animation: fadeUp 0.8s var(--ease-out-expo) 0.6s forwards;
+      transform: translateY(16px);
+      transition:
+        opacity 0.9s var(--ease-out-expo),
+        transform 0.9s var(--ease-out-expo);
+    }
+    body.ready .quick-links {
+      opacity: 1;
+      transform: translateY(0);
+      transition-delay: 0.75s;
     }
 
     .quick-links-label {
@@ -451,8 +602,18 @@
       border-top: 1px solid rgba(6, 40, 66, 0.10);
       text-align: center;
       opacity: 0;
-      animation: fadeUp 0.8s var(--ease-out-expo) 0.75s forwards;
+      transform: translateY(12px);
+      transition:
+        opacity 0.9s var(--ease-out-expo),
+        transform 0.9s var(--ease-out-expo);
     }
+    body.ready .footer {
+      opacity: 1;
+      transform: translateY(0);
+      transition-delay: 0.9s;
+    }
+
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
     .footer-text {
       font-family: var(--font-body);
       font-size: 12px;
@@ -499,6 +660,22 @@
   <!-- Interactive background layers (cursor-driven) -->
   <div class="aurora" aria-hidden="true"></div>
   <div class="dotfield" aria-hidden="true"></div>
+  <div class="ripples" aria-hidden="true"></div>
+
+  <!-- Intro veil -->
+  <div class="intro-veil" id="introVeil" aria-hidden="true">
+    <div class="intro-veil__mark">
+      <svg viewBox="0 0 235.72 262.40" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <path d="M32.919 92.445h6.809l24.021-60.571c2.247-5.575,4.598-8.026,8.377-8.74l1.446-.263v-3.69H50.947v3.702l1.765.253c3.184.509,4.845,1.253,5.556,2.488.661,1.15.536,2.867-.384,5.248L41.633,73.754,25.387,30.67c-.854-2.293-.94-3.884-.268-5.01.765-1.287,2.568-2.065,5.839-2.524l1.878-.251v-3.705H0v3.684l1.336.268c3.556.711,5.392,2.71,7.559,8.224l23.929,60.848.095.241Z"/>
+          <path d="M91.517 39.910l-1.294.01-19.888,4.607v3.092l.309.06c4.669.875,5.877,2.113,5.877,6.02v29.289c0,4.075-1.333,4.930-4.526,5.4l-1.661.257v3.491h27.369v-3.491l-1.664-.257c-3.128-.475-4.523-1.367-4.523-5.4V39.910Z"/>
+          <path d="M121.559 89.001c-9.698,0-13.647-10.910-14.894-15.600l-.077-.283h-3.860l-.429,16.506.229.104c3.095,1.400,9.639,3.747,18.721,3.747,11.933,0,20.596-7.187,20.596-17.085.104-8.401-4.999-12.060-15.088-16.239l-3.506-1.442c-6.693-2.781-8.841-4.776-8.841-8.209,0-3.784,3.024-6.426,7.353-6.426,7.392,0,10.948,6.861,12.630,12.618l.080.274h3.854l.324-14.344-.235-.103c-3.226-1.411-9.106-2.919-15.930-2.919-11.445,0-20.078,6.992-20.078,16.263,0,8.059,4.940,11.668,14.052,15.512l3.404,1.445c6.642,2.759,9.770,4.528,9.770,8.826,0,4.537-3.095,7.355-8.077,7.355Z"/>
+          <path d="M172.783 88.644l-1.664-.257c-3.128-.475-4.523-1.367-4.523-5.400V39.910l-1.294.01-19.888,4.607v3.092l.309.060c4.669.875,5.877,2.113,5.877,6.020v29.289c0,4.075-1.333,4.930-4.526,5.400l-1.661.257v3.491h27.369v-3.491Z"/>
+          <path d="M181.508 79.894c0,8.501,5.026,13.375,13.787,13.375,5.437,0,10.892-2.082,14.597-5.569l.119-.112v-3.599l-.512.189c-2.003.738-4.006,1.111-5.955,1.111-4.740,0-7.044-2.473-7.044-7.560V47.171h11.359l1.649-6.124h-13.008V28.360h-6.106l-.095.241c-2.128,5.401-6.476,12.341-15.112,14.726l-.280.077v3.766h6.601v32.724Z"/>
+        </g>
+      </svg>
+    </div>
+  </div>
 
   <!-- Header -->
   <header class="header">
@@ -658,10 +835,40 @@
   </footer>
 
   <script>
-    // Intersection Observer for scroll-triggered card animations
+    // ==========================================================
+    // 1. INTRO ORCHESTRATION
+    //    Lifts the navy veil, marks body.ready, and hands off to
+    //    the card stagger (handled by CSS via :nth-child delays).
+    // ==========================================================
+    (function () {
+      const veil = document.getElementById('introVeil');
+      if (!veil) { document.body.classList.add('ready'); return; }
+
+      // Let fonts settle before lifting the veil
+      const lift = () => {
+        veil.classList.add('lift');
+        document.body.classList.add('ready');
+      };
+
+      // Wait ~1.3s so the mark breathes in, then lift
+      const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 350 : 1250;
+      setTimeout(lift, delay);
+
+      // Remove the veil from the DOM after transition to free layers
+      veil.addEventListener('transitionend', () => {
+        if (veil.classList.contains('lift')) veil.remove();
+      }, { once: false });
+    })();
+
+    // ==========================================================
+    // 2. SCROLL-TRIGGERED CARD REVEAL
+    //    Sets .in-view so body.ready .product-card.in-view
+    //    transitions from blur+translate to focus.
+    // ==========================================================
     (function () {
       const cards = document.querySelectorAll('.product-card');
-      if (!('IntersectionObserver' in window) || !cards.length) {
+      if (!cards.length) return;
+      if (!('IntersectionObserver' in window)) {
         cards.forEach(c => c.classList.add('in-view'));
         return;
       }
@@ -676,67 +883,153 @@
       cards.forEach(c => io.observe(c));
     })();
 
-    // ------------------------------------------------------------
-    // Interactive cursor aurora + dot-grid reveal
-    // Awwwards-style: cursor-lerped spotlight, idle drift, touch-aware.
-    // ------------------------------------------------------------
+    // ==========================================================
+    // 3. INTERACTIVE BACKGROUND
+    //    - rAF-lerped aurora position (--mx/--my)
+    //    - smoothed velocity (--speed, --vx, --vy) for stretch/saturation
+    //    - idle detection → Lissajous orbit + deep-idle glow
+    // ==========================================================
     (function () {
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const root = document.documentElement;
       const aurora = document.querySelector('.aurora');
 
       let tx = window.innerWidth / 2;
-      let ty = window.innerHeight / 3;
+      let ty = window.innerHeight / 2.4;
       let mx = tx, my = ty;
 
-      // Idle detection — when user stops moving, fall into a gentle orbit
-      let idleTimer = null;
+      // Velocity tracking (smoothed)
+      let lastX = tx, lastY = ty, lastT = performance.now();
+      let vxSmooth = 0, vySmooth = 0;
+      let speedSmooth = 0;
+
+      // Idle state
       let idle = true;
       let idleStart = performance.now();
+      let idleTimer = null;
+      let deepIdleTimer = null;
 
-      function setTarget(x, y) {
-        tx = x;
-        ty = y;
+      function wake() {
         if (idle) {
           idle = false;
           aurora && aurora.classList.remove('idle');
         }
+        aurora && aurora.classList.remove('idle-deep');
+
         clearTimeout(idleTimer);
+        clearTimeout(deepIdleTimer);
         idleTimer = setTimeout(() => {
           idle = true;
           idleStart = performance.now();
           aurora && aurora.classList.add('idle');
         }, 1400);
+        deepIdleTimer = setTimeout(() => {
+          aurora && aurora.classList.add('idle-deep');
+        }, 4500);
       }
 
-      window.addEventListener('pointermove', (e) => setTarget(e.clientX, e.clientY), { passive: true });
-      window.addEventListener('pointerdown', (e) => setTarget(e.clientX, e.clientY), { passive: true });
+      function onPointerMove(e) {
+        const now = performance.now();
+        const dt = Math.max(1, now - lastT);
+        const rawVx = (e.clientX - lastX) / dt;
+        const rawVy = (e.clientY - lastY) / dt;
+        // Exponential smoothing
+        vxSmooth = vxSmooth * 0.78 + rawVx * 0.22;
+        vySmooth = vySmooth * 0.78 + rawVy * 0.22;
+        lastX = e.clientX; lastY = e.clientY; lastT = now;
 
-      // Initial idle state on load
+        tx = e.clientX;
+        ty = e.clientY;
+        wake();
+      }
+
+      window.addEventListener('pointermove', onPointerMove, { passive: true });
       aurora && aurora.classList.add('idle');
+      setTimeout(() => aurora && aurora.classList.add('idle-deep'), 4500);
 
       function frame(now) {
         if (idle) {
-          // Gentle centered orbit when the user hasn't moved
+          // Lissajous orbit in the upper-mid region
           const t = (now - idleStart) / 1000;
           const cx = window.innerWidth / 2;
           const cy = window.innerHeight / 2.4;
-          const r = Math.min(window.innerWidth, window.innerHeight) * 0.12;
-          tx = cx + Math.cos(t * 0.35) * r;
-          ty = cy + Math.sin(t * 0.28) * r * 0.7;
+          const r = Math.min(window.innerWidth, window.innerHeight) * 0.13;
+          tx = cx + Math.cos(t * 0.33) * r;
+          ty = cy + Math.sin(t * 0.24) * r * 0.8;
+          // During idle, velocity decays to zero
+          vxSmooth *= 0.9;
+          vySmooth *= 0.9;
         }
 
-        // Lerp toward target for silky trailing
-        const ease = reduced ? 1 : 0.09;
+        const ease = reduced ? 1 : 0.095;
         mx += (tx - mx) * ease;
         my += (ty - my) * ease;
 
+        // Compute normalized speed 0..1 (px/ms clamped to ~3)
+        const rawSpeed = Math.hypot(vxSmooth, vySmooth);
+        const target = Math.min(rawSpeed / 2.2, 1);
+        speedSmooth += (target - speedSmooth) * 0.18;
+
+        // Unit velocity vector for directional stretch
+        const mag = Math.max(rawSpeed, 0.0001);
+        const ux = vxSmooth / mag;
+        const uy = vySmooth / mag;
+
         root.style.setProperty('--mx', mx + 'px');
         root.style.setProperty('--my', my + 'px');
+        root.style.setProperty('--speed', speedSmooth.toFixed(3));
+        root.style.setProperty('--vx', (ux * speedSmooth).toFixed(3));
+        root.style.setProperty('--vy', (uy * speedSmooth).toFixed(3));
 
         requestAnimationFrame(frame);
       }
       requestAnimationFrame(frame);
+    })();
+
+    // ==========================================================
+    // 4. CLICK RIPPLES
+    //    Spawn a ripple at pointerdown; cleans itself up.
+    // ==========================================================
+    (function () {
+      const layer = document.querySelector('.ripples');
+      if (!layer) return;
+      window.addEventListener('pointerdown', (e) => {
+        const r = document.createElement('span');
+        r.className = 'ripple';
+        r.style.setProperty('--rx', e.clientX + 'px');
+        r.style.setProperty('--ry', e.clientY + 'px');
+        layer.appendChild(r);
+        setTimeout(() => r.remove(), 950);
+      }, { passive: true });
+    })();
+
+    // ==========================================================
+    // 5. CARD MAGNETIC TILT
+    //    Pointer-relative 3D tilt + inner glow spot that tracks cursor.
+    // ==========================================================
+    (function () {
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduced) return;
+      const cards = document.querySelectorAll('.product-card');
+      cards.forEach(card => {
+        card.addEventListener('pointermove', (e) => {
+          const rect = card.getBoundingClientRect();
+          const px = (e.clientX - rect.left) / rect.width;
+          const py = (e.clientY - rect.top) / rect.height;
+          const tiltY = (px - 0.5) *  6; // deg
+          const tiltX = (py - 0.5) * -6; // deg
+          card.style.setProperty('--tilt-x', tiltX.toFixed(2) + 'deg');
+          card.style.setProperty('--tilt-y', tiltY.toFixed(2) + 'deg');
+          card.style.setProperty('--glow-x', (px * 100).toFixed(1) + '%');
+          card.style.setProperty('--glow-y', (py * 100).toFixed(1) + '%');
+          card.style.setProperty('--glow-a', '1');
+        });
+        card.addEventListener('pointerleave', () => {
+          card.style.setProperty('--tilt-x', '0deg');
+          card.style.setProperty('--tilt-y', '0deg');
+          card.style.setProperty('--glow-a', '0');
+        });
+      });
     })();
   </script>
 
