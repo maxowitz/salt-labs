@@ -228,8 +228,12 @@
 
     .product-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 18px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+    }
+    .products .container {
+      max-width: none;
+      padding: 0 clamp(12px, 2vw, 24px);
     }
 
     .product-card {
@@ -539,6 +543,9 @@
        RESPONSIVE
        ========================================================= */
     @media (max-width: 1100px) {
+      .product-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 780px) {
       .product-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 640px) {
