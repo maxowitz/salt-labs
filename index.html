@@ -3,591 +3,539 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Salt Labs — Internal Tools for Visit Salt Lake</title>
-  <meta name="description" content="Internal tools and intelligence platforms for Visit Salt Lake. Access SaltLakeIQ, VSL Brand Studio, WebNotes, and VSL Partner Hub.">
-  <meta property="og:title" content="Salt Labs — Internal Tools for Visit Salt Lake">
+  <title>Salt Labs — Visit Salt Lake</title>
+  <meta name="description" content="Internal tools and intelligence platforms for Visit Salt Lake. SaltLakeIQ, VSL Brand Studio, WebNotes, and VSL Partner Hub.">
+  <meta property="og:title" content="Salt Labs — Visit Salt Lake">
   <meta property="og:description" content="Internal tools and intelligence platforms for Visit Salt Lake.">
   <meta property="og:type" content="website">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='40' y2='40' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%232563eb'/%3E%3Cstop offset='100%25' stop-color='%23059669'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M20 2L36 11V29L20 38L4 29V11L20 2Z' fill='url(%23g)'/%3E%3Ccircle cx='20' cy='20' r='3' fill='white' opacity='0.9'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23062842'/%3E%3Ctext x='20' y='28' font-family='Georgia,serif' font-size='22' font-style='italic' font-weight='400' fill='%23FFDDA3' text-anchor='middle'%3EVSL%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    /* =========================================================
+       VSL BRAND TOKENS
+       ========================================================= */
     :root {
-      /* Backgrounds */
-      --bg-primary: #ffffff;
-      --bg-secondary: #f8fafc;
-      --bg-tertiary: #f1f5f9;
+      /* Core VSL palette */
+      --navy:     #062842;
+      --red:      #A41E22;
+      --teal:     #4CACD1;
+      --forest:   #0D4C26;
+      --green:    #1A854C;
+      --mint:     #8DCEA8;
+      --cream:    #FFDDA3;
+      --orange:   #F29F1F;
+      --rust:     #D24B27;
+      --blush:    #FAC8C5;
+      --offwhite: #F6F1EC;
+      --charcoal: #212121;
+      --coral:    #F58B88;
+      --blue:     #147CB2;
 
-      /* Text */
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #94a3b8;
+      /* Type */
+      --font-display: "Instrument Serif", "Ivar Headline", Georgia, serif;
+      --font-body: "DM Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
 
-      /* Borders */
-      --border: #e2e8f0;
-      --border-hover: #cbd5e1;
+      /* Easing */
+      --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+      --ease-soft:      cubic-bezier(0.45, 0, 0.2, 1);
 
-      /* Accents */
-      --accent-blue: #2563eb;
-      --accent-emerald: #059669;
-      --accent-violet: #7c3aed;
-      --accent-amber: #f59e0b;
-
-      /* Status */
-      --status-live: #22c55e;
-      --status-dev: #6366f1;
-
-      /* Shadows */
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
-      --shadow-lg: 0 12px 32px rgba(0,0,0,0.1);
-      --shadow-xl: 0 20px 40px rgba(0,0,0,0.12);
-
-      --radius: 16px;
-      --ease: cubic-bezier(0.4, 0, 0.2, 1);
+      /* Layout */
+      --max: 1240px;
+      --gutter: clamp(20px, 4vw, 56px);
     }
 
-    html {
-      scroll-behavior: smooth;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      font-family: var(--font-body);
+      color: var(--charcoal);
+      background: var(--offwhite);
+      font-size: 16px;
+      line-height: 1.55;
+      font-weight: 400;
+      letter-spacing: -0.005em;
       position: relative;
       min-height: 100vh;
       overflow-x: hidden;
     }
 
-    /* Subtle background texture + soft gradient blobs */
+    /* Subtle grain texture (VSL hallmark) */
     body::before {
-      content: '';
+      content: "";
       position: fixed;
       inset: 0;
-      z-index: -2;
-      background-image:
-        linear-gradient(to right, rgba(15, 23, 42, 0.025) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
-      background-size: 48px 48px;
-      mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
-      -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
       pointer-events: none;
+      z-index: 2;
+      opacity: 0.045;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     }
 
-    body::after {
-      content: '';
+    ::selection { background: var(--navy); color: var(--offwhite); }
+    a { color: inherit; text-decoration: none; }
+    img, svg { display: block; max-width: 100%; }
+
+    /* =========================================================
+       INTERACTIVE BACKGROUND
+       Two fixed layers that follow the cursor:
+         .aurora   — soft cream/teal spotlight that lags behind the cursor
+         .dotfield — faint navy dot grid, revealed only inside the spotlight
+       The --mx / --my custom properties are updated via rAF-lerped JS.
+       ========================================================= */
+    .aurora,
+    .dotfield {
       position: fixed;
       inset: 0;
-      z-index: -1;
+      pointer-events: none;
+      will-change: background-position, -webkit-mask-position;
+    }
+
+    .aurora {
+      z-index: 0;
       background:
-        radial-gradient(600px circle at 15% 20%, rgba(37, 99, 235, 0.06), transparent 60%),
-        radial-gradient(700px circle at 85% 75%, rgba(5, 150, 105, 0.05), transparent 60%),
-        radial-gradient(500px circle at 70% 15%, rgba(245, 158, 11, 0.04), transparent 60%),
-        radial-gradient(600px circle at 20% 85%, rgba(124, 58, 237, 0.04), transparent 60%);
-      animation: drift 24s ease-in-out infinite alternate;
-      pointer-events: none;
+        radial-gradient(
+          520px circle at var(--mx, 50%) var(--my, 50%),
+          rgba(255, 221, 163, 0.42),
+          rgba(141, 206, 168, 0.18) 38%,
+          rgba(76, 172, 209, 0.08) 60%,
+          transparent 72%
+        );
+      transition: background 120ms linear;
     }
 
-    @keyframes drift {
-      0%   { transform: translate3d(0, 0, 0); }
-      100% { transform: translate3d(-30px, 20px, 0); }
+    .dotfield {
+      z-index: 0;
+      background-image: radial-gradient(rgba(6, 40, 66, 0.28) 1px, transparent 1.4px);
+      background-size: 26px 26px;
+      background-position: 0 0;
+      -webkit-mask-image: radial-gradient(
+        360px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(0,0,0,0.9),
+        transparent 70%
+      );
+      mask-image: radial-gradient(
+        360px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(0,0,0,0.9),
+        transparent 70%
+      );
+      opacity: 0.9;
     }
 
+    /* When user is idle (no pointer movement for a moment), gently breathe */
+    .aurora.idle {
+      animation: aurora-breathe 8s ease-in-out infinite;
+    }
+    @keyframes aurora-breathe {
+      0%, 100% { filter: saturate(1)     brightness(1); }
+      50%      { filter: saturate(1.08)  brightness(1.04); }
+    }
+
+    /* =========================================================
+       LAYOUT
+       ========================================================= */
     .container {
-      max-width: 1200px;
+      max-width: var(--max);
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 0 var(--gutter);
+      position: relative;
+      z-index: 1;
     }
 
-    /* Header */
+    /* =========================================================
+       HEADER — VSL stacked mark + "Salt Labs" sub-wordmark
+       ========================================================= */
     .header {
-      padding: 72px 0 56px;
+      padding: 96px 0 64px;
       text-align: center;
       opacity: 0;
       transform: translateY(20px);
-      animation: fadeUp 0.6s var(--ease) forwards;
+      animation: fadeUp 0.8s var(--ease-out-expo) forwards;
     }
 
-    .logo-wrapper {
+    .logo-stack {
       display: inline-flex;
+      flex-direction: column;
       align-items: center;
-      gap: 16px;
-      margin-bottom: 24px;
+      gap: 14px;
+      margin-bottom: 28px;
     }
 
     .logo-mark {
-      width: 52px;
-      height: 52px;
-      flex-shrink: 0;
-      filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.15));
+      width: clamp(96px, 11vw, 140px);
+      height: auto;
+      color: var(--navy);
+      animation: logo-breathe 7s ease-in-out infinite;
+    }
+    .logo-mark svg { width: 100%; height: auto; }
+    .logo-mark svg path { fill: currentColor; }
+
+    @keyframes logo-breathe {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50%      { transform: translateY(-3px) scale(1.015); }
     }
 
-    .logo-text {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      line-height: 1.05;
-    }
-
-    .logo-text-salt {
-      font-size: 28px;
+    .logo-wordmark {
+      font-family: var(--font-body);
+      font-style: normal;
       font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.6px;
-    }
-
-    .logo-text-labs {
-      font-size: 28px;
-      font-weight: 400;
-      color: var(--text-secondary);
-      letter-spacing: -0.6px;
+      font-size: 13px;
+      line-height: 1;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--navy);
+      opacity: 0.85;
     }
 
     .tagline {
-      font-size: 18px;
-      color: var(--text-secondary);
+      font-family: var(--font-body);
+      font-size: clamp(15px, 1.3vw, 17px);
+      color: var(--charcoal);
+      opacity: 0.72;
       font-weight: 400;
-      max-width: 520px;
+      max-width: 540px;
       margin: 0 auto;
       line-height: 1.55;
+      letter-spacing: -0.005em;
     }
 
-    /* Product Grid */
-    .products {
-      padding: 0 0 56px;
+    .eyebrow {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      opacity: 0.5;
+      margin-bottom: 16px;
+      color: var(--charcoal);
     }
+
+    /* =========================================================
+       PRODUCT GRID — 4 across
+       ========================================================= */
+    .products { padding: 8px 0 64px; position: relative; z-index: 1; }
 
     .product-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 24px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
     }
 
     .product-card {
-      background: var(--bg-primary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px;
-      padding-left: 36px;
+      background: var(--offwhite);
+      border: 1px solid rgba(6, 40, 66, 0.10);
+      border-radius: 20px;
+      padding: 26px 22px 22px;
       text-decoration: none;
-      color: inherit;
+      color: var(--charcoal);
       display: flex;
       flex-direction: column;
       position: relative;
       overflow: hidden;
+      isolation: isolate;
       transition:
-        transform 0.25s var(--ease),
-        box-shadow 0.25s var(--ease),
-        border-color 0.25s var(--ease);
+        transform 0.5s var(--ease-out-expo),
+        box-shadow 0.5s var(--ease-out-expo),
+        border-color 0.4s var(--ease-soft),
+        background 0.4s var(--ease-soft);
       cursor: pointer;
-      box-shadow: var(--shadow-sm);
+      box-shadow: 0 1px 2px rgba(6, 40, 66, 0.03);
       opacity: 0;
       transform: translateY(30px);
       will-change: transform, box-shadow;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
     }
 
-    .product-card.in-view {
-      animation: fadeUp 0.6s var(--ease) forwards;
-    }
-
+    .product-card.in-view { animation: fadeUp 0.8s var(--ease-out-expo) forwards; }
     .product-card.in-view:nth-child(1) { animation-delay: 0.15s; }
     .product-card.in-view:nth-child(2) { animation-delay: 0.25s; }
     .product-card.in-view:nth-child(3) { animation-delay: 0.35s; }
     .product-card.in-view:nth-child(4) { animation-delay: 0.45s; }
 
     @keyframes fadeUp {
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Accent bar on left edge */
-    .product-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      bottom: 0;
-      width: 4px;
-      transition: width 0.25s var(--ease);
-    }
-
-    .product-card[data-accent="blue"]::before    { background: var(--accent-blue); }
-    .product-card[data-accent="amber"]::before   { background: var(--accent-amber); }
-    .product-card[data-accent="violet"]::before  { background: var(--accent-violet); }
-    .product-card[data-accent="emerald"]::before { background: var(--accent-emerald); }
 
     .product-card:hover {
-      transform: translateY(-8px) scale(1.02);
-      box-shadow: var(--shadow-xl);
-      border-color: var(--border-hover);
-    }
-
-    .product-card:hover::before {
-      width: 6px;
+      transform: translateY(-6px);
+      box-shadow: 0 30px 60px -30px rgba(6, 40, 66, 0.28);
+      border-color: rgba(6, 40, 66, 0.18);
+      background: #ffffff;
     }
 
     .product-card:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3), var(--shadow-lg);
+      box-shadow: 0 0 0 3px rgba(6, 40, 66, 0.25), 0 20px 40px -20px rgba(6, 40, 66, 0.2);
     }
 
     .card-header {
       display: flex;
       align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-
-    .card-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: transform 0.3s var(--ease);
-    }
-
-    .product-card:hover .card-icon {
-      animation: iconPulse 0.5s var(--ease);
-    }
-
-    @keyframes iconPulse {
-      0%   { transform: scale(1); }
-      50%  { transform: scale(1.1); }
-      100% { transform: scale(1); }
-    }
-
-    .card-icon[data-accent="blue"]    { background: #eff6ff; color: var(--accent-blue); }
-    .card-icon[data-accent="amber"]   { background: #fffbeb; color: var(--accent-amber); }
-    .card-icon[data-accent="violet"]  { background: #f5f3ff; color: var(--accent-violet); }
-    .card-icon[data-accent="emerald"] { background: #ecfdf5; color: var(--accent-emerald); }
-
-    .card-icon svg {
-      width: 24px;
-      height: 24px;
+      justify-content: flex-end;
+      margin-bottom: 18px;
+      min-height: 24px;
     }
 
     .card-arrow {
-      width: 32px;
-      height: 32px;
+      width: 28px;
+      height: 28px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-muted);
-      transition: transform 0.25s var(--ease), color 0.25s var(--ease);
+      color: rgba(6, 40, 66, 0.35);
+      transition: transform 0.35s var(--ease-out-expo), color 0.25s var(--ease-soft);
       flex-shrink: 0;
     }
-
     .product-card:hover .card-arrow {
       transform: translate(4px, -4px);
-      color: var(--text-primary);
+      color: var(--navy);
     }
-
-    .card-arrow svg {
-      width: 18px;
-      height: 18px;
-    }
+    .card-arrow svg { width: 16px; height: 16px; }
 
     .card-title {
-      font-size: 22px;
-      font-weight: 600;
-      margin-bottom: 10px;
-      letter-spacing: -0.4px;
-      color: var(--text-primary);
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: clamp(30px, 2.5vw, 40px);
+      line-height: 0.96;
+      letter-spacing: -0.035em;
+      margin-bottom: 14px;
+      color: var(--navy);
+    }
+    .card-title em {
+      font-style: italic;
+      letter-spacing: -0.045em;
+    }
+    .card-title .accent {
+      font-style: italic;
+      color: var(--rust);
     }
 
     .card-description {
-      font-size: 15px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-      margin-bottom: 24px;
+      font-family: var(--font-body);
+      font-size: 13.5px;
+      color: var(--charcoal);
+      opacity: 0.72;
+      line-height: 1.55;
+      margin-bottom: 22px;
       flex-grow: 1;
+      letter-spacing: -0.005em;
     }
 
     .card-footer {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
     }
 
     .tag {
-      font-size: 12px;
+      font-family: var(--font-body);
+      font-size: 10.5px;
       font-weight: 500;
-      padding: 5px 11px;
-      border-radius: 20px;
-      background: var(--bg-secondary);
-      color: var(--text-secondary);
-      border: 1px solid var(--border);
-      letter-spacing: 0.1px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(6, 40, 66, 0.06);
+      color: var(--navy);
+      letter-spacing: 0.02em;
     }
 
     .status-badge {
-      font-size: 11px;
+      font-family: var(--font-body);
+      font-size: 9.5px;
       font-weight: 600;
-      padding: 5px 11px;
-      border-radius: 20px;
+      padding: 4px 10px;
+      border-radius: 999px;
       margin-left: auto;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.12em;
       position: relative;
       overflow: hidden;
     }
-
     .status-badge::after {
       content: '';
       position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
-      transition: left 0.6s var(--ease);
+      top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.65), transparent);
+      transition: left 0.7s var(--ease-out-expo);
     }
+    .product-card:hover .status-badge::after { left: 100%; }
 
-    .product-card:hover .status-badge::after {
-      left: 100%;
-    }
+    .status-badge.live { background: rgba(26, 133, 76, 0.14);  color: var(--forest); }
+    .status-badge.dev  { background: rgba(242, 159, 31, 0.18); color: var(--rust); }
 
-    .status-badge.live {
-      background: #ecfdf5;
-      color: #047857;
-    }
-
-    .status-badge.dev {
-      background: #eef2ff;
-      color: #4338ca;
-    }
-
-    /* Quick Links */
+    /* =========================================================
+       QUICK LINKS
+       ========================================================= */
     .quick-links {
-      padding: 0 0 64px;
+      padding: 0 0 72px;
       opacity: 0;
       transform: translateY(20px);
-      animation: fadeUp 0.6s var(--ease) 0.6s forwards;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.6s forwards;
     }
 
     .quick-links-label {
-      font-size: 12px;
-      font-weight: 600;
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 500;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      margin-bottom: 16px;
+      letter-spacing: 0.24em;
+      color: var(--charcoal);
+      opacity: 0.5;
+      margin-bottom: 14px;
     }
 
-    .quick-links-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .quick-links-row { display: flex; gap: 10px; flex-wrap: wrap; }
 
     .quick-link {
       display: inline-flex;
       align-items: center;
       gap: 10px;
       padding: 10px 16px;
-      background: var(--bg-primary);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      text-decoration: none;
-      color: var(--text-primary);
-      font-size: 14px;
+      background: var(--offwhite);
+      border: 1px solid rgba(6, 40, 66, 0.1);
+      border-radius: 999px;
+      color: var(--navy);
+      font-family: var(--font-body);
+      font-size: 13px;
       font-weight: 500;
       transition:
-        transform 0.2s var(--ease),
-        box-shadow 0.2s var(--ease),
-        border-color 0.2s var(--ease);
-      position: relative;
+        transform 0.25s var(--ease-out-expo),
+        box-shadow 0.3s var(--ease-soft),
+        border-color 0.25s var(--ease-soft),
+        background 0.25s var(--ease-soft);
     }
-
     .quick-link:hover {
       transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
-      border-color: var(--border-hover);
+      box-shadow: 0 10px 24px -10px rgba(6, 40, 66, 0.2);
+      border-color: rgba(6, 40, 66, 0.2);
+      background: #ffffff;
     }
-
     .quick-link:focus-visible {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+      box-shadow: 0 0 0 3px rgba(6, 40, 66, 0.25);
     }
-
     .quick-link-icon {
-      width: 22px;
-      height: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 20px; height: 20px;
+      display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
+    .quick-link-icon svg { width: 18px; height: 18px; }
 
-    .quick-link-icon svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    .quick-link-name {
-      font-weight: 500;
-      font-size: 14px;
-      position: relative;
-    }
-
+    .quick-link-name { position: relative; }
     .quick-link-name::after {
       content: '';
       position: absolute;
-      left: 0;
-      bottom: -2px;
-      width: 0;
-      height: 1px;
+      left: 0; bottom: -2px;
+      width: 0; height: 1px;
       background: currentColor;
-      transition: width 0.25s var(--ease);
+      transition: width 0.3s var(--ease-out-expo);
     }
-
-    .quick-link:hover .quick-link-name::after {
-      width: 100%;
-    }
+    .quick-link:hover .quick-link-name::after { width: 100%; }
 
     .quick-link-arrow {
-      color: var(--text-muted);
-      margin-left: 2px;
-      transition: transform 0.2s var(--ease), color 0.2s var(--ease);
+      opacity: 0.45;
+      transition: transform 0.25s var(--ease-out-expo), opacity 0.25s;
     }
+    .quick-link:hover .quick-link-arrow { transform: translateX(3px); opacity: 1; }
+    .quick-link-arrow svg { width: 14px; height: 14px; }
 
-    .quick-link:hover .quick-link-arrow {
-      transform: translateX(3px);
-      color: var(--text-secondary);
-    }
-
-    .quick-link-arrow svg {
-      width: 14px;
-      height: 14px;
-    }
-
-    /* Footer */
+    /* =========================================================
+       FOOTER
+       ========================================================= */
     .footer {
-      padding: 32px 0 48px;
-      border-top: 1px solid var(--border);
+      padding: 36px 0 56px;
+      border-top: 1px solid rgba(6, 40, 66, 0.10);
       text-align: center;
       opacity: 0;
-      animation: fadeUp 0.6s var(--ease) 0.7s forwards;
+      animation: fadeUp 0.8s var(--ease-out-expo) 0.75s forwards;
     }
-
     .footer-text {
-      font-size: 13px;
-      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--charcoal);
+      opacity: 0.55;
+      letter-spacing: 0.03em;
     }
-
-    .footer-text span {
-      margin: 0 10px;
-      opacity: 0.4;
+    .footer-text em {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 400;
+      font-size: 14px;
+      opacity: 0.85;
     }
+    .footer-text span { margin: 0 10px; opacity: 0.4; }
 
-    /* Responsive */
-    @media (max-width: 767px) {
-      .header {
-        padding: 48px 0 36px;
-      }
-
-      .logo-mark {
-        width: 42px;
-        height: 42px;
-      }
-
-      .logo-text-salt,
-      .logo-text-labs {
-        font-size: 24px;
-      }
-
-      .tagline {
-        font-size: 16px;
-      }
-
-      .product-grid {
-        grid-template-columns: 1fr;
-        gap: 16px;
-      }
-
-      .product-card {
-        padding: 28px;
-        padding-left: 32px;
-      }
-
-      .card-title {
-        font-size: 20px;
-      }
-
-      .quick-links-row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .quick-link {
-        justify-content: flex-start;
-      }
+    /* =========================================================
+       RESPONSIVE
+       ========================================================= */
+    @media (max-width: 1100px) {
+      .product-grid { grid-template-columns: repeat(2, 1fr); }
     }
-
+    @media (max-width: 640px) {
+      .header { padding: 64px 0 48px; }
+      .product-grid { grid-template-columns: 1fr; gap: 16px; }
+      .product-card { padding: 24px; }
+      .card-title { font-size: 24px; }
+      .quick-links-row { flex-direction: column; align-items: stretch; }
+      .crystal-3, .crystal-4, .crystal-8 { display: none; }
+    }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
       }
-      body::after {
-        animation: none;
-      }
+      .crystal { opacity: 0.18 !important; }
+      .atmosphere::before { animation: none; }
     }
   </style>
 </head>
 <body>
 
+  <!-- Interactive background layers (cursor-driven) -->
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="dotfield" aria-hidden="true"></div>
+
   <!-- Header -->
   <header class="header">
     <div class="container">
-      <div class="logo-wrapper">
-        <svg class="logo-mark" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="logo-grad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#2563eb"/>
-              <stop offset="100%" stop-color="#059669"/>
-            </linearGradient>
-          </defs>
-          <path d="M24 4L42 14V34L24 44L6 34V14L24 4Z" fill="url(#logo-grad)"/>
-          <path d="M24 4L24 24L6 14Z" fill="white" opacity="0.15"/>
-          <path d="M24 4L42 14L24 24Z" fill="white" opacity="0.08"/>
-          <path d="M24 44L24 24L42 34Z" fill="black" opacity="0.08"/>
-          <circle cx="24" cy="24" r="3.5" fill="white" opacity="0.9"/>
-          <circle cx="24" cy="4"  r="2" fill="white" opacity="0.5"/>
-          <circle cx="42" cy="14" r="2" fill="white" opacity="0.4"/>
-          <circle cx="6"  cy="14" r="2" fill="white" opacity="0.4"/>
-          <circle cx="42" cy="34" r="2" fill="white" opacity="0.3"/>
-          <circle cx="6"  cy="34" r="2" fill="white" opacity="0.3"/>
-          <circle cx="24" cy="44" r="2" fill="white" opacity="0.3"/>
-          <line x1="24" y1="24" x2="24" y2="4"  stroke="white" stroke-width="0.8" opacity="0.3"/>
-          <line x1="24" y1="24" x2="42" y2="14" stroke="white" stroke-width="0.8" opacity="0.3"/>
-          <line x1="24" y1="24" x2="6"  y2="14" stroke="white" stroke-width="0.8" opacity="0.3"/>
-          <line x1="24" y1="24" x2="42" y2="34" stroke="white" stroke-width="0.8" opacity="0.2"/>
-          <line x1="24" y1="24" x2="6"  y2="34" stroke="white" stroke-width="0.8" opacity="0.2"/>
-          <line x1="24" y1="24" x2="24" y2="44" stroke="white" stroke-width="0.8" opacity="0.2"/>
-        </svg>
-        <div class="logo-text">
-          <span class="logo-text-salt">Salt</span>
-          <span class="logo-text-labs">Labs</span>
+      <div class="logo-stack">
+        <!-- VSL Stacked Mark (from brand guidelines, fill variant) -->
+        <div class="logo-mark" aria-label="Visit Salt Lake">
+          <svg viewBox="0 0 235.72 262.40" xmlns="http://www.w3.org/2000/svg">
+            <g>
+              <path d="M32.919 92.445h6.809l24.021-60.571c2.247-5.575,4.598-8.026,8.377-8.74l1.446-.263v-3.69H50.947v3.702l1.765.253c3.184.509,4.845,1.253,5.556,2.488.661,1.15.536,2.867-.384,5.248L41.633,73.754,25.387,30.67c-.854-2.293-.94-3.884-.268-5.01.765-1.287,2.568-2.065,5.839-2.524l1.878-.251v-3.705H0v3.684l1.336.268c3.556.711,5.392,2.71,7.559,8.224l23.929,60.848.095.241Z"/>
+              <path d="M91.517 39.910l-1.294.01-19.888,4.607v3.092l.309.06c4.669.875,5.877,2.113,5.877,6.02v29.289c0,4.075-1.333,4.930-4.526,5.4l-1.661.257v3.491h27.369v-3.491l-1.664-.257c-3.128-.475-4.523-1.367-4.523-5.4V39.910Z"/>
+              <path d="M121.559 89.001c-9.698,0-13.647-10.910-14.894-15.600l-.077-.283h-3.860l-.429,16.506.229.104c3.095,1.400,9.639,3.747,18.721,3.747,11.933,0,20.596-7.187,20.596-17.085.104-8.401-4.999-12.060-15.088-16.239l-3.506-1.442c-6.693-2.781-8.841-4.776-8.841-8.209,0-3.784,3.024-6.426,7.353-6.426,7.392,0,10.948,6.861,12.630,12.618l.080.274h3.854l.324-14.344-.235-.103c-3.226-1.411-9.106-2.919-15.930-2.919-11.445,0-20.078,6.992-20.078,16.263,0,8.059,4.940,11.668,14.052,15.512l3.404,1.445c6.642,2.759,9.770,4.528,9.770,8.826,0,4.537-3.095,7.355-8.077,7.355Z"/>
+              <path d="M172.783 88.644l-1.664-.257c-3.128-.475-4.523-1.367-4.523-5.400V39.910l-1.294.01-19.888,4.607v3.092l.309.060c4.669.875,5.877,2.113,5.877,6.020v29.289c0,4.075-1.333,4.930-4.526,5.400l-1.661.257v3.491h27.369v-3.491Z"/>
+              <path d="M181.508 79.894c0,8.501,5.026,13.375,13.787,13.375,5.437,0,10.892-2.082,14.597-5.569l.119-.112v-3.599l-.512.189c-2.003.738-4.006,1.111-5.955,1.111-4.740,0-7.044-2.473-7.044-7.560V47.171h11.359l1.649-6.124h-13.008V28.360h-6.106l-.095.241c-2.128,5.401-6.476,12.341-15.112,14.726l-.280.077v3.766h6.601v32.724Z"/>
+
+              <path d="M65.172 154.456c0-10.157-5.592-16.299-19.944-21.911l-4.949-1.856c-9.886-3.849-14.296-6.663-14.296-13.155,0-6.114,5.130-10.551,12.201-10.551,8.969,0,14.519,5.806,17.468,18.270l.071.293h4.077l.429-19.297-.238-.101c-4.345-1.848-11.514-4.052-20.983-4.052-14.740,0-25.854,9.386-25.854,21.833,0,7.910,3.232,14.487,19.013,20.877l4.744,1.856c9.323,3.708,15.436,6.699,15.436,14.188,0,7.422-5.401,12.408-13.439,12.408-13.793,0-19.188-12.508-21.284-23.001l-.062-.307h-4.086l-.637,21.836.187.115c4.904,3.009,14.835,6.245,25.054,6.245,15.698,0,27.092-9.963,27.092-23.690Z"/>
+              <path d="M84.476 150.276h-.003c-8.443,2.620-13.674,5.769-13.674,13.359,0,7.978,6.327,13.994,14.716,13.994,5.291,0,10.332-2.396,13.641-6.444.887,3.055,3.241,6.342,9.255,6.342,4.491,0,8.913-1.857,11.826-4.968l.104-.110v-2.830l-.551.277c-.592.298-1.491.475-2.408.475-2.732,0-3.848-1.324-3.848-4.569V139.709c0-9.942-7.395-15.644-20.287-15.644-12.326,0-19.629,6.510-21.200,12.558l-.036.143.068.131c.943,1.781,3.898,4.431,8.175,4.431,3.196,0,5.312-.854,6.657-5.226,1.723-5.926,2.482-7.975,5.720-7.975,4.116,0,6.115,3.451,6.115,10.551v7.347l-14.272,4.253ZM98.749 167.505c-1.473,1.516-3.526,2.350-5.806,2.350-5.098,0-7.767-4.738-7.767-9.417,0-4.171,1.464-5.987,6.029-7.477l7.544-2.515v17.059Z"/>
+              <path d="M124.011 104.442v3.095l.309.058c4.562.875,5.880,2.224,5.880,6.020v53.835c0,4.075-1.333,4.930-4.523,5.400l-1.666.256v3.492h27.369v-3.495l-1.768-.253c-3.116-.473-4.419-1.329-4.419-5.400V99.828h-1.205l-19.682,4.547-.295.067Z"/>
+              <path d="M168.685 112.822l-.095.241c-2.128,5.401-6.476,12.341-15.112,14.726l-.280.077v3.766h6.601v32.724c0,8.501,5.026,13.375,13.787,13.375,5.437,0,10.892-2.082,14.597-5.569l.119-.112v-3.599l-.512.189c-2.003.738-4.006,1.111-5.955,1.111-4.740,0-7.044-2.473-7.044-7.562V131.535h11.359l1.649-6.126h-13.008V112.725h-6.106Z"/>
+
+              <path d="M73.293 237.367c-3.684,12.601-7.716,18.599-20.673,18.599h-2.887c-5.050,0-6.839-1.277-6.839-4.879V197.458c0-3.763,2.283-4.855,5.958-5.397l1.985-.248v-3.708H18.031v3.708l1.979.247c3.776.542,5.964,1.598,5.964,5.398v54.249c0,3.733-2.095,4.741-5.982,5.297l-1.961.369v3.687h56.423l1.919-23.966h-4l-.080.274Z"/>
+              <path d="M128.624 254.831c-2.732,0-3.848-1.324-3.848-4.569v-26.093c0-9.942-7.395-15.644-20.287-15.644-12.326,0-19.629,6.510-21.200,12.558l-.036.143.068.131c.943,1.781,3.898,4.431,8.175,4.431,3.196,0,5.312-.854,6.657-5.226,1.723-5.926,2.482-7.975,5.720-7.975,4.116,0,6.115,3.451,6.115,10.551v7.348l-14.275,4.253c-8.443,2.620-13.674,5.769-13.674,13.359,0,7.978,6.327,13.994,14.716,13.994,5.291,0,10.332-2.396,13.641-6.444.887,3.055,3.241,6.342,9.255,6.342,4.491,0,8.913-1.857,11.826-4.968l.104-.110v-2.829l-.551.275c-.604.302-1.482.475-2.407.475ZM109.989 251.967c-1.473,1.516-3.529,2.350-5.809,2.350-5.098,0-7.764-4.738-7.764-9.417,0-4.172,1.464-5.989,6.029-7.477l7.544-2.515v17.059Z"/>
+              <path d="M182.047 248.732l-14.457-20.794,3.779-3.489c6.666-6.153,12.314-9.733,17.260-10.944l.292-.071v-3.465H165.986v3.470l1.643.379c1.750.357,2.756.970,2.997,1.821.381,1.364-1.033,3.552-4.211,6.502l-12.043,11.454V184.379l-1.396.010-19.787,4.605v3.093l.309.058c4.562.875,5.880,2.224,5.880,6.020v53.835c0,4.075-1.333,4.930-4.523,5.400l-1.666.256v3.492h27.369v-3.495l-1.768-.253c-3.262-.481-4.419-1.369-4.419-5.400v-11.795l3.056-2.787,9.755,14.485c1.312,1.967,2.470,3.901,2.077,4.729-.193.406-.848.658-2.018.768l-1.771.253v3.495h27.369v-3.473l-1.753-.376c-3.568-.676-5.172-2.960-9.041-8.478Z"/>
+              <path d="M233.080 242.852l-.196.283c-3.827,5.525-7.740,7.779-13.508,7.779-9.466,0-15.317-6.992-15.698-18.730h31.101l.033-.344c.104-1.050.104-1.900.104-2.720,0-5.358-1.815-10.337-5.113-14.022-3.785-4.232-9.282-6.470-15.894-6.470-11.633,0-23.998,9.856-23.998,28.124,0,15.101,9.785,25.649,23.792,25.649,10.392,0,17.971-6.153,21.914-17.791l.104-.302-2.643-1.455ZM213.085 213.000c4.630,0,7.666,5.450,8.160,14.606H203.797c.664-9.022,4.202-14.606,9.288-14.606Z"/>
+            </g>
+            <!-- Italic flourish accent marks above the V -->
+            <path d="M136.318 27.563c-.294,0-.544-.212-.595-.502l-2.628-15.271c-.031-.175.016-.353.130-.489.114-.137.282-.216.462-.218l13.913-.097c.275,0,.516.188.584.458l2.594,10.389c.075.302-.089.609-.383.715l-13.874,4.979c-.068.025-.137.037-.204.037Z"/>
+            <path d="M137.081 8.533c-.267,0-.485-.158-.570-.410-.086-.255-.007-.512.206-.674L146.382.124c.103-.078.236-.124.364-.124l13.708.859c.272.017.494.207.552.472.059.267-.062.532-.302.660l-11.841 6.388c-.087.047-.184.071-.280.071l-11.501.082Z"/>
+            <path d="M156.634 23.176c-.063,0-.126-.010-.187-.030l-2.661-.862c-.199-.066-.349-.225-.400-.428l-2.757-11.044c-.068-.268.055-.547.299-.678l14.393-7.764c.090-.047.191-.074.287-.074.300,0,.550.215.597.511l1.670 10.686c.032.207-.047.420-.207.555l-10.644 8.986c-.109.090-.248.141-.390.141Z"/>
+            <path d="M149.430 34.966c-.090,0-.180-.021-.261-.059l-9.731-4.652c-.220-.106-.354-.331-.342-.575.013-.243.170-.454.400-.538l12.743-4.574c.064-.022.133-.035.204-.035.065,0,.129.010.185.028l3.479 1.129c.117.038.218.109.293.206l5.337 6.726c.139.178.166.415.072.619-.094.207-.291.341-.516.352l-11.862 1.372Z"/>
+              <path d="M164.258 31.563c-.190,0-.358-.084-.473-.234l-4.647-6.019c-.199-.256-.160-.620.087-.829l6.868-5.796c.114-.097.244-.146.386-.146.177,0,.358.086.472.224.112.135.157.315.123.493l-2.222 11.815c-.053.285-.304.492-.596.492Z"/>
+              <path d="M168.317 30.221c-.182,0-.359-.084-.474-.224-.116-.140-.158-.311-.124-.496l2.373-12.615c.053-.286.303-.493.594-.493.082,0,.163.018.244.053l6.873 3.042c.180.079.310.243.347.435.039.194-.020.393-.158.536l-9.247 9.574c-.117.120-.270.187-.428.187Z"/>
+              <path d="M175.338 15.580c-.083,0-.167-.019-.251-.056l-4.360-1.929c-.188-.084-.320-.256-.352-.461l-.851-5.447c-.028-.183.016-.350.130-.482.114-.134.296-.217.474-.217.193,0,.369.094.484.257l5.213 7.379c.135.192.153.418.047.620-.107.207-.311.335-.534.335Z"/>
+          </svg>
         </div>
+
+        <div class="logo-wordmark">Salt Labs</div>
       </div>
       <p class="tagline">Internal tools and intelligence platforms for Visit Salt Lake.</p>
     </div>
@@ -599,109 +547,73 @@
       <div class="product-grid">
 
         <!-- SaltLakeIQ -->
-        <a href="https://saltlakeiq.com" target="_blank" rel="noopener" class="product-card" data-accent="blue">
+        <a href="https://saltlakeiq.com" target="_blank" rel="noopener" class="product-card">
           <div class="card-header">
-            <div class="card-icon" data-accent="blue">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a9 9 0 0 0-9 9c0 3.5 2 6.5 5 8v3h8v-3c3-1.5 5-4.5 5-8a9 9 0 0 0-9-9z"/>
-                <path d="M9 11a3 3 0 0 1 3-3"/>
-                <path d="M12 22v-5"/>
-                <path d="M9 17h6"/>
-              </svg>
-            </div>
             <div class="card-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="7" y1="17" x2="17" y2="7"/>
                 <polyline points="7 7 17 7 17 17"/>
               </svg>
             </div>
           </div>
-          <h3 class="card-title">SaltLakeIQ</h3>
-          <p class="card-description">Marketing intelligence platform. Sponsorship tracking, PR intelligence, content analytics, AI-powered briefings, and a 27-module dashboard library.</p>
+          <h3 class="card-title">SaltLake<em>IQ</em></h3>
+          <p class="card-description">Marketing intelligence. Sponsorship tracking, PR intelligence, content analytics, and AI-powered briefings.</p>
           <div class="card-footer">
             <span class="tag">Intelligence</span>
-            <span class="tag">Analytics</span>
             <span class="status-badge live">Live</span>
           </div>
         </a>
 
         <!-- VSL Brand Studio -->
-        <a href="https://vslbrandstudio.com" target="_blank" rel="noopener" class="product-card" data-accent="amber">
+        <a href="https://vslbrandstudio.com" target="_blank" rel="noopener" class="product-card">
           <div class="card-header">
-            <div class="card-icon" data-accent="amber">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/>
-                <circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/>
-                <circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/>
-                <circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/>
-                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
-              </svg>
-            </div>
             <div class="card-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="7" y1="17" x2="17" y2="7"/>
                 <polyline points="7 7 17 7 17 17"/>
               </svg>
             </div>
           </div>
-          <h3 class="card-title">VSL Brand Studio</h3>
-          <p class="card-description">Digital asset management and brand toolkit. Centralized storage, metadata tagging, AI auto-categorization, brand guidelines, and partner asset distribution.</p>
+          <h3 class="card-title">Brand <em>Studio</em></h3>
+          <p class="card-description">Digital asset management and brand toolkit. Centralized storage, AI auto-categorization, and partner distribution.</p>
           <div class="card-footer">
-            <span class="tag">DAM</span>
-            <span class="tag">Brand Assets</span>
+            <span class="tag">Brand</span>
             <span class="status-badge dev">In Development</span>
           </div>
         </a>
 
         <!-- WebNotes -->
-        <a href="https://www.getwebnotes.net" target="_blank" rel="noopener" class="product-card" data-accent="violet">
+        <a href="https://www.getwebnotes.net" target="_blank" rel="noopener" class="product-card">
           <div class="card-header">
-            <div class="card-icon" data-accent="violet">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                <line x1="8" y1="10" x2="16" y2="10"/>
-                <line x1="8" y1="14" x2="13" y2="14"/>
-              </svg>
-            </div>
             <div class="card-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="7" y1="17" x2="17" y2="7"/>
                 <polyline points="7 7 17 7 17 17"/>
               </svg>
             </div>
           </div>
-          <h3 class="card-title">WebNotes</h3>
-          <p class="card-description">Web annotation and feedback tool. Capture screenshots, pin comments directly on live sites, and collaborate with your team in real-time.</p>
+          <h3 class="card-title">Web<em>Notes</em></h3>
+          <p class="card-description">Web annotation and feedback. Capture screenshots, pin comments on live sites, collaborate in real-time.</p>
           <div class="card-footer">
-            <span class="tag">Annotation</span>
             <span class="tag">Collaboration</span>
             <span class="status-badge live">Live</span>
           </div>
         </a>
 
         <!-- VSL Partner Hub -->
-        <a href="https://vslpartner.com" target="_blank" rel="noopener" class="product-card" data-accent="emerald">
+        <a href="https://vslpartner.com" target="_blank" rel="noopener" class="product-card">
           <div class="card-header">
-            <div class="card-icon" data-accent="emerald">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-            </div>
             <div class="card-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="7" y1="17" x2="17" y2="7"/>
                 <polyline points="7 7 17 7 17 17"/>
               </svg>
             </div>
           </div>
-          <h3 class="card-title">VSL Partner Hub</h3>
-          <p class="card-description">Partner portal and co-op marketing platform. Campaign dashboards, asset sharing, sponsorship tracking, and collaborative planning tools.</p>
+          <h3 class="card-title">Partner <em>Hub</em></h3>
+          <p class="card-description">Partner portal and co-op marketing. Campaign dashboards, asset sharing, and collaborative planning tools.</p>
           <div class="card-footer">
             <span class="tag">Partners</span>
-            <span class="tag">Co-op</span>
             <span class="status-badge live">Live</span>
           </div>
         </a>
@@ -738,7 +650,7 @@
   <footer class="footer">
     <div class="container">
       <p class="footer-text">
-        Built for Visit Salt Lake
+        <em>Built for Visit Salt Lake</em>
         <span>&middot;</span>
         &copy; 2026 Salt Labs
       </p>
@@ -762,6 +674,69 @@
         });
       }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
       cards.forEach(c => io.observe(c));
+    })();
+
+    // ------------------------------------------------------------
+    // Interactive cursor aurora + dot-grid reveal
+    // Awwwards-style: cursor-lerped spotlight, idle drift, touch-aware.
+    // ------------------------------------------------------------
+    (function () {
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const root = document.documentElement;
+      const aurora = document.querySelector('.aurora');
+
+      let tx = window.innerWidth / 2;
+      let ty = window.innerHeight / 3;
+      let mx = tx, my = ty;
+
+      // Idle detection — when user stops moving, fall into a gentle orbit
+      let idleTimer = null;
+      let idle = true;
+      let idleStart = performance.now();
+
+      function setTarget(x, y) {
+        tx = x;
+        ty = y;
+        if (idle) {
+          idle = false;
+          aurora && aurora.classList.remove('idle');
+        }
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          idle = true;
+          idleStart = performance.now();
+          aurora && aurora.classList.add('idle');
+        }, 1400);
+      }
+
+      window.addEventListener('pointermove', (e) => setTarget(e.clientX, e.clientY), { passive: true });
+      window.addEventListener('pointerdown', (e) => setTarget(e.clientX, e.clientY), { passive: true });
+
+      // Initial idle state on load
+      aurora && aurora.classList.add('idle');
+
+      function frame(now) {
+        if (idle) {
+          // Gentle centered orbit when the user hasn't moved
+          const t = (now - idleStart) / 1000;
+          const cx = window.innerWidth / 2;
+          const cy = window.innerHeight / 2.4;
+          const r = Math.min(window.innerWidth, window.innerHeight) * 0.12;
+          tx = cx + Math.cos(t * 0.35) * r;
+          ty = cy + Math.sin(t * 0.28) * r * 0.7;
+        }
+
+        // Lerp toward target for silky trailing
+        const ease = reduced ? 1 : 0.09;
+        mx += (tx - mx) * ease;
+        my += (ty - my) * ease;
+
+        root.style.setProperty('--mx', mx + 'px');
+        root.style.setProperty('--my', my + 'px');
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
     })();
   </script>
 
