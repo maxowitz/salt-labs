@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Salt Labs — Internal Tools for Visit Salt Lake</title>
-  <meta name="description" content="Internal tools and intelligence platforms for Visit Salt Lake. Access SaltLakeIQ, The Dam, WebNotes, and more.">
+  <meta name="description" content="Internal tools and intelligence platforms for Visit Salt Lake. Access SaltLakeIQ, VSL Brand Studio, WebNotes, and VSL Partner Hub.">
   <meta property="og:title" content="Salt Labs — Internal Tools for Visit Salt Lake">
   <meta property="og:description" content="Internal tools and intelligence platforms for Visit Salt Lake.">
   <meta property="og:type" content="website">
@@ -20,28 +20,88 @@
     }
 
     :root {
-      --bg: #ffffff;
+      /* Backgrounds */
+      --bg-primary: #ffffff;
       --bg-secondary: #f8fafc;
+      --bg-tertiary: #f1f5f9;
+
+      /* Text */
       --text-primary: #0f172a;
-      --text-secondary: #64748b;
+      --text-secondary: #475569;
       --text-muted: #94a3b8;
+
+      /* Borders */
       --border: #e2e8f0;
+      --border-hover: #cbd5e1;
+
+      /* Accents */
       --accent-blue: #2563eb;
       --accent-emerald: #059669;
       --accent-violet: #7c3aed;
-      --radius: 16px;
+      --accent-amber: #f59e0b;
+
+      /* Status */
+      --status-live: #22c55e;
+      --status-dev: #6366f1;
+
+      /* Shadows */
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
       --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
       --shadow-lg: 0 12px 32px rgba(0,0,0,0.1);
+      --shadow-xl: 0 20px 40px rgba(0,0,0,0.12);
+
+      --radius: 16px;
+      --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html {
+      scroll-behavior: smooth;
     }
 
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: var(--bg-secondary);
+      background: var(--bg-primary);
       color: var(--text-primary);
       line-height: 1.6;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      position: relative;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle background texture + soft gradient blobs */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background-image:
+        linear-gradient(to right, rgba(15, 23, 42, 0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 85%);
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(600px circle at 15% 20%, rgba(37, 99, 235, 0.06), transparent 60%),
+        radial-gradient(700px circle at 85% 75%, rgba(5, 150, 105, 0.05), transparent 60%),
+        radial-gradient(500px circle at 70% 15%, rgba(245, 158, 11, 0.04), transparent 60%),
+        radial-gradient(600px circle at 20% 85%, rgba(124, 58, 237, 0.04), transparent 60%);
+      animation: drift 24s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+
+    @keyframes drift {
+      0%   { transform: translate3d(0, 0, 0); }
+      100% { transform: translate3d(-30px, 20px, 0); }
     }
 
     .container {
@@ -52,84 +112,99 @@
 
     /* Header */
     .header {
-      padding: 48px 0 40px;
+      padding: 72px 0 56px;
       text-align: center;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeUp 0.6s var(--ease) forwards;
     }
 
     .logo-wrapper {
       display: inline-flex;
       align-items: center;
       gap: 16px;
-      margin-bottom: 16px;
+      margin-bottom: 24px;
     }
 
     .logo-mark {
-      width: 48px;
-      height: 48px;
+      width: 52px;
+      height: 52px;
       flex-shrink: 0;
+      filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.15));
     }
 
     .logo-text {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      line-height: 1.1;
+      line-height: 1.05;
     }
 
     .logo-text-salt {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 700;
       color: var(--text-primary);
-      letter-spacing: -0.5px;
+      letter-spacing: -0.6px;
     }
 
     .logo-text-labs {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 400;
       color: var(--text-secondary);
-      letter-spacing: -0.5px;
+      letter-spacing: -0.6px;
     }
 
     .tagline {
-      font-size: 17px;
+      font-size: 18px;
       color: var(--text-secondary);
       font-weight: 400;
-      max-width: 480px;
+      max-width: 520px;
       margin: 0 auto;
+      line-height: 1.55;
     }
 
     /* Product Grid */
     .products {
-      padding: 0 0 48px;
+      padding: 0 0 56px;
     }
 
     .product-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 24px;
     }
 
     .product-card {
-      background: var(--bg);
+      background: var(--bg-primary);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 32px 28px 28px;
+      padding: 32px;
+      padding-left: 36px;
       text-decoration: none;
       color: inherit;
       display: flex;
       flex-direction: column;
       position: relative;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-      border-top: 3px solid transparent;
+      overflow: hidden;
+      transition:
+        transform 0.25s var(--ease),
+        box-shadow 0.25s var(--ease),
+        border-color 0.25s var(--ease);
       cursor: pointer;
+      box-shadow: var(--shadow-sm);
       opacity: 0;
-      transform: translateY(20px);
-      animation: fadeUp 0.5s ease forwards;
+      transform: translateY(30px);
+      will-change: transform, box-shadow;
     }
 
-    .product-card:nth-child(1) { animation-delay: 0.1s; }
-    .product-card:nth-child(2) { animation-delay: 0.2s; }
-    .product-card:nth-child(3) { animation-delay: 0.3s; }
+    .product-card.in-view {
+      animation: fadeUp 0.6s var(--ease) forwards;
+    }
+
+    .product-card.in-view:nth-child(1) { animation-delay: 0.15s; }
+    .product-card.in-view:nth-child(2) { animation-delay: 0.25s; }
+    .product-card.in-view:nth-child(3) { animation-delay: 0.35s; }
+    .product-card.in-view:nth-child(4) { animation-delay: 0.45s; }
 
     @keyframes fadeUp {
       to {
@@ -138,39 +213,73 @@
       }
     }
 
-    .product-card:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--shadow-lg);
+    /* Accent bar on left edge */
+    .product-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 4px;
+      transition: width 0.25s var(--ease);
     }
 
-    .product-card[data-accent="blue"]:hover { border-top-color: var(--accent-blue); }
-    .product-card[data-accent="emerald"]:hover { border-top-color: var(--accent-emerald); }
-    .product-card[data-accent="violet"]:hover { border-top-color: var(--accent-violet); }
+    .product-card[data-accent="blue"]::before    { background: var(--accent-blue); }
+    .product-card[data-accent="amber"]::before   { background: var(--accent-amber); }
+    .product-card[data-accent="violet"]::before  { background: var(--accent-violet); }
+    .product-card[data-accent="emerald"]::before { background: var(--accent-emerald); }
+
+    .product-card:hover {
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: var(--shadow-xl);
+      border-color: var(--border-hover);
+    }
+
+    .product-card:hover::before {
+      width: 6px;
+    }
+
+    .product-card:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3), var(--shadow-lg);
+    }
 
     .card-header {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
     }
 
     .card-icon {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      transition: transform 0.3s var(--ease);
     }
 
-    .card-icon[data-accent="blue"] { background: #eff6ff; color: var(--accent-blue); }
+    .product-card:hover .card-icon {
+      animation: iconPulse 0.5s var(--ease);
+    }
+
+    @keyframes iconPulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .card-icon[data-accent="blue"]    { background: #eff6ff; color: var(--accent-blue); }
+    .card-icon[data-accent="amber"]   { background: #fffbeb; color: var(--accent-amber); }
+    .card-icon[data-accent="violet"]  { background: #f5f3ff; color: var(--accent-violet); }
     .card-icon[data-accent="emerald"] { background: #ecfdf5; color: var(--accent-emerald); }
-    .card-icon[data-accent="violet"] { background: #f5f3ff; color: var(--accent-violet); }
 
     .card-icon svg {
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
     }
 
     .card-arrow {
@@ -180,13 +289,13 @@
       align-items: center;
       justify-content: center;
       color: var(--text-muted);
-      transition: transform 0.2s ease, color 0.2s ease;
+      transition: transform 0.25s var(--ease), color 0.25s var(--ease);
       flex-shrink: 0;
     }
 
     .product-card:hover .card-arrow {
-      transform: translate(3px, -3px);
-      color: var(--text-secondary);
+      transform: translate(4px, -4px);
+      color: var(--text-primary);
     }
 
     .card-arrow svg {
@@ -195,17 +304,18 @@
     }
 
     .card-title {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 600;
-      margin-bottom: 8px;
-      letter-spacing: -0.3px;
+      margin-bottom: 10px;
+      letter-spacing: -0.4px;
+      color: var(--text-primary);
     }
 
     .card-description {
-      font-size: 14.5px;
+      font-size: 15px;
       color: var(--text-secondary);
       line-height: 1.6;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
       flex-grow: 1;
     }
 
@@ -219,29 +329,49 @@
     .tag {
       font-size: 12px;
       font-weight: 500;
-      padding: 4px 10px;
+      padding: 5px 11px;
       border-radius: 20px;
       background: var(--bg-secondary);
       color: var(--text-secondary);
       border: 1px solid var(--border);
+      letter-spacing: 0.1px;
     }
 
     .status-badge {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 5px 11px;
       border-radius: 20px;
       margin-left: auto;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .status-badge::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      transition: left 0.6s var(--ease);
+    }
+
+    .product-card:hover .status-badge::after {
+      left: 100%;
     }
 
     .status-badge.live {
       background: #ecfdf5;
-      color: #059669;
+      color: #047857;
     }
 
     .status-badge.dev {
-      background: #eff6ff;
-      color: #2563eb;
+      background: #eef2ff;
+      color: #4338ca;
     }
 
     /* Quick Links */
@@ -249,21 +379,21 @@
       padding: 0 0 64px;
       opacity: 0;
       transform: translateY(20px);
-      animation: fadeUp 0.5s ease 0.45s forwards;
+      animation: fadeUp 0.6s var(--ease) 0.6s forwards;
     }
 
     .quick-links-label {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.8px;
+      letter-spacing: 1px;
       color: var(--text-muted);
       margin-bottom: 16px;
     }
 
     .quick-links-row {
       display: flex;
-      gap: 12px;
+      gap: 10px;
       flex-wrap: wrap;
     }
 
@@ -271,64 +401,76 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      padding: 12px 20px;
-      background: var(--bg);
+      padding: 10px 16px;
+      background: var(--bg-primary);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 10px;
       text-decoration: none;
       color: var(--text-primary);
       font-size: 14px;
       font-weight: 500;
-      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      transition:
+        transform 0.2s var(--ease),
+        box-shadow 0.2s var(--ease),
+        border-color 0.2s var(--ease);
+      position: relative;
     }
 
     .quick-link:hover {
       transform: translateY(-2px);
       box-shadow: var(--shadow-md);
-      border-color: #cbd5e1;
+      border-color: var(--border-hover);
+    }
+
+    .quick-link:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
     }
 
     .quick-link-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
+      width: 22px;
+      height: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #fff1f2;
       flex-shrink: 0;
     }
 
     .quick-link-icon svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    .quick-link-text {
-      display: flex;
-      flex-direction: column;
+      width: 18px;
+      height: 18px;
     }
 
     .quick-link-name {
-      font-weight: 600;
+      font-weight: 500;
       font-size: 14px;
-      line-height: 1.2;
+      position: relative;
     }
 
-    .quick-link-desc {
-      font-size: 12px;
-      color: var(--text-muted);
-      font-weight: 400;
+    .quick-link-name::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: -2px;
+      width: 0;
+      height: 1px;
+      background: currentColor;
+      transition: width 0.25s var(--ease);
+    }
+
+    .quick-link:hover .quick-link-name::after {
+      width: 100%;
     }
 
     .quick-link-arrow {
       color: var(--text-muted);
-      margin-left: 4px;
-      transition: transform 0.2s ease;
+      margin-left: 2px;
+      transition: transform 0.2s var(--ease), color 0.2s var(--ease);
     }
 
     .quick-link:hover .quick-link-arrow {
       transform: translateX(3px);
+      color: var(--text-secondary);
     }
 
     .quick-link-arrow svg {
@@ -338,11 +480,11 @@
 
     /* Footer */
     .footer {
-      padding: 32px 0;
+      padding: 32px 0 48px;
       border-top: 1px solid var(--border);
       text-align: center;
       opacity: 0;
-      animation: fadeUp 0.5s ease 0.55s forwards;
+      animation: fadeUp 0.6s var(--ease) 0.7s forwards;
     }
 
     .footer-text {
@@ -351,34 +493,28 @@
     }
 
     .footer-text span {
-      margin: 0 8px;
+      margin: 0 10px;
       opacity: 0.4;
     }
 
     /* Responsive */
-    @media (max-width: 900px) {
-      .product-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (max-width: 600px) {
+    @media (max-width: 767px) {
       .header {
-        padding: 36px 0 32px;
+        padding: 48px 0 36px;
       }
 
       .logo-mark {
-        width: 40px;
-        height: 40px;
+        width: 42px;
+        height: 42px;
       }
 
       .logo-text-salt,
       .logo-text-labs {
-        font-size: 22px;
+        font-size: 24px;
       }
 
       .tagline {
-        font-size: 15px;
+        font-size: 16px;
       }
 
       .product-grid {
@@ -387,19 +523,32 @@
       }
 
       .product-card {
-        padding: 24px 22px 22px;
+        padding: 28px;
+        padding-left: 32px;
       }
 
       .card-title {
-        font-size: 18px;
+        font-size: 20px;
       }
 
       .quick-links-row {
         flex-direction: column;
+        align-items: stretch;
       }
 
       .quick-link {
-        width: 100%;
+        justify-content: flex-start;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      body::after {
+        animation: none;
       }
     }
   </style>
@@ -422,17 +571,17 @@
           <path d="M24 4L42 14L24 24Z" fill="white" opacity="0.08"/>
           <path d="M24 44L24 24L42 34Z" fill="black" opacity="0.08"/>
           <circle cx="24" cy="24" r="3.5" fill="white" opacity="0.9"/>
-          <circle cx="24" cy="4" r="2" fill="white" opacity="0.5"/>
+          <circle cx="24" cy="4"  r="2" fill="white" opacity="0.5"/>
           <circle cx="42" cy="14" r="2" fill="white" opacity="0.4"/>
-          <circle cx="6" cy="14" r="2" fill="white" opacity="0.4"/>
+          <circle cx="6"  cy="14" r="2" fill="white" opacity="0.4"/>
           <circle cx="42" cy="34" r="2" fill="white" opacity="0.3"/>
-          <circle cx="6" cy="34" r="2" fill="white" opacity="0.3"/>
+          <circle cx="6"  cy="34" r="2" fill="white" opacity="0.3"/>
           <circle cx="24" cy="44" r="2" fill="white" opacity="0.3"/>
-          <line x1="24" y1="24" x2="24" y2="4" stroke="white" stroke-width="0.8" opacity="0.3"/>
+          <line x1="24" y1="24" x2="24" y2="4"  stroke="white" stroke-width="0.8" opacity="0.3"/>
           <line x1="24" y1="24" x2="42" y2="14" stroke="white" stroke-width="0.8" opacity="0.3"/>
-          <line x1="24" y1="24" x2="6" y2="14" stroke="white" stroke-width="0.8" opacity="0.3"/>
+          <line x1="24" y1="24" x2="6"  y2="14" stroke="white" stroke-width="0.8" opacity="0.3"/>
           <line x1="24" y1="24" x2="42" y2="34" stroke="white" stroke-width="0.8" opacity="0.2"/>
-          <line x1="24" y1="24" x2="6" y2="34" stroke="white" stroke-width="0.8" opacity="0.2"/>
+          <line x1="24" y1="24" x2="6"  y2="34" stroke="white" stroke-width="0.8" opacity="0.2"/>
           <line x1="24" y1="24" x2="24" y2="44" stroke="white" stroke-width="0.8" opacity="0.2"/>
         </svg>
         <div class="logo-text">
@@ -454,12 +603,10 @@
           <div class="card-header">
             <div class="card-icon" data-accent="blue">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                <polyline points="7.5 4.21 12 6.81 16.5 4.21"/>
-                <polyline points="7.5 19.79 7.5 14.6 3 12"/>
-                <polyline points="21 12 16.5 14.6 16.5 19.79"/>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-                <line x1="12" y1="22.08" x2="12" y2="12"/>
+                <path d="M12 2a9 9 0 0 0-9 9c0 3.5 2 6.5 5 8v3h8v-3c3-1.5 5-4.5 5-8a9 9 0 0 0-9-9z"/>
+                <path d="M9 11a3 3 0 0 1 3-3"/>
+                <path d="M12 22v-5"/>
+                <path d="M9 17h6"/>
               </svg>
             </div>
             <div class="card-arrow">
@@ -478,14 +625,16 @@
           </div>
         </a>
 
-        <!-- The Dam -->
-        <a href="https://thedam.saltlabs.io" target="_blank" rel="noopener" class="product-card" data-accent="emerald">
+        <!-- VSL Brand Studio -->
+        <a href="https://vslbrandstudio.com" target="_blank" rel="noopener" class="product-card" data-accent="amber">
           <div class="card-header">
-            <div class="card-icon" data-accent="emerald">
+            <div class="card-icon" data-accent="amber">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                <line x1="12" y1="11" x2="12" y2="17"/>
-                <line x1="9" y1="14" x2="15" y2="14"/>
+                <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/>
+                <circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/>
+                <circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/>
+                <circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
               </svg>
             </div>
             <div class="card-arrow">
@@ -495,25 +644,23 @@
               </svg>
             </div>
           </div>
-          <h3 class="card-title">The Dam</h3>
-          <p class="card-description">Digital asset management. Centralized storage, metadata tagging, AI auto-categorization, and fast retrieval for the creative team.</p>
+          <h3 class="card-title">VSL Brand Studio</h3>
+          <p class="card-description">Digital asset management and brand toolkit. Centralized storage, metadata tagging, AI auto-categorization, brand guidelines, and partner asset distribution.</p>
           <div class="card-footer">
             <span class="tag">DAM</span>
-            <span class="tag">Assets</span>
+            <span class="tag">Brand Assets</span>
             <span class="status-badge dev">In Development</span>
           </div>
         </a>
 
         <!-- WebNotes -->
-        <a href="https://webnotes.saltlabs.io" target="_blank" rel="noopener" class="product-card" data-accent="violet">
+        <a href="https://www.getwebnotes.net" target="_blank" rel="noopener" class="product-card" data-accent="violet">
           <div class="card-header">
             <div class="card-icon" data-accent="violet">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <line x1="8" y1="10" x2="16" y2="10"/>
+                <line x1="8" y1="14" x2="13" y2="14"/>
               </svg>
             </div>
             <div class="card-arrow">
@@ -524,11 +671,38 @@
             </div>
           </div>
           <h3 class="card-title">WebNotes</h3>
-          <p class="card-description">Research capture tool. Clip and annotate web content, organize by project, and generate AI-powered summaries.</p>
+          <p class="card-description">Web annotation and feedback tool. Capture screenshots, pin comments directly on live sites, and collaborate with your team in real-time.</p>
           <div class="card-footer">
-            <span class="tag">Research</span>
-            <span class="tag">AI-Powered</span>
-            <span class="status-badge dev">In Development</span>
+            <span class="tag">Annotation</span>
+            <span class="tag">Collaboration</span>
+            <span class="status-badge live">Live</span>
+          </div>
+        </a>
+
+        <!-- VSL Partner Hub -->
+        <a href="https://vslpartner.com" target="_blank" rel="noopener" class="product-card" data-accent="emerald">
+          <div class="card-header">
+            <div class="card-icon" data-accent="emerald">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <div class="card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"/>
+                <polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-title">VSL Partner Hub</h3>
+          <p class="card-description">Partner portal and co-op marketing platform. Campaign dashboards, asset sharing, sponsorship tracking, and collaborative planning tools.</p>
+          <div class="card-footer">
+            <span class="tag">Partners</span>
+            <span class="tag">Co-op</span>
+            <span class="status-badge live">Live</span>
           </div>
         </a>
 
@@ -549,10 +723,7 @@
               <circle cx="19" cy="9" r="5"/>
             </svg>
           </div>
-          <div class="quick-link-text">
-            <span class="quick-link-name">Asana</span>
-            <span class="quick-link-desc">Project management & task tracking</span>
-          </div>
+          <span class="quick-link-name">Asana</span>
           <div class="quick-link-arrow">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"/>
@@ -569,10 +740,30 @@
       <p class="footer-text">
         Built for Visit Salt Lake
         <span>&middot;</span>
-        &copy; 2025 Salt Labs
+        &copy; 2026 Salt Labs
       </p>
     </div>
   </footer>
+
+  <script>
+    // Intersection Observer for scroll-triggered card animations
+    (function () {
+      const cards = document.querySelectorAll('.product-card');
+      if (!('IntersectionObserver' in window) || !cards.length) {
+        cards.forEach(c => c.classList.add('in-view'));
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in-view');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      cards.forEach(c => io.observe(c));
+    })();
+  </script>
 
 </body>
 </html>
