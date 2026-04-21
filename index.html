@@ -420,6 +420,34 @@
     .status-badge.live { background: rgba(26, 133, 76, 0.14);  color: var(--forest); }
     .status-badge.dev  { background: rgba(242, 159, 31, 0.18); color: var(--rust); }
 
+    .card-sublink {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 18px;
+      font-family: var(--font-body);
+      font-size: 11.5px;
+      font-weight: 400;
+      color: var(--navy);
+      opacity: 0.45;
+      text-decoration: none;
+      letter-spacing: -0.005em;
+      transition: opacity 0.25s var(--ease-soft);
+    }
+    .card-sublink:hover {
+      opacity: 0.82;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-thickness: 1px;
+    }
+    .card-sublink svg {
+      flex-shrink: 0;
+      transition: transform 0.25s var(--ease-out-expo);
+    }
+    .card-sublink:hover svg {
+      transform: translate(2px, -2px);
+    }
+
     /* =========================================================
        QUICK LINKS
        ========================================================= */
@@ -638,7 +666,10 @@
         </a>
 
         <!-- VSL Brand Studio -->
-        <a href="https://vslbrandstudio.com" target="_blank" rel="noopener" class="product-card">
+        <div class="product-card" role="link" tabindex="0"
+             onclick="window.open('https://vslbrandstudio.com','_blank')"
+             onkeydown="if(event.key==='Enter')window.open('https://vslbrandstudio.com','_blank')"
+             style="cursor:pointer;">
           <div class="card-header">
             <div class="card-arrow">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -649,11 +680,19 @@
           </div>
           <h3 class="card-title">Brand <em>Studio</em></h3>
           <p class="card-description">VSL tool kit & key assets.</p>
+          <a href="https://mediakit.vslbrandstudio.com/" target="_blank" rel="noopener" class="card-sublink"
+             onclick="event.stopPropagation()">
+            Media Kit
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="7" y1="17" x2="17" y2="7"/>
+              <polyline points="7 7 17 7 17 17"/>
+            </svg>
+          </a>
           <div class="card-footer">
             <span class="tag">Brand</span>
             <span class="status-badge dev">In Development</span>
           </div>
-        </a>
+        </div>
 
         <!-- WebNotes -->
         <a href="https://www.getwebnotes.net" target="_blank" rel="noopener" class="product-card">
