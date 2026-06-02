@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "salt-labs",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/Users/maxhaimowitz/Documents/CLAUDE_APPS/SaltLabs", "-l", "3847"],
+      "port": 3847
+    }
+  ]
+}
