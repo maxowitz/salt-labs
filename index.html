@@ -222,15 +222,18 @@
     }
 
     /* =========================================================
-       PRODUCT GRID — 4 across
+       PRODUCT GRID — two full-width rows (5 + 4)
+       Flex so the 4-card second row stretches edge-to-edge
+       instead of leaving an empty grid slot.
        ========================================================= */
     .products { padding: 8px 0 64px; position: relative; z-index: 1; }
 
     .product-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      display: flex;
+      flex-wrap: wrap;
       gap: 14px;
     }
+    .product-card { flex: 1 1 calc(20% - 12px); }
     .products .container {
       max-width: none;
       padding: 0 clamp(12px, 2vw, 24px);
@@ -313,6 +316,9 @@
     body.ready .product-card.in-view:nth-child(5) { animation-delay: 0.58s; }
     body.ready .product-card.in-view:nth-child(6) { animation-delay: 0.70s; }
     body.ready .product-card.in-view:nth-child(7) { animation-delay: 0.82s; }
+    body.ready .product-card.in-view:nth-child(8) { animation-delay: 0.94s; }
+    body.ready .product-card.in-view:nth-child(9) { animation-delay: 1.06s; }
+    body.ready .product-card.in-view:nth-child(10) { animation-delay: 1.18s; }
 
     .product-card:hover {
       --lift: -6px;
@@ -421,6 +427,7 @@
 
     .status-badge.live { background: rgba(26, 133, 76, 0.14);  color: var(--forest); }
     .status-badge.dev  { background: rgba(242, 159, 31, 0.18); color: var(--rust); }
+    .status-badge.beta { background: rgba(20, 124, 178, 0.14); color: var(--blue); }
 
     .card-sublink {
       display: inline-flex;
@@ -573,14 +580,15 @@
        RESPONSIVE
        ========================================================= */
     @media (max-width: 1100px) {
-      .product-grid { grid-template-columns: repeat(3, 1fr); }
+      .product-card { flex-basis: calc(33.333% - 10px); }
     }
     @media (max-width: 780px) {
-      .product-grid { grid-template-columns: repeat(2, 1fr); }
+      .product-card { flex-basis: calc(50% - 7px); }
     }
     @media (max-width: 640px) {
       .header { padding: 64px 0 48px; }
-      .product-grid { grid-template-columns: 1fr; gap: 16px; }
+      .product-grid { gap: 16px; }
+      .product-card { flex-basis: 100%; }
       .product-card { padding: 24px; }
       .card-title { font-size: 24px; }
       .quick-links-row { flex-direction: column; align-items: stretch; }
@@ -769,7 +777,7 @@
         </a>
 
         <!-- America's Mountain City Brand Guide -->
-        <a href="https://mtnbrand.vslpartner.com/" target="_blank" rel="noopener" class="product-card">
+        <a href="https://brand.welcometomountaincity.com" target="_blank" rel="noopener" class="product-card">
           <div class="card-header">
             <div class="card-arrow">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -782,6 +790,60 @@
           <p class="card-description">America's Mountain City™ brand guide & identity standards.</p>
           <div class="card-footer">
             <span class="tag">Brand</span>
+            <span class="status-badge live">Live</span>
+          </div>
+        </a>
+
+        <!-- Welcome to Mountain City -->
+        <a href="https://welcometomountaincity.com" target="_blank" rel="noopener" class="product-card">
+          <div class="card-header">
+            <div class="card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"/>
+                <polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-title">Mountain <em>City</em></h3>
+          <p class="card-description">America's Mountain City™ destination site.</p>
+          <div class="card-footer">
+            <span class="tag">Destination</span>
+            <span class="status-badge live">Live</span>
+          </div>
+        </a>
+
+        <!-- VSL Venue Matchmaker -->
+        <a href="https://vsl-venue-matchmaker-production.up.railway.app" target="_blank" rel="noopener" class="product-card">
+          <div class="card-header">
+            <div class="card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"/>
+                <polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-title">Venue <em>Matchmaker</em></h3>
+          <p class="card-description">Match events to venues, hotels &amp; sports facilities — plus walkable multi-venue campuses.</p>
+          <div class="card-footer">
+            <span class="tag">Events</span>
+            <span class="status-badge beta">Internal Beta</span>
+          </div>
+        </a>
+
+        <!-- Days of '47 Trivia Kiosk -->
+        <a href="https://days47-kiosk-production.up.railway.app" target="_blank" rel="noopener" class="product-card">
+          <div class="card-header">
+            <div class="card-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"/>
+                <polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-title">Days of <em>'47 Trivia</em></h3>
+          <p class="card-description">Offline iPad trivia kiosk & prize wheel qualifier for the America's Mountain City™ rodeo activation.</p>
+          <div class="card-footer">
+            <span class="tag">Events</span>
             <span class="status-badge live">Live</span>
           </div>
         </a>
