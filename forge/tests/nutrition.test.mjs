@@ -428,23 +428,35 @@ test('QA water ≤ 5 L per add; amounts must be > 0 and ≤ 5 kg', () => {
 });
 
 // ---------------------------------------------------------------- R2
-test('R2 P1-1 every day ≥ kcal floor, and the plan week still averages to target', () => {
-  // small female cutting athlete: base target sits at the floor, rest days used to drop to ~1.04 × BMR
+test('R2 P1-1 every day ≥ kcal floor; re-balanced from training days when there is headroom', () => {
+  const plan = makePlan('2026-10-12');
+  // sedentary 82 kg male: floor 1.2 × BMR ≈ 2148; a 2400 weekly-average target puts rest days at ~2000
+  const m82 = { sex: 'm', age: 32, heightCm: 180, weightKg: 82, activity: 'sedentary', goal: 'lose', daysPerWeek: 5 };
+  const fl = kcalFloor(m82);
+  const s = { profile: m82, targets: { kcal: 2400, protein: 170, carbs: 280, fat: 60, waterMl: 3000, trainKcalAvg: 400 }, sessions: [], plan };
+  const wk = weeklyTargets(s, '2026-10-12');
+  for (const d of wk.days) assert.ok(d.kcal >= fl, `${d.date} ${d.kcal} ≥ ${fl}`);
+  const rest = wk.days.filter((d) => d.dayType === 'rest');
+  assert.ok(rest.every((d) => d.kcal === fl && d.notes.includes('kcal-floor-day')), 'rest days raised to the floor');
+  near(wk.avgKcal, 2400, 2, 'week still averages to target');
+  // a big athlete with plenty of headroom is unaffected
+  const big = computeTargets(male, { plan });
+  assert.ok(weeklyTargets({ profile: male, targets: big, sessions: [], plan }, '2026-10-12').days.every((d) => !d.notes.includes('kcal-floor-day')));
+});
+
+test('R2 P1-1 when the goal sits at the floor, safety wins: training days stay fuelled', () => {
   const f55 = { sex: 'f', age: 30, heightCm: 160, weightKg: 55, activity: 'sedentary', goal: 'lose', daysPerWeek: 5 };
   const plan = makePlan('2026-10-12');
   const targets = computeTargets(f55, { plan });
   const s = { profile: f55, targets, sessions: [], plan };
-  const wk = weeklyTargets(s, '2026-10-12');
   const fl = kcalFloor(f55);
-  for (const d of wk.days) assert.ok(d.kcal >= fl - 1, `${d.date} ${d.kcal} ≥ ${fl}`);
-  assert.ok(wk.days.some((d) => d.notes.includes('kcal-floor-day')), 'rest days were raised');
-  near(wk.avgKcal, targets.kcal, 2, 're-balanced from training days');
-  // a big athlete with plenty of headroom is unaffected
-  const big = computeTargets(male, { plan });
-  const wk2 = weeklyTargets({ profile: male, targets: big, sessions: [], plan }, '2026-10-12');
-  assert.ok(wk2.days.every((d) => !d.notes.includes('kcal-floor-day')));
+  const wk = weeklyTargets(s, '2026-10-12');
+  for (const d of wk.days) assert.ok(d.kcal >= fl, `${d.date} ${d.kcal} ≥ ${fl}`);
+  const restMax = Math.max(...wk.days.filter((d) => d.dayType === 'rest').map((d) => d.kcal));
+  for (const d of wk.days.filter((x) => x.dayType === 'training' && x.trainingKcal >= 250)) assert.ok(d.kcal > restMax + 50, `${d.date} ${d.kcal} still fuels training (rest ${restMax})`);
+  assert.ok(wk.avgKcal >= targets.kcal, 'average may rise above target rather than under-fuel');
   // no plan, logged short session: floor still applies
-  const s3 = { profile: f55, targets: { ...targets, kcal: kcalFloor(f55) }, sessions: [{ date: '2026-10-13', type: 'recovery', durationSec: 600 }], plan: null };
+  const s3 = { profile: f55, targets: { ...targets, kcal: fl }, sessions: [{ date: '2026-10-13', type: 'recovery', durationSec: 600 }], plan: null };
   assert.ok(dayTargetsFor(s3, '2026-10-13').kcal >= fl);
 });
 

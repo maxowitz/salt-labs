@@ -239,7 +239,7 @@ function fuelNotes(s, date) {
     h('span', null, `Today’s target leaves ≈ ${num(ea.ea, 0)} kcal per kg of fat-free mass after training — under 30 risks low energy availability (RED-S). `,
       s.profile.goal === 'lose' ? 'Consider a slower goal rate below.' : 'Make sure you eat to target today.')));
   if (!lines.length) return null;
-  return h('ul', { class: 'fu-fuel-notes data', 'aria-label': 'Fuelling notes' }, lines);
+  return h('ul', { class: 'fu-fuel-notes small', 'aria-label': 'Fuelling notes' }, lines);
 }
 
 // ---------------------------------------------------------------------------------------------

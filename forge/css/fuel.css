@@ -254,7 +254,7 @@
 
 /* ---------- R2: fuelling notes, goal-rate caps, photo units ---------- */
 .fu-fuel-notes { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
-.fu-fuel-notes li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--text-2); }
+.fu-fuel-notes li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--text-2); font-size: 13px; line-height: 1.4; }
 .fu-fuel-notes li.warn { color: var(--text); }
 .fu-rate button:disabled { opacity: .35; text-decoration: line-through; cursor: not-allowed; }
 .fu-item-unit { min-height: 36px; padding: 0 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); }

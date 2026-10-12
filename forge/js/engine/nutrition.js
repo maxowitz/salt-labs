@@ -335,23 +335,24 @@ function rawDayKcal(state, iso) {
 }
 
 /**
- * Per-day kcal floor with weekly re-balance (R2 P1-1): every day ≥ kcalFloor(profile); what the low days
- * are raised by is taken back from the days with headroom so the week still averages to the target
- * (when there is enough headroom). Without a plan week only the floor applies.
+ * Per-day kcal floor with weekly re-balance (R2 P1-1): every day ≥ kcalFloor(profile). What the low days
+ * are raised by is taken back from days with headroom so the week still averages to the target — but a
+ * training day never drops below floor + half its session energy, so hard days stay fuelled. When there
+ * isn't enough headroom the week averages slightly above target (safety wins).
  */
 function flooredDayKcal(state, iso, raw) {
   const fl = kcalFloor(state.profile || {});
   if (!raw.pd) return { kcal: Math.max(raw.kcal, fl), raised: raw.kcal < fl };
   const dates = weekDates(state, iso);
-  const raws = dates.map((d) => (d === iso ? raw.kcal : rawDayKcal(state, d).kcal));
-  const need = raws.reduce((a, k) => a + Math.max(0, fl - k), 0);
+  const rows = dates.map((d) => (d === iso ? raw : rawDayKcal(state, d)));
+  const need = rows.reduce((a, r) => a + Math.max(0, fl - r.kcal), 0);
   const i = dates.indexOf(iso);
-  if (raws[i] < fl) return { kcal: fl, raised: true };
-  if (!need) return { kcal: raws[i], raised: false };
-  const headroom = raws.map((k) => Math.max(0, k - fl));
+  if (rows[i].kcal < fl) return { kcal: fl, raised: true };
+  if (!need) return { kcal: rows[i].kcal, raised: false };
+  const headroom = rows.map((r) => Math.max(0, r.kcal - (fl + 0.5 * (r.tr?.kcal || 0))));
   const H = headroom.reduce((a, x) => a + x, 0);
   const take = Math.min(need, H);
-  return { kcal: raws[i] - (H ? (take * headroom[i]) / H : 0), raised: false, rebalanced: true };
+  return { kcal: rows[i].kcal - (H ? (take * headroom[i]) / H : 0), raised: false, rebalanced: true };
 }
 
 /**
