@@ -680,7 +680,7 @@ function player(ctx, aw, { fresh = false } = {}) {
             toast('Set removed');
           } else {
             aw.log.push({
-              type: 'set', block: bi, item: ii, set: si, blockKind: W.blocks[bi].kind || 'strength', targetReps: it.reps ?? null, exId: it.exId, kg: kg ?? null, reps: reps ?? null, timeSec: reps == null ? timeSec ?? null : null,
+              type: 'set', block: bi, item: ii, set: si, blockKind: W.blocks[bi].kind || 'strength', targetReps: it.reps ?? null, hold: !!it.hold, exId: it.exId, kg: kg ?? null, reps: reps ?? null, timeSec: reps == null ? timeSec ?? null : null,
               distanceM: reps == null && timeSec == null ? dist ?? null : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(),
               ...(it.benchmark ? { benchmark: true } : {}),
             });
@@ -930,7 +930,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       if (isCardioEx(it.exId)) {
         aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: (it.distanceM || 0) * (rounds || 1) || null, timeSec: timeSec ?? null, avgHr: null, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       } else {
-        aw.log.push({ type: 'set', block: bi, item: ii, set: null, blockKind: b.kind, targetReps: it.reps ?? null, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
+        aw.log.push({ type: 'set', block: bi, item: ii, set: null, blockKind: b.kind, targetReps: it.reps ?? null, hold: !!it.hold, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       }
     }
 
@@ -1075,7 +1075,7 @@ function player(ctx, aw, { fresh = false } = {}) {
                 if (!m && !sec) { toast('Enter a time or distance first'); return; }
                 const hr = +is.hr > 0 ? Math.round(+is.hr) : null;
                 if (cardio) aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: m ? Math.round(m) : null, timeSec: sec ? Math.round(sec) : null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
-                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, blockKind: b.kind, targetReps: it.reps ?? null, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
+                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, blockKind: b.kind, targetReps: it.reps ?? null, hold: !!it.hold, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
                 t?.stop(); blockTimers.delete(key); is.timer = t ? t.snapshot() : null; t = null;
                 haptic(30); beep('done');
                 save(); redrawAll();
@@ -1126,7 +1126,8 @@ function player(ctx, aw, { fresh = false } = {}) {
             on: { click: () => { bs.checked[ii] = !checked; haptic(); save(); draw(); } },
           },
           h('span', { class: 'wo-li-box' }, checked ? icon('check', 18) : null),
-          h('span', { class: 'grow' }, h('span', { class: 'wo-li-name' }, exName(it.exId)), it.note ? h('span', { class: 'wo-li-note' }, it.note) : null),
+          h('span', { class: 'grow' }, h('span', { class: 'wo-li-name' }, exName(it.exId)),
+            it.kg > 0 || it.note ? h('span', { class: 'wo-li-note' }, [it.kg > 0 ? bellText(it.kg, it.exId) : null, it.note || null].filter(Boolean).join(' · ')) : null),
           timeEl),
           it.timeSec ? h('button', {
             class: 'icon-btn wo-li-play', 'aria-label': running ? 'Stop timer' : `Start ${fmtDur(it.timeSec)} timer`,
@@ -1264,7 +1265,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     const sets = aw.log.filter((l) => l.type === 'set').map((l) => ({
       exId: l.exId, kg: l.kg ?? null, reps: l.reps ?? null, timeSec: l.timeSec ?? null, distanceM: l.distanceM ?? null, rpe: l.rpe ?? null,
       block: W.blocks[l.block]?.title || KIND_LABEL[W.blocks[l.block]?.kind] || String(l.block),
-      blockKind: l.blockKind || W.blocks[l.block]?.kind || 'strength', targetReps: l.targetReps ?? null,
+      blockKind: l.blockKind || W.blocks[l.block]?.kind || 'strength', targetReps: l.targetReps ?? null, hold: !!l.hold,
       ...(l.double ? { double: true } : {}), ...(l.perSide ? { perSide: true } : {}), ...(l.benchmark ? { benchmark: true } : {}),
     }));
     const cardio = aw.log.filter((l) => l.type === 'cardio').map((l) => ({ mode: l.mode, distanceM: l.distanceM ?? null, timeSec: l.timeSec ?? null, avgHr: l.avgHr ?? null, exId: l.exId, ...(l.benchmark ? { benchmark: true } : {}) }));

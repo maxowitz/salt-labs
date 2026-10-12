@@ -269,10 +269,11 @@ function scaledFor(s, today, workout) {
 function fuelNote(s, today) {
   if (typeof nutrition.fuelingNote !== 'function' || sel.sessionsOn(s, today).length) return null;
   const n = safe(() => nutrition.fuelingNote(s, today), null);
-  const text = n && (n.warn || n.pre);
+  const text = n && (n.headline ?? (n.warn || n.pre));
   if (!text) return null;
-  return h('p', { class: 'fuel-note' + (n.warn ? ' warn' : ''), title: [n.pre, n.during, n.warn].filter(Boolean).join(' ') },
-    h('span', { class: 'lbl' }, n.warn ? 'Fuel ⚠' : 'Fuel'), ' ', text, n.during && !n.warn ? ` ${n.during}` : '');
+  const severe = n.severe ?? (!n.headline && !!n.warn);
+  return h('p', { class: 'fuel-note' + (severe ? ' warn' : ''), title: [n.pre, n.during, n.warn].filter(Boolean).join(' ') },
+    h('span', { class: 'lbl' }, severe ? 'Fuel ⚠' : 'Fuel'), ' ', text);
 }
 
 function sessionCard(s, today) {
