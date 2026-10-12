@@ -64,8 +64,11 @@ export function lineChart({ series, width = 340, height = 160, xLabels = [], yFm
   const [y0, y1] = niceRange(Math.min(...ys), Math.max(...ys));
   const X = (x) => pad.l + ((x - x0) / (x1 - x0)) * (width - pad.l - pad.r);
   const Y = (y) => pad.t + (1 - (y - y0) / (y1 - y0)) * (height - pad.t - pad.b);
-  for (let i = 0; i <= yTicks; i++) {
-    const v = y0 + ((y1 - y0) * i) / yTicks;
+  // nice, evenly stepped y ticks (1/2/5 × 10^n) inside the padded range
+  const raw = (y1 - y0) / Math.max(1, yTicks);
+  const mag = 10 ** Math.floor(Math.log10(raw || 1));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((st) => st >= raw) || raw;
+  for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) {
     svg.append(s('line', { x1: pad.l, x2: width - pad.r, y1: Y(v), y2: Y(v), stroke: 'var(--line)', 'stroke-width': 1 }));
     svg.append(txt(yFmt(v), { x: pad.l - 5, y: Y(v) + 3, 'text-anchor': 'end' }));
   }

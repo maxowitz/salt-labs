@@ -14,19 +14,20 @@ import { exerciseSheet } from './library.js';
 
 // ---------------------------------------------------------------- shared helpers
 export const TYPE_META = {
-  strength: { icon: 'bell', label: 'Strength' },
-  conditioning: { icon: 'flame', label: 'Conditioning' },
-  run: { icon: 'run', label: 'Run' },
-  cardio: { icon: 'run', label: 'Cardio' },
-  hybrid: { icon: 'zap', label: 'Hybrid' },
-  hyrox: { icon: 'flag', label: 'HYROX' },
-  recovery: { icon: 'heart', label: 'Recovery' },
+  strength: { icon: 'bell', label: 'Strength', short: 'STR' },
+  conditioning: { icon: 'flame', label: 'Conditioning', short: 'KB' },
+  run: { icon: 'run', label: 'Run', short: 'RUN' },
+  cardio: { icon: 'run', label: 'Cardio', short: 'CAR' },
+  hybrid: { icon: 'zap', label: 'Hybrid', short: 'HYB' },
+  hyrox: { icon: 'flag', label: 'HYROX', short: 'HRX' },
+  recovery: { icon: 'heart', label: 'Recovery', short: 'REC' },
 };
 export const typeMeta = (t) => TYPE_META[t] || { icon: 'bell', label: t ? String(t) : 'Workout' };
 
 export function typeBadge(type, size = 40) {
   const m = typeMeta(type);
-  return h('span', { class: `tr-tbadge t-${type || 'other'}`, style: { width: size + 'px', height: size + 'px' }, 'aria-hidden': 'true' }, icon(m.icon, Math.round(size * 0.5)));
+  // Field Ledger: a mono type code, not a pictogram tile (docs/DESIGN.md §6)
+  return h('span', { class: `tr-tbadge t-${type || 'other'}`, style: { minWidth: Math.max(36, size) + 'px', height: Math.max(32, Math.min(size, 44)) + 'px' }, 'aria-hidden': 'true' }, m.short || String(m.label || 'WO').slice(0, 3).toUpperCase());
 }
 
 export function phaseLabel(p) {
@@ -149,8 +150,8 @@ export function itemRow(item, block, profile, sessions) {
       h('button', { type: 'button', class: 'tr-exname', on: { click: () => exerciseSheet(item.exId) }, 'aria-label': `${d.ex.name} — technique` }, d.ex.name, icon('info', 14)),
       bellTag(d.kg, d)),
     d.dose || d.extra.length ? h('div', { class: 'tr-item-dose' }, d.dose ? h('b', null, d.dose) : null, d.extra.length ? h('span', { class: 'muted' }, (d.dose ? ' · ' : '') + d.extra.join(' · ')) : null) : null,
-    d.reason ? h('div', { class: 'tr-item-why' + (d.earned ? ' earned' : '') }, d.earned ? icon('check', 13) : icon('info', 13), d.reason) : null,
-    d.regress ? h('div', { class: 'tr-item-why warn' }, icon('info', 13),
+    d.reason ? h('div', { class: 'tr-item-why' + (d.earned ? ' earned' : '') }, d.earned ? '✓ ' : '', d.reason) : null,
+    d.regress ? h('div', { class: 'tr-item-why warn' },
       d.regress.id ? h('span', null, 'Your lightest bell is too heavy for this lift yet — do ',
         h('a', { href: '#/library/' + encodeURIComponent(d.regress.id) }, d.regress.name), ' instead and build up.')
         : 'Your lightest bell is too heavy for this lift yet — use a lighter variation or bodyweight.') : null,
@@ -160,11 +161,11 @@ export function itemRow(item, block, profile, sessions) {
 export function blockCard(b, i, profile, sessions) {
   return h('section', { class: `card tr-block k-${b.kind || 'other'}` },
     h('div', { class: 'tr-block-head' },
-      h('span', { class: 'tr-block-num', 'aria-hidden': 'true' }, String(i + 1)),
+      h('span', { class: 'tr-block-num', 'aria-hidden': 'true' }, String(i + 1).padStart(2, '0')),
       h('div', { class: 'grow' },
         h('div', { class: 'tr-kind' }, kindLabel(b.kind)),
         h('h3', null, b.title || kindLabel(b.kind)))),
-    blockStructure(b) ? h('p', { class: 'tr-struct' }, icon(b.kind === 'emom' || b.kind === 'intervals' || b.kind === 'amrap' ? 'timer' : 'repeat', 16), blockStructure(b)) : null,
+    blockStructure(b) ? h('p', { class: 'tr-struct' }, blockStructure(b)) : null,
     b.notes ? h('p', { class: 'small dim tr-bnotes' }, b.notes) : null,
     (b.items || []).length ? h('div', { class: 'tr-items' }, b.items.map((it) => itemRow(it, b, profile, sessions))) : null);
 }
@@ -274,7 +275,7 @@ export function markDoneSheet(workout, defaultDate) {
             toast(sess.prs?.length ? `Logged · ${sess.prs.length} PR!` : 'Marked as done ✓', { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
           }),
         },
-      }, icon('check'), 'Save as done')),
+      }, 'Save as done')),
   });
 }
 
@@ -354,12 +355,12 @@ export function render(root, { args }) {
         stat(String((shown.blocks || []).length), '', 'Blocks'),
         stat(String(countMoves(shown)), '', 'Movements')),
       workout.summary ? h('p', { class: 'dim tr-ssum' }, workout.summary) : null,
-      (workout.equipment || []).length ? h('div', { class: 'chips mt' }, workout.equipment.map((e) => h('span', { class: 'chip tr-eq' }, icon(eqIcon(e), 14), String(e)))) : null));
+      (workout.equipment || []).length ? h('div', { class: 'chips mt' }, workout.equipment.map((e) => h('span', { class: 'chip tr-eq' }, String(e)))) : null));
 
     if (done.length) {
       const last = done[done.length - 1];
       root.append(h('a', { class: 'callout go tr-done-call', href: '#/history/' + last.id },
-        icon('check', 18), h('span', { class: 'grow' }, `Completed ${fmtDate(last.date)}${done.length > 1 ? ` · ${done.length}× total` : ''}${last.durationSec ? ' · ' + fmtDur(last.durationSec, { long: true }) : ''}`), icon('chevR', 16)));
+        h('span', { class: 'grow' }, `✓ Completed ${fmtDate(last.date)}${done.length > 1 ? ` · ${done.length}× total` : ''}${last.durationSec ? ' · ' + fmtDur(last.durationSec, { long: true }) : ''}`), icon('chevR', 16)));
     } else if (planned && planned.day.date < today) {
       root.append(h('div', { class: 'callout danger small' }, `Planned for ${fmtDate(planned.day.date)} and not logged. Train it now, mark it done, or swap it to another day.`));
     }
@@ -389,8 +390,8 @@ export function render(root, { args }) {
 
     // secondary actions
     root.append(h('div', { class: 'tr-sactions' },
-      planned ? h('button', { class: 'btn ghost', on: { click: () => swapSheet(id) } }, icon('repeat', 18), 'Swap day') : null,
-      h('button', { class: 'btn ghost', on: { click: () => markDoneSheet(workout, planned?.day.date) } }, icon('check', 18), 'Mark as done')));
+      planned ? h('button', { class: 'btn ghost', on: { click: () => swapSheet(id) } }, 'Swap day') : null,
+      h('button', { class: 'btn ghost', on: { click: () => markDoneSheet(workout, planned?.day.date) } }, 'Mark as done')));
 
     // sticky start
     const active = s.activeWorkout;
@@ -400,7 +401,7 @@ export function render(root, { args }) {
         class: 'btn primary xl block tr-start', on: {
           click: () => startWorkout(id, viewMode === 'scaled' && changes.length > 0 && !locked),
         },
-      }, icon('play', 20), resuming ? 'Resume workout' : done.length ? 'Start again' : 'Start workout')));
+      }, h('span', null, resuming ? 'Resume workout' : done.length ? 'Start again' : 'Start workout'), h('span', { class: 'k' }, `${workout.estMin ? '~' + workout.estMin + ' min ' : ''}→`))));
   };
   draw();
   const unsub = store.subscribe(draw);
@@ -460,7 +461,7 @@ function swapSheet(workoutId) {
         h('div', { class: 'li-main' },
           h('div', { class: 'li-title' }, isFrom ? 'This session' : w ? w.title : 'Rest day'),
           h('div', { class: 'li-sub' }, fmtDate(d.date, { month: 'short', day: 'numeric' }) + (d.date === todayISO() ? ' · today' : '') + (logged ? ' · logged' : ''))),
-        isFrom ? h('span', { class: 'pill accent' }, 'Here') : icon('repeat', 18));
+        isFrom ? h('span', { class: 'pill' }, 'Here') : h('span', { class: 'lbl acc' }, 'Swap'));
       })))),
   });
 }

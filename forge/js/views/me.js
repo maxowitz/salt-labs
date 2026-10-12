@@ -519,7 +519,7 @@ export function render(root, params = {}) {
     const pname = String(p.name ?? '').trim();
     const initial = pname[0]?.toUpperCase() || 'F';
     clear(root).append(h('div', { class: 'me' },
-      masthead(`HYROX ${cap(p.division)}`),
+      masthead(fmtDate(todayISO(), { weekday: 'short', day: 'numeric', month: 'short' })),
       h('header', { class: 'me-head' },
         h('div', { class: 'avatar', 'aria-hidden': 'true' }, initial),
         h('div', { class: 'grow' },

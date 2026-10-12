@@ -1,8 +1,8 @@
 // FORGE Fuel — food log, macro rings, water, weekly adherence and adaptive targets (docs/PROMPT.md §3.4).
 // Routes: #/fuel, #/fuel/<YYYY-MM-DD>, optional ?add=<breakfast|lunch|dinner|snacks|auto> opens the add sheet.
 import { store, sel, todayISO, addDays, uid, isISODate } from '../store.js';
-import { h, clear, toast, sheet, num, fmtDate, icon, navigate, seg, field, sectionHead, haptic, clamp, fmtWeight } from '../ui.js';
-import { ring, barChart, lineChart } from '../charts.js';
+import { h, clear, toast, sheet, num, fmtDate, icon, navigate, seg, field, sectionHead, haptic, clamp, fmtWeight, fig, masthead } from '../ui.js';
+import { barChart, lineChart, ticks } from '../charts.js';
 import { FOODS } from '../data/foods.js';
 import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
 
@@ -157,21 +157,22 @@ function header(s, ctx) {
   const t = targetsFor(s, date);
   const sessTitle = t.sessions?.length ? t.sessions.map((x) => x.title).join(' + ') : '';
   const badge = t.dayType == null ? h('span', { class: 'pill', title: 'No plan for this date — showing your weekly-average target' }, 'No plan')
-    : t.dayType === 'training' ? h('span', { class: 'pill go', title: `${sessTitle}: ~${num(t.trainingKcal)} kcal training energy` }, icon('zap', 13), t.intensity === 'hard' ? 'Hard day' : 'Training day')
-      : h('span', { class: 'pill recovery', title: 'Rest day: fewer carbs, same protein' }, icon('moon', 13), 'Rest day');
+    : t.dayType === 'training' ? h('span', { class: 'pill', title: `${sessTitle}: ~${num(t.trainingKcal)} kcal training energy` }, t.intensity === 'hard' ? 'Hard day' : 'Training day')
+      : h('span', { class: 'pill', title: 'Rest day: fewer carbs, same protein' }, 'Rest day');
   return h('div', { class: 'fu-head' },
+    masthead(fmtDate(today, { weekday: 'short', day: 'numeric', month: 'short' })),
     h('div', { class: 'page-head fu-title' }, h('h1', null, 'Fuel'), badge),
     h('div', { class: 'fu-dates' },
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Previous day', on: { click: () => go(addDays(date, -1)) } }, icon('chevL')),
       h('div', { class: 'fu-date' },
-        h('span', { class: 'fu-date-main' }, icon('calendar', 16), rel),
+        h('span', { class: 'fu-date-main' }, rel),
         rel !== fmtDate(date) ? h('span', { class: 'fu-date-sub' }, fmtDate(date)) : null,
         picker),
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Next day', on: { click: () => go(addDays(date, 1)) } }, icon('chevR')),
       date !== today ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => go(today) } }, 'Today') : null),
     h('div', { class: 'row fu-head-actions' },
-      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => openAddSheet(ctx, defaultMeal()) } }, icon('search', 16), 'Log food'),
-      photoAvail === true ? h('button', { type: 'button', class: 'btn sm subtle grow fu-snap-btn', on: { click: () => openAddSheet(ctx, defaultMeal(), { photo: true }) } }, cameraIcon(16), 'Snap meal') : null));
+      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => openAddSheet(ctx, defaultMeal()) } }, '+ Log food'),
+      photoAvail === true ? h('button', { type: 'button', class: 'btn sm subtle grow fu-snap-btn', on: { click: () => openAddSheet(ctx, defaultMeal(), { photo: true }) } }, 'Snap meal') : null));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -184,33 +185,32 @@ function summaryCard(s, ctx) {
   const fT = t.fiber ?? fiberTarget(t.kcal);
   const macro = (label, key, tKey, color) => {
     const v = tot[key], target = +t[tKey] || 0, rem = r0(target - v);
-    const pct = target ? clamp((v / target) * 100, 0, 100) : 0;
-    return h('div', { class: 'fu-macro', style: { '--c': color } },
-      h('div', { class: 'row between' },
-        h('span', { class: 'fu-macro-k' }, h('i', { class: 'dot', style: { background: color } }), label),
-        h('span', { class: 'fu-macro-v tabular' }, h('b', null, r0(v)), ` / ${r0(target)} g`)),
-      h('div', { class: 'bar thin', role: 'progressbar', 'aria-label': label, 'aria-valuemin': '0', 'aria-valuemax': String(r0(target)), 'aria-valuenow': String(r0(v)) },
-        h('i', { style: { width: pct + '%', background: v > target * 1.1 ? 'var(--danger)' : color } })),
-      h('span', { class: 'fu-macro-left' + (rem < 0 ? ' danger-text' : '') }, rem >= 0 ? `${rem} g left` : `${-rem} g over`));
+    return h('div', { class: 'fu-macro lrow', style: { '--c': color } },
+      h('span', { class: 'fu-macro-k' }, h('i', { class: 'swatch', style: { background: color } }), label),
+      ticks({ value: v, max: target || 1, n: 41, color, label: `${label} ${r0(v)} of ${r0(target)} g` }),
+      h('span', { class: 'fu-macro-v' }, fig(r0(v), `/${r0(target)} g`),
+        h('span', { class: 'fu-macro-left' + (rem < 0 ? ' danger-text' : '') }, rem >= 0 ? `${rem} g left` : `${-rem} g over`)));
   };
   const extras = [
-    h('span', null, h('span', { class: 'muted' }, 'Fiber '), h('b', { class: 'tabular' }, r0(tot.fiber)), h('span', { class: 'muted' }, ` / ${fT} g`)),
-    tot.alc > 0 ? h('span', { title: 'Alcohol: 7 kcal per gram, not in P/C/F' }, h('span', { class: 'muted' }, 'Alcohol '), h('b', { class: 'tabular' }, `${r0(tot.alc)} g`)) : null,
-    tot.naKnown ? h('span', { title: `Sodium from ${tot.naKnown} item(s) with sodium data` }, h('span', { class: 'muted' }, 'Sodium '), h('b', { class: 'tabular' }, `${num(tot.na)} mg`)) : null,
+    h('span', null, 'fiber ', r0(tot.fiber), ` / ${fT} g`),
+    tot.alc > 0 ? h('span', { title: 'Alcohol: 7 kcal per gram, not in P/C/F' }, `alcohol ${r0(tot.alc)} g`) : null,
+    tot.naKnown ? h('span', { title: `Sodium from ${tot.naKnown} item(s) with sodium data` }, `sodium ${num(tot.na)} mg`) : null,
   ];
   const sessionNote = t.dayType === 'training' && t.sessions?.length
-    ? h('p', { class: 'xs muted fu-sess-note' }, icon('zap', 13), ` ${t.sessions.map((x) => `${x.title}${x.min ? ` · ${x.min} min` : ''}`).join(' + ')} — target includes ~${num(t.trainingKcal)} kcal of training${t.sessions[0].source === 'planned' ? ' (planned)' : ''}.`)
+    ? h('p', { class: 'xs muted fu-sess-note' }, `${t.sessions.map((x) => `${x.title}${x.min ? ` · ${x.min} min` : ''}`).join(' + ')} — target includes ~${num(t.trainingKcal)} kcal of training${t.sessions[0].source === 'planned' ? ' (planned)' : ''}.`)
     : t.notes?.includes('taper-maintenance') ? h('p', { class: 'xs muted fu-sess-note' }, 'Taper: eating at maintenance to arrive fresh.')
       : t.notes?.includes('peak-deficit-eased') ? h('p', { class: 'xs muted fu-sess-note' }, 'Peak phase: deficit eased to 10 % to protect performance.') : null;
-  return h('section', { class: 'card hero fu-summary', 'aria-label': 'Daily summary' },
+  const kt = t.kcal || 1;
+  return h('section', { class: 'fu-summary', 'aria-label': 'Daily summary' },
     h('div', { class: 'fu-sum-top' },
-      ring({ value: tot.kcal, max: t.kcal || 1, size: 136, stroke: 12, color: 'var(--accent)', label: num(Math.abs(left)), sub: over ? 'kcal over' : 'kcal left' }),
+      h('div', { class: 'fu-left' }, h('div', { class: 'lbl' + (over ? ' acc' : '') }, over ? 'Kcal over' : 'Kcal left'), h('div', { class: 'fig fu-left-n' + (over ? ' danger-text' : '') }, num(Math.abs(left)))),
       h('div', { class: 'fu-sum-stats' },
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, num(tot.kcal)), h('span', { class: 'k' }, 'Eaten')),
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, num(t.kcal)), h('span', { class: 'k' },
-          'Target', t.dayType === 'training' ? ' · train' : t.dayType === 'rest' ? ' · rest' : '')),
-        h('div', { class: 'fu-fiber small' }, extras))),
-    h('div', { class: 'fu-macros' },
+        h('div', { class: 'lbl' }, 'Eaten / target', t.dayType === 'training' ? ' · train' : t.dayType === 'rest' ? ' · rest' : ''),
+        h('div', null, fig(num(tot.kcal), `/ ${num(t.kcal)}`)))),
+    ticks({ value: tot.kcal, max: kt, n: 61, ruler: true, size: 'lg', label: `${num(tot.kcal)} of ${num(t.kcal)} kcal eaten` }),
+    h('div', { class: 'fu-scale' }, h('span', { class: 'lbl' }, '0'), h('span', { class: 'lbl' }, num(Math.round(kt / 2))), h('span', { class: 'lbl' }, num(kt))),
+    h('div', { class: 'fu-fiber data' }, extras),
+    h('div', { class: 'fu-macros ledger' },
       macro('Protein', 'p', 'protein', 'var(--protein)'),
       macro('Carbs', 'c', 'carbs', 'var(--carbs)'),
       macro('Fat', 'f', 'fat', 'var(--fat)')),
@@ -223,21 +223,23 @@ function mealCard(s, ctx, meal, label) {
   const list = sel.foodsFor(s, ctx.date).filter((e) => e.meal === meal);
   const tot = sumEntries(list);
   const yList = sel.foodsFor(s, addDays(ctx.date, -1)).filter((e) => e.meal === meal);
-  return h('section', { class: 'card flush fu-meal', 'aria-label': label },
-    h('div', { class: 'fu-meal-head' },
-      h('div', null, h('h3', null, label), list.length ? h('div', { class: 'xs muted tabular' }, macroLine(tot)) : null),
-      h('div', { class: 'fu-meal-kcal tabular' }, list.length ? [num(tot.kcal), h('small', null, ' kcal')] : null)),
+  const mi = MEALS.findIndex(([id]) => id === meal);
+  return h('section', { class: 'fu-meal' + (list.length ? '' : ' is-empty'), 'aria-label': label },
+    h('div', { class: 'fu-meal-head section-head' },
+      h('span', { class: 'ix', 'aria-hidden': 'true' }, String(mi + 1).padStart(2, '0')),
+      h('h2', null, label),
+      list.length ? h('span', { class: 'fu-meal-kcal lbl' }, `${num(tot.kcal)} kcal`) : null,
+      h('button', { type: 'button', class: 'link-btn fu-add-btn', 'aria-label': `Add food to ${label}`, on: { click: () => openAddSheet(ctx, meal) } }, '+ Add')),
+    list.length ? h('div', { class: 'data fu-meal-macros' }, macroLine(tot)) : null,
     list.length ? h('div', { class: 'list' }, list.map((e) => h('button', {
       type: 'button', class: 'li fu-entry', 'aria-label': `Edit ${e.name}`, on: { click: () => openEditSheet(ctx, e) },
     },
     h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, e.name, e.source === 'photo' ? h('span', { class: 'fu-src', title: 'Logged from a photo estimate' }, ' · photo') : null),
-      h('div', { class: 'li-sub' }, entryAmount(e))),
-    h('div', { class: 'li-end' }, h('div', { class: 'fu-kcal' }, num(e.kcal)), h('div', { class: 'xs muted' }, macroLine(e)))))) : null,
-    h('div', { class: 'fu-meal-actions' },
-      h('button', { type: 'button', class: 'btn sm subtle fu-add-btn', 'aria-label': `Add food to ${label}`, on: { click: () => openAddSheet(ctx, meal) } }, icon('plus', 16), 'Add'),
-      yList.length ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => copyMeal(ctx, meal, yList) }, title: `Copy ${yList.length} item(s) from yesterday` },
-        icon('copy', 16), `Copy yesterday`) : null,
-      list.length ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => saveTemplate(ctx, meal, list) } }, icon('star', 16), 'Save meal') : null));
+      h('div', { class: 'li-sub data' }, `${entryAmount(e)} · ${macroLine(e)}`)),
+    h('div', { class: 'li-end' }, h('div', { class: 'fu-kcal fig' }, num(e.kcal)))))) : null,
+    yList.length || list.length ? h('div', { class: 'fu-meal-actions' },
+      yList.length ? h('button', { type: 'button', class: 'link-btn', on: { click: () => copyMeal(ctx, meal, yList) }, title: `Copy ${yList.length} item(s) from yesterday` }, 'Copy yesterday') : null,
+      list.length ? h('button', { type: 'button', class: 'link-btn', on: { click: () => saveTemplate(ctx, meal, list) } }, 'Save meal') : null) : null);
 }
 
 /** Day tools under the meals: copy from another day (whole day or chosen meals), flag an incomplete day. */
@@ -400,7 +402,7 @@ function openEditSheet(ctx, entry) {
       mp.el,
       groupField('Meal', seg(MEALS, meal, (m) => { meal = m; }, { label: 'Meal' })),
       saveBtn,
-      h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => { close(); deleteEntry(ctx, entry); } } }, icon('trash', 18), 'Delete'));
+      h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => { close(); deleteEntry(ctx, entry); } } }, 'Delete'));
   };
   const saveBtn = h('button', { type: 'button', class: 'btn primary block', on: { click: () => {
         if (!next) return;
@@ -413,7 +415,7 @@ function openEditSheet(ctx, entry) {
         });
         toast('Updated', { kind: 'go', ms: 1200 });
         sh.close();
-      } } }, icon('check', 18), 'Save');
+      } } }, 'Save');
   const sh = trackSheet(ctx, { title: entry.name, content });
 }
 
@@ -500,19 +502,19 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     if (photoAvail == null) checkPhotoAvailable().then(() => { if (photoSlot.isConnected) fillPhoto(); });
     const selectChip = h('button', { type: 'button', class: 'chip', 'aria-pressed': String(st.multi), on: { click: () => {
       st.multi = !st.multi; st.picked.clear(); selectChip.setAttribute('aria-pressed', String(st.multi)); paintList(); paintMulti();
-    } } }, icon('check', 15), 'Select several');
+    } } }, 'Select several');
     const el = h('div', { class: 'stack' },
-      seg(MEALS.map(([v, l]) => [v, l === 'Breakfast' ? 'Bkfst' : l]), st.meal, (m) => { st.meal = m; mealTitle(); paintList(); paintMulti(); }, { label: 'Meal' }),
+      seg(MEALS.map(([v, l]) => [v, l]), st.meal, (m) => { st.meal = m; mealTitle(); paintList(); paintMulti(); }, { label: 'Meal' }),
       h('div', { class: 'row' },
         h('label', { class: 'search grow' }, icon('search', 18), searchInput,
           h('button', { type: 'button', class: 'icon-btn fu-clear', 'aria-label': 'Clear search', on: { click: () => { st.q = ''; searchInput.value = ''; paintList(); searchInput.focus(); } } }, icon('x', 16))),
         h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Scan barcode', on: { click: () => barcodePage() } }, icon('barcode'))),
       photoSlot,
       h('div', { class: 'chips scroll fu-actions' },
-        h('button', { type: 'button', class: 'chip', on: { click: () => quickPage() } }, icon('zap', 15), 'Quick add'),
+        h('button', { type: 'button', class: 'chip', on: { click: () => quickPage() } }, 'Quick add'),
         selectChip,
-        h('button', { type: 'button', class: 'chip', on: { click: () => createPage() } }, icon('plus', 15), 'Create food'),
-        h('button', { type: 'button', class: 'chip', on: { click: () => barcodePage() } }, icon('barcode', 15), 'Scan barcode')),
+        h('button', { type: 'button', class: 'chip', on: { click: () => createPage() } }, 'Create food'),
+        h('button', { type: 'button', class: 'chip', on: { click: () => barcodePage() } }, 'Scan barcode')),
       listEl, multiBar);
     show(el, null, true);
     paintList(); paintMulti();
@@ -581,8 +583,8 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       else listEl.append(h('div', { class: 'empty' }, h('h3', null, 'No matches'), h('p', { class: 'small muted' }, 'Try fewer words, search online, or create it.')));
       if (res.length < 6) listEl.append(onlineBlock());
       listEl.append(h('div', { class: 'row wrap fu-cta' },
-        h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => createPage({ name: st.q.trim() }) } }, icon('plus', 16), `Create “${st.q.trim().slice(0, 24)}”`),
-        h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => quickPage({ name: st.q.trim() }) } }, icon('zap', 16), 'Quick add')));
+        h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => createPage({ name: st.q.trim() }) } }, `Create “${st.q.trim().slice(0, 24)}”`),
+        h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => quickPage({ name: st.q.trim() }) } }, 'Quick add')));
       return;
     }
     const tabs = seg([['recent', 'Recent'], ['fav', 'Favourites'], ['mine', 'My Foods'], ['meals', 'Meals']], st.tab, (t) => { st.tab = t; paintList(); }, { label: 'Food lists' });
@@ -608,7 +610,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     }
     if (!rows.length) {
       listEl.append(h('div', { class: 'empty' }, icon(st.tab === 'fav' ? 'star' : st.tab === 'mine' ? 'edit' : 'repeat', 28), h('h3', null, empty[0]), h('p', { class: 'small muted' }, empty[1]),
-        st.tab === 'mine' ? h('button', { type: 'button', class: 'btn sm primary', on: { click: () => createPage() } }, icon('plus', 16), 'Create food') : null));
+        st.tab === 'mine' ? h('button', { type: 'button', class: 'btn sm primary', on: { click: () => createPage() } }, 'Create food') : null));
       if (st.tab === 'recent') listEl.append(sectionHead('Athlete staples'), h('div', { class: 'list card flush' },
         ['chicken-breast-cooked', 'white-rice-cooked', 'egg-whole', 'greek-yogurt-nonfat', 'oats-rolled-dry', 'banana', 'whey-protein', 'sweet-potato-baked']
           .map((id) => map.get(id)).filter(Boolean).map((f) => foodRow(f))));
@@ -641,12 +643,12 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       h('div', { class: 'list card flush' }, (t.items || []).map((it) => h('div', { class: 'li' },
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, it.name), h('div', { class: 'li-sub' }, entryAmount(it))),
         h('div', { class: 'li-end tabular' }, num(it.kcal))))),
-      h('button', { type: 'button', class: 'btn primary block', on: { click: () => { addTemplate(t); sh.close(); } } }, icon('plus', 18), `Add all to ${MEAL_LABEL[st.meal]}`),
+      h('button', { type: 'button', class: 'btn primary block', on: { click: () => { addTemplate(t); sh.close(); } } }, `Add all to ${MEAL_LABEL[st.meal]}`),
       h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => {
         store.update((s2) => { s2.mealTemplates = (s2.mealTemplates || []).filter((x) => x.id !== t.id); });
         toast(`Deleted “${t.name}”`, { action: { label: 'Undo', fn: () => store.update((s2) => { s2.mealTemplates = [t, ...(s2.mealTemplates || [])]; }) } });
         st.tab = 'meals'; browse();
-      } } }, icon('trash', 18), 'Delete saved meal')), 'Saved meal');
+      } } }, 'Delete saved meal')), 'Saved meal');
   }
 
   // ---------- detail ----------
@@ -690,7 +692,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       if (!cur.valid) return;
       logFood(food, cur.mode, cur.qty, { saveOff: saveBox ? saveBox.checked : true });
       back();
-    } } }, icon('plus', 18), h('span', null, `Add to ${MEAL_LABEL[st.meal]}`));
+    } } }, h('span', null, `Add to ${MEAL_LABEL[st.meal]}`));
     const p = food.per100 || {};
     show(h('div', { class: 'stack' },
       h('div', { class: 'row between' }, backBtn(), star),
@@ -709,7 +711,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         store.update((s2) => { s2.customFoods = (s2.customFoods || []).filter((f) => f.id !== food.id); s2.favorites = (s2.favorites || []).filter((x) => x !== food.id); });
         toast(`Removed ${food.name} from My Foods`, { action: { label: 'Undo', fn: () => store.update((s2) => { s2.customFoods = [snapshot, ...(s2.customFoods || [])]; }) } });
         back();
-      } } }, icon('trash', 18), 'Delete from My Foods') : null), 'Food details', true);
+      } } }, 'Delete from My Foods') : null), 'Food details', true);
     softFocus(amt.input, 60, true);
   }
 
@@ -747,7 +749,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     hint, formErr.el,
     field('Name (optional)', f.name),
     groupField('Meal', seg(MEALS, st.meal, (m) => { st.meal = m; }, { label: 'Meal' })),
-    h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Quick add'));
+    h('button', { type: 'submit', class: 'btn primary block xl' }, 'Quick add'));
     upd();
     show(el, 'Quick add');
     softFocus(f.kcal, 60);
@@ -798,7 +800,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       nf('fiber', 'Fiber', 'g', 'Fiber per serving'),
       field('Barcode (optional)', h('input', { type: 'text', inputmode: 'numeric', value: pre.barcode || '', maxlength: '14', 'aria-label': 'Barcode', on: { input: (e) => { e.target.value = e.target.value.replace(/\D/g, ''); } } }))),
     formErr.el,
-    h('button', { type: 'submit', class: 'btn primary block xl' }, icon('check', 18), 'Save food'));
+    h('button', { type: 'submit', class: 'btn primary block xl' }, 'Save food'));
     f.barcode = el.querySelector('input[aria-label="Barcode"]');
     show(el, 'Create food');
     softFocus(pre.name ? f.grams : f.name, 60);
@@ -835,7 +837,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         const food = data && data.status !== 0 && data.product ? parseOffProduct(data.product, c) : null;
         if (!food) {
           status.textContent = `No nutrition data found for ${c}.`;
-          resultEl.append(h('button', { type: 'button', class: 'btn subtle block', on: { click: () => createPage({ barcode: c }) } }, icon('plus', 18), 'Create it from the label'));
+          resultEl.append(h('button', { type: 'button', class: 'btn subtle block', on: { click: () => createPage({ barcode: c }) } }, 'Create it from the label'));
           return;
         }
         detailPage(food, { fromOff: true, isNewOff: true });
@@ -843,8 +845,8 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         if (err?.name === 'AbortError' && !ctrl.timedOut) return;
         status.textContent = navigator.onLine === false ? 'You’re offline — barcode lookup needs a connection.' : 'Couldn’t reach Open Food Facts. Check your connection and try again.';
         resultEl.append(h('div', { class: 'row gap' },
-          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => lookup(c) } }, icon('repeat', 16), 'Retry'),
-          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => createPage({ barcode: c }) } }, icon('plus', 16), 'Enter manually')));
+          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => lookup(c) } }, 'Retry'),
+          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => createPage({ barcode: c }) } }, 'Enter manually')));
       }
     };
 
@@ -902,7 +904,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     const wrap = h('div', { class: 'fu-online' });
     const q = st.q.trim();
     if (st.onlineState === 'idle') {
-      wrap.append(h('button', { type: 'button', class: 'btn subtle block', on: { click: () => runOnline(q) } }, icon('search', 16), `Search online for “${q.slice(0, 30)}”`));
+      wrap.append(h('button', { type: 'button', class: 'btn subtle block', on: { click: () => runOnline(q) } }, `Search online for “${q.slice(0, 30)}”`));
     } else if (st.onlineState === 'loading') {
       wrap.append(h('p', { class: 'small muted', role: 'status' }, 'Searching Open Food Facts…'));
     } else if (st.onlineState === 'error') {
@@ -956,7 +958,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       return inp;
     };
     const camIn = fileInput(true), libIn = fileInput(false);
-    const honest = () => h('p', { class: 'xs muted fu-honest' }, icon('info', 14), ' AI estimate — check portions. Hidden oils, sauces and dressings are easy to miss.');
+    const honest = () => h('p', { class: 'xs muted fu-honest' }, 'AI estimate — check portions. Hidden oils, sauces and dressings are easy to miss.');
 
     function pickView(msg) {
       clear(root).append(backBtn(),
@@ -966,8 +968,8 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
           h('p', { class: 'small muted' }, 'Shoot from above with the whole plate in frame. A fork or hand helps with scale.'),
           msg ? h('p', { class: 'small danger-text', role: 'alert' }, msg) : null,
           h('div', { class: 'stack sm fu-photo-btns' },
-            h('button', { type: 'button', class: 'btn primary block', on: { click: () => camIn.click() } }, cameraIcon(18), 'Take photo'),
-            h('button', { type: 'button', class: 'btn subtle block', on: { click: () => libIn.click() } }, icon('upload', 18), 'Choose from library'))),
+            h('button', { type: 'button', class: 'btn primary block', on: { click: () => camIn.click() } }, 'Take photo'),
+            h('button', { type: 'button', class: 'btn subtle block', on: { click: () => libIn.click() } }, 'Choose from library'))),
         camIn, libIn, honest());
       apiCall('apiAvailable').then((ok) => {
         if (ok === false && root.isConnected && !ph.prepared) root.querySelector('.fu-photo-pick')?.append(h('p', { class: 'xs warn-text' }, 'Photo estimates may not be set up on this server yet — you can still try.'));
@@ -994,11 +996,11 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         on: { input: (e) => { ph.hint = e.target.value; } } });
       clear(root).append(backBtn(), thumb(),
         h('div', { class: 'row gap' },
-          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => camIn.click() } }, cameraIcon(16), 'Retake'),
-          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => libIn.click() } }, icon('upload', 16), 'Library')),
+          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => camIn.click() } }, 'Retake'),
+          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => libIn.click() } }, 'Library')),
         field('Anything we can’t see? (optional)', hint, 'Portion size, cooking fat, sauces, what’s inside a wrap…'),
         h('form', { on: { submit: (e) => { e.preventDefault(); estimate(); } } },
-          h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Estimate nutrition')),
+          h('button', { type: 'submit', class: 'btn primary block xl' }, 'Estimate nutrition')),
         camIn, libIn, honest());
     }
 
@@ -1052,11 +1054,11 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       clear(root).append(backBtn(), ph.prepared ? thumb() : null,
         h('div', { class: 'callout ' + (code === 'not_configured' ? 'info' : 'danger'), role: 'alert' }, h('b', null, copy[0]), h('p', { class: 'small mt' }, copy[1])),
         h('div', { class: 'row gap' },
-          retryable && ph.prepared ? h('button', { type: 'button', class: 'btn primary grow', on: { click: () => estimate() } }, icon('repeat', 16), 'Try again') : null,
-          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => { revoke(); pickView(); } } }, cameraIcon(16), 'New photo')),
+          retryable && ph.prepared ? h('button', { type: 'button', class: 'btn primary grow', on: { click: () => estimate() } }, 'Try again') : null,
+          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => { revoke(); pickView(); } } }, 'New photo')),
         h('div', { class: 'row gap' },
-          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => back() } }, icon('search', 16), 'Search instead'),
-          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => quickPage() } }, icon('zap', 16), 'Quick add')),
+          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => back() } }, 'Search instead'),
+          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => quickPage() } }, 'Quick add')),
         camIn, libIn);
     }
 
@@ -1070,7 +1072,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       const refresh = () => {
         const inc = ph.items.filter((i) => i.include && i.grams > 0);
         mp.set(inc.map(itemMacros).reduce((a, m) => ({ kcal: a.kcal + m.kcal, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f, fiber: a.fiber + m.fiber }), { kcal: 0, p: 0, c: 0, f: 0, fiber: 0 }));
-        clear(addBtn).append(icon('plus', 18), h('span', null, inc.length ? `Add ${inc.length} item${inc.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}` : 'Nothing selected'));
+        clear(addBtn).append(h('span', null, inc.length ? `Add ${inc.length} item${inc.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}` : 'Nothing selected'));
         addBtn.disabled = !inc.length;
       };
       const rows = ph.items.map((it, idx) => itemRow(it, idx, refresh));
@@ -1096,7 +1098,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         totalsEl,
         groupField('Meal', seg(MEALS, ph.meal, (m) => { ph.meal = m; refresh(); }, { label: 'Meal' })),
         addBtn,
-        h('button', { type: 'button', class: 'btn ghost block', on: { click: () => { revoke(); pickView(); } } }, cameraIcon(16), 'Start over with a new photo'));
+        h('button', { type: 'button', class: 'btn ghost block', on: { click: () => { revoke(); pickView(); } } }, 'Start over with a new photo'));
       refresh();
     }
 
@@ -1240,7 +1242,7 @@ function waterCard(s, ctx) {
   const glassMl = imperial ? 8 * ML_PER_OZ : 250;
   const nGlasses = Math.min(16, Math.ceil(target / glassMl));
   const filled = ml / glassMl;
-  const glasses = h('div', { class: 'fu-glasses', 'aria-hidden': 'true' },
+  const glasses = h('div', { class: 'fu-glasses', 'aria-hidden': 'true', style: { gridTemplateColumns: `repeat(${nGlasses}, minmax(0, 1fr))` } },
     Array.from({ length: nGlasses }, (_, i) => h('span', { class: 'fu-glass' }, h('i', { style: { height: `${clamp(filled - i, 0, 1) * 100}%` } }))));
   const add = (delta) => {
     store.update((st) => { st.water[ctx.date] = Math.max(0, Math.round((st.water[ctx.date] || 0) + delta)); });
@@ -1255,17 +1257,16 @@ function waterCard(s, ctx) {
   const small = imperial ? 8 * ML_PER_OZ : 250, big = imperial ? 16 * ML_PER_OZ : 500;
   const pct = Math.round((ml / target) * 100);
   const hard = dt.dayType === 'training' && dt.trainingMin >= 45;
-  return h('section', { class: 'card fu-water', 'aria-label': 'Water' },
-    h('div', { class: 'row between' },
-      h('div', { class: 'row' }, h('span', { class: 'fu-ico water' }, icon('drop', 18)), h('h3', null, 'Water')),
-      h('div', { class: 'tabular' }, h('b', { class: 'big' }, fmt(ml)), h('span', { class: 'muted small' }, ` / ${fmt(target)}`))),
+  return h('section', { class: 'fu-water', 'aria-label': 'Water' },
+    sectionHead('Water', h('span', { class: 'lbl' }, `Goal ${fmt(target)}`), 5),
+    h('div', { class: 'row between fu-water-top', role: 'progressbar', 'aria-label': 'Water progress', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' },
+      h('span', { class: 'fig fu-water-n' }, fmt(ml)),
+      h('span', { class: 'lbl' }, `${num(clamp(pct, 0, 999))}%`)),
     glasses,
-    h('div', { class: 'bar thin', role: 'progressbar', 'aria-label': 'Water progress', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' },
-      h('i', { style: { width: clamp(pct, 0, 100) + '%', background: 'var(--water)' } })),
     hard ? h('p', { class: 'xs muted' }, `Includes ${fmt(500 * dt.trainingMin / 60)} for today’s ${dt.trainingMin}-min session. In long or sweaty sessions aim for ${imperial ? '16–24 oz' : '500–750 ml'} per hour with 300–600 mg sodium.`) : null,
     h('div', { class: 'row fu-water-btns' },
-      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => add(small) } }, icon('plus', 15), imperial ? '8 oz' : '250 ml'),
-      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => add(big) } }, icon('plus', 15), imperial ? '16 oz' : '500 ml'),
+      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => add(small) } }, imperial ? '+8 oz' : '+250 ml'),
+      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => add(big) } }, imperial ? '+16 oz' : '+500 ml'),
       h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => customWater(ctx, imperial, add) } }, 'Custom'),
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Undo last water', disabled: !ctx.waterHist.length, on: { click: undo } }, icon('repeat', 18))));
 }
@@ -1287,8 +1288,8 @@ function customWater(ctx, imperial, add) {
     content: ({ close }) => h('form', { class: 'stack', novalidate: true, on: { submit: (e) => { e.preventDefault(); const v = val(); if (v) { add(v); close(); } else input.focus(); } } },
       fe.el,
       h('div', { class: 'row gap' },
-        h('button', { type: 'button', class: 'btn ghost grow', on: { click: () => { const v = val(); if (v) { add(-v); close(); } else input.focus(); } } }, icon('minus', 16), 'Remove'),
-        h('button', { type: 'submit', class: 'btn primary grow' }, icon('plus', 16), 'Add'))),
+        h('button', { type: 'button', class: 'btn ghost grow', on: { click: () => { const v = val(); if (v) { add(-v); close(); } else input.focus(); } } }, 'Remove'),
+        h('button', { type: 'submit', class: 'btn primary grow' }, 'Add'))),
   });
   softFocus(input, 60);
 }
@@ -1304,21 +1305,21 @@ function weeklyCard(s, ctx) {
     tSum += dt.kcal;
     if (t.kcal > 0) { logged++; pSum += t.p; kSum += t.kcal; }
     const ok = dt.kcal && Math.abs(t.kcal - dt.kcal) <= dt.kcal * 0.1;
-    return { label: fmtDate(d, { weekday: 'narrow' }), value: t.kcal, color: !t.kcal ? 'var(--surface-3)' : ok ? 'var(--go)' : t.kcal > dt.kcal ? 'var(--warn)' : 'var(--muted)', dim: d !== ctx.date && !t.kcal };
+    return { label: fmtDate(d, { weekday: 'narrow' }), value: t.kcal, color: !t.kcal ? 'var(--tick-off)' : ok ? 'var(--text)' : t.kcal > dt.kcal ? 'var(--warn)' : 'var(--text-2)', dim: d !== ctx.date && !t.kcal };
   });
   const avgTarget = Math.round(tSum / 7);
   const avgP = logged ? pSum / logged : 0, avgK = logged ? kSum / logged : 0;
   return h('section', { 'aria-label': 'Last 7 days' },
-    sectionHead('Last 7 days'),
-    h('div', { class: 'card' },
+    sectionHead('Last 7 days', null, 6),
+    h('div', null,
       barChart({ bars, height: 130, target: avgTarget, yFmt: (v) => (v >= 1000 ? `${r1(v / 1000)}k` : String(r0(v))), ariaLabel: `Calories for the 7 days ending ${fmtDate(ctx.date)}; average target ${num(avgTarget)} kcal` }),
       h('div', { class: 'fu-legend xs muted' },
-        h('span', null, h('i', { class: 'dot', style: { background: 'var(--go)' } }), 'within 10 % of that day'),
-        h('span', null, h('i', { class: 'dot', style: { background: 'var(--muted)' } }), 'under'),
+        h('span', null, h('i', { class: 'dot', style: { background: 'var(--text)' } }), 'within 10 %'),
+        h('span', null, h('i', { class: 'dot', style: { background: 'var(--text-2)' } }), 'under'),
         h('span', null, h('i', { class: 'dot', style: { background: 'var(--warn)' } }), 'over')),
-      h('div', { class: 'grid3 mt' },
+      h('div', { class: 'stat-row' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, logged ? num(avgK) : '–', h('small', null, `/${num(avgTarget)}`)), h('span', { class: 'k' }, 'Avg kcal')),
-        h('div', { class: 'stat' }, h('span', { class: 'v', style: { color: 'var(--protein)' } }, logged ? num(avgP) : '–', h('small', null, `/${num(s.targets.protein)} g`)), h('span', { class: 'k' }, 'Avg protein')),
+        h('div', { class: 'stat' }, h('span', { class: 'v' }, logged ? num(avgP) : '–', h('small', null, `/${num(s.targets.protein)} g`)), h('span', { class: 'k' }, 'Avg protein')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, `${logged}`, h('small', null, '/7')), h('span', { class: 'k' }, 'Days logged')))));
 }
 
@@ -1440,7 +1441,7 @@ function dayTools(s, ctx) {
     toast(on ? 'Day left out of adaptive targets' : 'Day counts toward adaptive targets', { ms: 1600 });
   } } });
   return h('div', { class: 'fu-daytools' },
-    h('button', { type: 'button', class: 'btn sm ghost', on: { click: () => copyDaySheet(ctx) } }, icon('copy', 16), 'Copy from another day…'),
+    h('button', { type: 'button', class: 'btn sm ghost', on: { click: () => copyDaySheet(ctx) } }, 'Copy from another day…'),
     past || flagged ? h('label', { class: 'fu-incomplete xs', for: 'fu-incomplete' }, box, h('span', null, 'Incomplete log — leave this day out of the adaptive estimate')) : null);
 }
 
@@ -1493,7 +1494,7 @@ function adaptiveCard(s, ctx) {
   const sinceApply = applied ? Math.round((Date.parse(today) - Date.parse(t.adaptive.appliedAt)) / 86400000) : Infinity;
   const coolDown = sinceApply < 7;
   const children = [];
-  const logWeightBtn = h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => openWeight() } }, icon('scale', 16), 'Log weight');
+  const logWeightBtn = h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => openWeight() } }, '+ Log weight');
   const wkFmt = (wk) => `${wk > 0 ? '+' : wk < 0 ? '−' : '±'}${fmtWeight(Math.abs(wk), imperial ? 'imperial' : 'metric', 1)}/wk`;
 
   if (!res.tdee) {
@@ -1501,18 +1502,18 @@ function adaptiveCard(s, ctx) {
     children.push(
       h('p', { class: 'small dim' }, 'FORGE estimates your real maintenance calories from your weight trend and what you eat — then suggests a new target each week.'),
       h('div', { class: 'row between xs muted mt' }, h('span', null, res.reason || 'Collecting data…'), h('span', { class: 'tabular' }, `${Math.min(14, res.days)}/14 days`)),
-      h('div', { class: 'bar thin mt' }, h('i', { style: { width: prog * 100 + '%' } })),
+      h('div', { class: 'mt' }, ticks({ value: prog, max: 1, n: 14, label: `${Math.min(14, res.days)} of 14 days` })),
       h('div', { class: 'row gap mt' }, logWeightBtn, h('span', { class: 'xs muted' }, `${res.weighIns} weigh-ins · ${res.intakeDays} complete food days`)));
   } else {
     const wk = res.weeklyChangeKg;
     const pts = res.trendKg;
     children.push(
-      h('div', { class: 'grid3' },
-        h('div', { class: 'stat' }, h('span', { class: 'v accent' }, num(res.tdee)), h('span', { class: 'k' }, 'Est. TDEE')),
+      h('div', { class: 'stat-row' },
+        h('div', { class: 'stat' }, h('span', { class: 'v' }, num(res.tdee)), h('span', { class: 'k' }, 'Est. TDEE')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(res.avgIntake)), h('span', { class: 'k' }, 'Avg intake')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, wkFmt(wk)), h('span', { class: 'k' }, 'Trend'))),
       pts.length > 2 ? h('div', { class: 'fu-trend' }, lineChart({
-        series: [{ points: pts.map((p, i) => ({ x: i, y: imperial ? p.kg / 0.45359237 : p.kg })), color: 'var(--accent)', area: true }],
+        series: [{ points: pts.map((p, i) => ({ x: i, y: imperial ? p.kg / 0.45359237 : p.kg })), color: 'var(--accent)' }],
         xLabels: [{ x: 0, label: fmtDate(pts[0].date, { month: 'short', day: 'numeric' }) }, { x: pts.length - 1, label: fmtDate(pts.at(-1).date, { month: 'short', day: 'numeric' }) }],
         height: 96, yTicks: 2, yFmt: (v) => num(v, 1), ariaLabel: 'Weight trend',
       })) : null,
@@ -1526,15 +1527,15 @@ function adaptiveCard(s, ctx) {
       children.push(h('div', { class: 'callout fu-suggest' },
         h('div', { class: 'row between top' },
           h('div', null, h('div', { class: 'eyebrow' }, 'Suggested daily target (weekly average)'),
-            h('div', { class: 'big tabular' }, num(sg.kcal), h('small', { class: 'muted' }, ' kcal')),
+            h('div', null, fig(num(sg.kcal), 'kcal')),
             h('div', { class: 'xs muted tabular' }, `P ${sg.protein} g · C ${sg.carbs} g · F ${sg.fat} g · ${sg.delta > 0 ? '+' : '−'}${num(Math.abs(sg.delta))} vs now`)),
-          h('button', { type: 'button', class: 'btn sm primary', on: { click: () => applySuggestion(res) } }, icon('check', 16), 'Apply')),
+          h('button', { type: 'button', class: 'btn sm primary', on: { click: () => applySuggestion(res) } }, 'Apply')),
         h('p', { class: 'xs mt' }, `You averaged ${num(res.avgIntake)} kcal and your trend moved ${wkFmt(wk)} → maintenance ≈ ${num(res.tdee)}; goal ${goalTxt} = ${num(sg.ideal)}.`,
           sg.capped ? ` Changing by at most ${num(150)} kcal this week.` : '')));
     } else if (coolDown) {
-      children.push(h('p', { class: 'small go' }, icon('check', 14), ` Adaptive target applied ${sinceApply === 0 ? 'today' : `${sinceApply} day${sinceApply > 1 ? 's' : ''} ago`}. Next check-in in ${7 - sinceApply} day${7 - sinceApply > 1 ? 's' : ''}.`));
+      children.push(h('p', { class: 'small go' }, `✓ Adaptive target applied ${sinceApply === 0 ? 'today' : `${sinceApply} day${sinceApply > 1 ? 's' : ''} ago`}. Next check-in in ${7 - sinceApply} day${7 - sinceApply > 1 ? 's' : ''}.`));
     } else {
-      children.push(h('p', { class: 'small go' }, icon('check', 14), ' Your current target matches your data — no change needed.'));
+      children.push(h('p', { class: 'small go' }, '✓ Your current target matches your data — no change needed.'));
     }
     children.push(h('div', { class: 'row gap mt' }, logWeightBtn));
   }
@@ -1548,8 +1549,8 @@ function adaptiveCard(s, ctx) {
     children.push(h('p', { class: 'xs warn-text' }, 'Your deficit leaves under 3.5 g/kg of carbs for hard training. Consider a slower goal rate during Build and Peak.'));
   }
   return h('section', { 'aria-label': 'Adaptive targets' },
-    sectionHead('Adaptive targets', h('span', { class: 'pill' + (res.tdee ? ' go' : '') }, res.tdee ? 'Active' : 'Learning')),
-    h('div', { class: 'card fu-adapt' }, children));
+    sectionHead('Adaptive targets', h('span', { class: 'pill' + (res.tdee ? ' go' : '') }, res.tdee ? 'Active' : 'Learning'), 7),
+    h('div', { class: 'fu-adapt' }, children));
 }
 
 function applySuggestion(res) {

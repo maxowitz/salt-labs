@@ -206,7 +206,7 @@ function conflict(ctx, aw, id) {
     h('h2', null, 'A workout is already in progress'),
     h('p', { class: 'muted' }, `“${title}” — ${mins} min in, ${(Array.isArray(aw.log) ? aw.log : []).filter((l) => l.type === 'set' || l.type === 'cardio').length} entries logged.`),
     h('div', { class: 'stack wo-conflict-actions' },
-      h('button', { class: 'btn primary xl block', on: { click: () => navigate('#/workout/' + encodeURIComponent(aw.workoutId)) } }, icon('play'), 'Resume it'),
+      h('button', { class: 'btn primary xl block', on: { click: () => navigate('#/workout/' + encodeURIComponent(aw.workoutId)) } }, 'Resume it'),
       h('button', {
         class: 'btn ghost block', on: {
           click: async () => {
@@ -275,7 +275,7 @@ function preStart(ctx, original) {
       readinessCard(),
       isFree ? h('div', { class: 'callout info' }, 'Add any exercise from the library once you start — sets, carries, runs or erg pieces. Everything is logged to your history.') : null,
       (w.blocks || []).length ? h('div', { class: 'card flush' }, h('div', { class: 'list' }, w.blocks.map((b, i) => h('div', { class: 'li' },
-        h('span', { class: 'badge' }, String(i + 1)),
+        h('span', { class: 'badge' }, String(i + 1).padStart(2, '0')),
         h('div', { class: 'li-main' },
           h('div', { class: 'li-title' }, b.title || KIND_LABEL[b.kind] || b.kind),
           h('div', { class: 'li-sub' }, blockSub(b))),
@@ -305,7 +305,7 @@ function preStart(ctx, original) {
     class: 'btn primary xl block wo-start', on: {
       click: () => startWorkout(ctx, original, useScaled ? scaled : null, score),
     },
-  }, icon('play'), isFree ? 'Start free session' : 'Start workout');
+  }, h('span', null, isFree ? 'Start free session' : 'Start workout'), h('span', { class: 'k' }, '→'));
   start.addEventListener('click', () => { start.disabled = true; }, { capture: true });
 
   put(root, h('div', { class: 'wo-pre' },
@@ -445,7 +445,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     h('div', { class: 'wo-veil-card' },
       h('div', { class: 'eyebrow' }, 'Paused'),
       h('div', { class: 'wo-veil-time num' }, ''),
-      h('button', { class: 'btn primary xl block', on: { click: () => setPaused(false) } }, icon('play'), 'Resume'),
+      h('button', { class: 'btn primary xl block', on: { click: () => setPaused(false) } }, 'Resume'),
       h('button', { class: 'btn ghost block', on: { click: () => endSheet() } }, 'End workout…')));
   put(root, h('div', { class: 'wo' }, header, progEl, main, restDock, foot, pausedVeil));
 
@@ -463,8 +463,9 @@ function player(ctx, aw, { fresh = false } = {}) {
   function drawProgress() {
     const n = W.blocks.length;
     put(clear(progEl), 
-      h('div', { class: 'wo-prog-bars' }, W.blocks.map((b, i) => h('i', { class: (blockDone(i) ? 'done ' : '') + (i === aw.blockIndex ? 'cur' : '') }))),
-      h('span', { class: 'wo-prog-txt num' }, n ? `${Math.min(aw.blockIndex + 1, n)}/${n}` : '0/0'));
+      h('div', { class: 'wo-prog-bars' }, W.blocks.map((b, i) => h('span', { class: 'wo-pseg ' + (blockDone(i) ? 'done ' : '') + (i === aw.blockIndex ? 'cur' : '') },
+        h('b', null, String(i + 1).padStart(2, '0')), h('small', null, blockDone(i) ? '✓' : i === aw.blockIndex ? `${Math.min(aw.blockIndex + 1, n)}/${n}` : '')))),
+      h('span', { class: 'wo-prog-txt num sr-only' }, n ? `Block ${Math.min(aw.blockIndex + 1, n)} of ${n}` : '0/0'));
   }
   function blockDone(i) {
     const bs = aw.blocks[i];
@@ -493,10 +494,10 @@ function player(ctx, aw, { fresh = false } = {}) {
     footKey = `${i}|${n}|${blockComplete(i)}`;
     put(clear(foot), 
       h('button', { class: 'btn ghost wo-nav', disabled: i <= 0, 'aria-label': 'Previous block', on: { click: () => goBlock(i - 1) } }, icon('chevL')),
-      isFree ? h('button', { class: 'btn subtle wo-nav-add', on: { click: () => addExerciseSheet() } }, icon('plus'), 'Exercise') : null,
+      isFree ? h('button', { class: 'btn subtle wo-nav-add', on: { click: () => addExerciseSheet() } }, 'Exercise') : null,
       last || !n
-        ? h('button', { class: 'btn grow wo-next' + (blockComplete(i) || !n ? ' primary' : ''), on: { click: () => finish() } }, icon('flag'), 'Finish')
-        : h('button', { class: 'btn grow wo-next', on: { click: () => { markDone(i); goBlock(i + 1); } } }, 'Next block', icon('chevR')));
+        ? h('button', { class: 'btn grow wo-next' + (blockComplete(i) || !n ? ' primary' : ''), on: { click: () => finish() } }, 'Finish')
+        : h('button', { class: 'btn grow wo-next', on: { click: () => { markDone(i); goBlock(i + 1); } } }, h('span', null, 'Next block'), h('span', { class: 'k' }, `${String(i + 2).padStart(2, '0')} →`)));
   }
   // Is everything in block i logged/checked? (Decides whether the footer's Finish is the primary action.)
   function blockComplete(i) {
@@ -532,16 +533,16 @@ function player(ctx, aw, { fresh = false } = {}) {
   }
 
   function emptyFree() {
-    return h('div', { class: 'wo-empty' }, icon('plus', 32), h('h2', null, 'Add your first exercise'),
+    return h('div', { class: 'wo-empty' }, h('h2', null, 'Add your first exercise'),
       h('p', { class: 'muted' }, 'Pick a kettlebell lift, carry, run or erg. Strength moves get sets; cardio gets a stopwatch.'),
-      h('button', { class: 'btn primary xl', on: { click: () => addExerciseSheet() } }, icon('plus'), 'Add exercise'));
+      h('button', { class: 'btn primary xl', on: { click: () => addExerciseSheet() } }, 'Add exercise'));
   }
 
   function blockHead(b, i) {
     return h('div', { class: 'wo-bhead' },
       h('div', { class: 'row between' },
         h('span', { class: 'pill kind-' + b.kind }, KIND_LABEL[b.kind] || b.kind),
-        h('span', { class: 'eyebrow num' }, `Block ${i + 1} of ${W.blocks.length}`)),
+        h('span', { class: 'eyebrow num' }, `Block ${String(i + 1).padStart(2, '0')} / ${String(W.blocks.length).padStart(2, '0')}`)),
       h('h2', { class: 'wo-btitle' }, b.title || KIND_LABEL[b.kind] || 'Block'),
       b.notes ? h('p', { class: 'wo-bnotes' }, b.notes) : null);
   }
@@ -593,7 +594,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       });
       b.items.forEach((it, ii) => put(wrap, exCard(b, bi, it, ii, logged, cur, draw)));
       if (!b.items.length) put(wrap, h('p', { class: 'muted' }, 'No exercises in this block.'));
-      if (!cur && b.items.length) put(wrap, h('div', { class: 'callout go wo-block-done' }, icon('check'), ' Block complete — nice work.'));
+      if (!cur && b.items.length) put(wrap, h('div', { class: 'callout go wo-block-done' }, '✓ Block complete — nice work.'));
     };
     draw();
     return wrap;
@@ -630,7 +631,9 @@ function player(ctx, aw, { fresh = false } = {}) {
       regress,
       bellRow,
       hint ? h('div', { class: 'wo-hint' + (d.reason && /^Earned/.test(d.reason) ? ' earned' : '') }, hint) : null,
-      h('div', { class: 'wo-sets', role: 'list' }, rows),
+      h('div', { class: 'wo-sets', role: 'list' },
+        h('div', { class: 'wo-sets-hd', 'aria-hidden': 'true' }, h('span', null, 'Set'), h('span', null, 'Load × reps'), h('span', null, 'RPE'), h('span', null, '')),
+        rows),
       h('button', { class: 'link-btn wo-addset', on: { click: () => { const bs = aw.blocks[bi]; bs.extra = bs.extra || {}; bs.extra[ii] = (bs.extra[ii] || 0) + 1; save(); redraw(); } } }, '+ Add set'));
   }
 
@@ -648,7 +651,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       else if (dist != null) edit = stepper(dist, { min: 5, max: 5000, step: 5, label: 'metres', fmt: (v) => `${v} m`, onChange: (v) => { d.distanceM = v; save(); } });
     }
     const val = h('div', { class: 'wo-set-val' },
-      h('span', { class: 'wo-set-kg num' }, kg ? fmtBell(kg) : d.tooHeavy && !done ? '—' : 'BW'),
+      h('span', { class: 'wo-set-kg num' }, kg ? [fmtBell(kg).replace(/\s*kg$/, ''), h('small', { class: 'unit' }, 'kg')] : d.tooHeavy && !done ? '—' : 'BW'),
       h('span', { class: 'wo-x' }, '×'),
       edit || h('span', { class: 'wo-set-reps num' }, reps != null ? String(reps) : amount, reps != null && it.perSide ? h('small', { class: 'wo-side' }, ' / side') : null));
     const check = h('button', {
@@ -718,7 +721,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       opts.map((kg) => h('button', {
         type: 'button', class: 'chip wo-bell' + (kg === value ? ' on' : ''), role: 'radio', 'aria-checked': String(kg === value),
         on: { click: () => { haptic(); onPick(kg); } },
-      }, h('span', { class: 'num' }, fmtBell(kg)))));
+      }, h('span', { class: 'num' }, fmtBell(kg).replace(/\s*kg$/, '')), h('small', { class: 'unit' }, 'kg'))));
   }
 
   function infoBtn(exId) {
@@ -735,23 +738,25 @@ function player(ctx, aw, { fresh = false } = {}) {
     main.classList.toggle('has-rest', !!restTimer);
     if (!restTimer) return;
     const face = h('div', { class: 'wo-rest-time num' }, '');
-    const bar = h('i');
+    const NT = 45;
+    const bar = h('div', { class: 'ticks wo-rest-ticks', 'aria-hidden': 'true' }, Array.from({ length: NT }, () => h('i')));
     const lbl = h('div', { class: 'wo-rest-next' }, aw.rest?.label || '');
     put(restDock, h('div', { class: 'wo-rest', role: 'timer', 'aria-label': 'Rest timer' },
       h('div', { class: 'wo-rest-top' },
-        h('div', null, h('div', { class: 'eyebrow' }, 'Rest'), face),
+        h('div', null, h('div', { class: 'eyebrow' }, aw.rest?.sec ? `Rest · of ${fmtClock(aw.rest.sec)}` : 'Rest'), face),
         h('div', { class: 'wo-rest-btns' },
           h('button', { class: 'btn subtle', 'aria-label': 'Minus 15 seconds', on: { click: () => { restTimer?.adjust(-15); aw.rest.sec = restTimer?.current?.sec; save(); } } }, '−15'),
           h('button', { class: 'btn subtle', 'aria-label': 'Plus 15 seconds', on: { click: () => { restTimer?.adjust(15); aw.rest.sec = restTimer?.current?.sec; save(); } } }, '+15'),
           h('button', { class: 'btn primary', on: { click: () => endRest() } }, 'Skip'))),
-      h('div', { class: 'bar wo-rest-bar' }, bar),
+      bar,
       lbl));
     const upd = () => {
       if (!restTimer) return;
       const s = restTimer.state;
       face.textContent = fmtClock(s.segRemaining, { countdown: true });
       face.classList.toggle('warn', s.segRemaining <= 3.05);
-      bar.style.width = `${(1 - (s.progress || 0)) * 100}%`;
+      const on = Math.round(NT * (1 - (s.progress || 0)));
+      if (bar.dataset.on !== String(on)) { bar.dataset.on = String(on); [...bar.children].forEach((t, k) => t.classList.toggle('on', k < on)); }
     };
     upd();
     restTicker = upd;
@@ -868,7 +873,7 @@ function player(ctx, aw, { fresh = false } = {}) {
             stepper(extra.v, { min: 0, max: 999, label: 'extra reps', onChange: (v) => { bs.extraReps = v; save(); } })) : null),
         splits.length ? h('div', { class: 'wo-splits' }, h('div', { class: 'eyebrow' }, 'Splits'),
           h('div', { class: 'chips' }, splits.map((l, k) => h('span', { class: 'chip num' }, `${k + 1}: ${fmtDur(l.sec)}`)))) : null,
-        h('button', { class: 'btn primary xl block', on: { click: () => logTimed() } }, icon('check'), bs.logged ? 'Update & continue' : 'Log & continue'));
+        h('button', { class: 'btn primary xl block', on: { click: () => logTimed() } }, bs.logged ? 'Update & continue' : 'Log & continue'));
     }
 
     function logTimed() {
@@ -981,7 +986,7 @@ function player(ctx, aw, { fresh = false } = {}) {
           infoBtn(it.exId)));
         if (lg) {
           put(c, h('div', { class: 'wo-cardio-done' },
-            icon('check', 22),
+            h('span', { 'aria-hidden': 'true' }, '✓'),
             h('span', { class: 'num' }, [lg.distanceM ? fmtDist(lg.distanceM, u) : null, lg.timeSec ? fmtDur(lg.timeSec) : null,
               lg.distanceM && lg.timeSec && cardio ? fmtPace(lg.timeSec / (lg.distanceM / 1000), u) : null, lg.avgHr ? `${lg.avgHr} bpm` : null].filter(Boolean).join(' · ')),
             h('button', { class: 'link-btn', on: { click: () => { aw.log = aw.log.filter((l) => l !== lg); save(); redrawAll(); } } }, 'Edit')));
@@ -1056,7 +1061,7 @@ function player(ctx, aw, { fresh = false } = {}) {
                 save(); redrawAll();
               },
             },
-          }, icon('check'), 'Log ' + (cardio ? cardioMode(it.exId) : 'station')));
+          }, 'Log ' + (cardio ? cardioMode(it.exId) : 'station')));
         upd(); updPace();
         tickers.add(upd);
         pauseSyncers.add(upd);
@@ -1123,7 +1128,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       put(clear(list), h('div', { class: 'list' }, rows));
     }
     draw();
-    const allBtn = h('button', { class: 'btn ghost block', on: { click: () => { b.items.forEach((_, ii) => { bs.checked[ii] = true; }); bs.done = true; save(); draw(); drawProgress(); } } }, icon('check'), 'Mark all done');
+    const allBtn = h('button', { class: 'btn ghost block', on: { click: () => { b.items.forEach((_, ii) => { bs.checked[ii] = true; }); bs.done = true; save(); draw(); drawProgress(); } } }, 'Mark all done');
     put(wrap, list, allBtn);
     if (!b.items.length) put(wrap, h('p', { class: 'muted' }, 'Move freely for a few minutes.'));
     return wrap;
@@ -1153,10 +1158,10 @@ function player(ctx, aw, { fresh = false } = {}) {
         h('div', { class: 'card flush' }, h('div', { class: 'list' }, W.blocks.map((b, i) => h('button', {
           class: 'li', on: { click: () => { close(); goBlock(i); } },
         },
-        h('span', { class: 'badge' + (blockDone(i) ? ' wo-badge-done' : '') }, blockDone(i) ? icon('check', 16) : String(i + 1)),
+        h('span', { class: 'badge' + (blockDone(i) ? ' wo-badge-done' : '') }, blockDone(i) ? '✓' : String(i + 1).padStart(2, '0')),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, b.title || KIND_LABEL[b.kind]), h('div', { class: 'li-sub' }, blockSub(b))),
-        i === aw.blockIndex ? h('span', { class: 'pill accent' }, 'Now') : null)))),
-        h('button', { class: 'btn ghost block', on: { click: () => { close(); addExerciseSheet(); } } }, icon('plus'), 'Add an exercise')),
+        i === aw.blockIndex ? h('span', { class: 'pill' }, 'Now') : null)))),
+        h('button', { class: 'btn ghost block', on: { click: () => { close(); addExerciseSheet(); } } }, 'Add an exercise')),
     });
     return s;
   }
@@ -1203,7 +1208,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       title: 'End workout?',
       content: ({ close }) => h('div', { class: 'stack' },
         h('p', { class: 'muted' }, `${fmtDur(elapsed())} elapsed · ${entries} ${entries === 1 ? 'entry' : 'entries'} logged.`),
-        h('button', { class: 'btn primary xl block', on: { click: () => { close(); finish(); } } }, icon('flag'), 'Finish & review'),
+        h('button', { class: 'btn primary xl block', on: { click: () => { close(); finish(); } } }, 'Finish & review'),
         h('button', { class: 'btn ghost block', on: { click: () => { close(); flush(); navigate('#/today'); } } }, 'Leave — keep it in progress'),
         h('button', {
           class: 'btn ghost block danger-text', on: {
@@ -1300,7 +1305,7 @@ function player(ctx, aw, { fresh = false } = {}) {
           saved(sess, vol);
         },
       },
-    }, icon('check'), 'Save session');
+    }, 'Save session');
 
     put(root, h('div', { class: 'wo-sum' },
       h('div', { class: 'wo-pre-top' },
@@ -1312,7 +1317,7 @@ function player(ctx, aw, { fresh = false } = {}) {
         sumStat(String(sess.sets.length), 'Sets'),
         sumStat(vol ? (u === 'metric' ? num(vol) : num(vol / 0.45359237)) : '0', `Volume (${u === 'metric' ? 'kg' : 'lb'})`),
         cDist || cTime ? sumStat(cDist ? fmtDist(cDist, u) : fmtDur(cTime), cDist ? `Cardio · ${fmtDur(cTime)}` : 'Cardio time') : sumStat(sess.readiness != null ? String(Math.round(sess.readiness)) : '—', 'Readiness')),
-      sess.prs.length ? h('div', { class: 'card wo-prs' }, h('div', { class: 'row' }, icon('trophy', 22), h('h3', null, sess.prs.length === 1 ? 'New PR' : `${sess.prs.length} new PRs`)),
+      sess.prs.length ? h('div', { class: 'card wo-prs' }, h('div', { class: 'row' }, h('span', { class: 'stamp go' }, 'PR'), h('h3', null, sess.prs.length === 1 ? 'New PR' : `${sess.prs.length} new PRs`)),
         h('ul', null, sess.prs.map((p) => h('li', null, p)))) : null,
       byEx.size || sess.cardio.length ? h('div', { class: 'card flush' }, h('div', { class: 'list' },
         [...byEx].map(([exId, e]) => h('div', { class: 'li' },
@@ -1331,11 +1336,11 @@ function player(ctx, aw, { fresh = false } = {}) {
   function saved(sess, vol) {
     const root = clear(ctx.root);
     put(root, h('div', { class: 'wo-done' },
-      h('div', { class: 'wo-done-mark', 'aria-hidden': 'true' }, icon('check', 44)),
+      h('div', { class: 'wo-done-mark lbl', 'aria-hidden': 'true' }, h('span', { class: 'go' }, '✓ '), 'Session complete'),
       h('h1', null, 'Session saved'),
       h('p', { class: 'dim' }, [`${fmtDur(sess.durationSec, { long: true })}`, sess.sets.length ? `${sess.sets.length} sets` : null,
         vol ? fmtWeight(vol, units()) + ' moved' : null, sess.prs.length ? `${sess.prs.length} PR${sess.prs.length > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')),
-      sess.prs.length ? h('div', { class: 'chips wo-done-prs' }, sess.prs.slice(0, 4).map((p) => h('span', { class: 'chip on' }, icon('trophy', 16), p))) : null,
+      sess.prs.length ? h('div', { class: 'chips wo-done-prs' }, sess.prs.slice(0, 4).map((p) => h('span', { class: 'stamp go' }, 'PR · ' + p))) : null,
       h('div', { class: 'stack wo-done-actions' },
         h('a', { class: 'btn primary xl block', href: '#/today' }, 'Back to Today'),
         h('a', { class: 'btn ghost block', href: '#/history/' + encodeURIComponent(sess.id) }, 'View in history'))));

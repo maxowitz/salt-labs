@@ -99,7 +99,7 @@ function weightSection(s, today, startISO, days) {
     : raw.length
     ? lineChart({
       series: [{ points: raw, color: 'var(--muted)', width: 0.001, dots: true, dotOpacity: 0.55 }, { points: trend, color: 'var(--accent)', width: 1.8 }],
-      xLabels: xLabelsFor(startISO, days), yFmt: (v) => num(v, 0), goal: goalKg ? toY(goalKg) : undefined, height: 170,
+      xLabels: xLabelsFor(startISO, days), yFmt: (v) => num(v, Math.abs(v - Math.round(v)) < 0.05 ? 0 : 1), goal: goalKg ? toY(goalKg) : undefined, height: 170,
       ariaLabel: `Body weight trend, latest ${num(latestTrend, 1)} ${u}`,
     })
     : h('p', { class: 'muted small center chart-empty' }, 'No weigh-ins in this range.');

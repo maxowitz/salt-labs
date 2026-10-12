@@ -1,7 +1,7 @@
 // FORGE — HYROX hub (#/hyrox): race setup, predictor & pacing, readiness, station guide, benchmarks.
 import { store, todayISO, uid, daysBetween } from '../store.js';
-import { h, icon, toast, sheet, confirmDialog, fmtDur, fmtDate, fmtDist, fmtPace, navigate, field, emptyState, clear, parseDur, seg } from '../ui.js';
-import { ring, stackBar } from '../charts.js';
+import { h, icon, toast, sheet, confirmDialog, fmtDur, fmtDate, fmtDist, fmtPace, navigate, field, emptyState, clear, parseDur, seg, fig } from '../ui.js';
+import { stackBar, ticks } from '../charts.js';
 import { STATIONS, predictRace, hyroxReadiness, paces } from '../engine/hyrox.js';
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { EXERCISES } from '../data/exercises.js';
@@ -73,7 +73,7 @@ export function render(root) {
           h('div', { class: 'eyebrow' }, 'Race day'),
           h('div', { class: 'tr-cd num' }, dtr == null ? '—' : dtr > 0 ? String(dtr) : dtr === 0 ? '0' : '✓'),
           h('div', { class: 'small muted' }, dtr == null ? 'Set your race date' : dtr > 0 ? `day${dtr === 1 ? '' : 's'} to go · ${fmtDate(raceDate, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}` : dtr === 0 ? 'It’s race day. Go get it.' : 'Race complete — set your next one')),
-        h('span', { class: 'tr-tbadge t-hyrox', style: { width: '52px', height: '52px' } }, icon('flag', 26))),
+        null),
       h('div', { class: 'stack mt' },
         field('Division', seg(DIVS, p.division || 'open', (v) => { store.update((d) => { d.profile.division = v; }); toast(`Division: ${DIVS.find((x) => x[0] === v)[1]}`); }, { label: 'Division' })),
         field('Race date', dateIn)),
@@ -132,14 +132,15 @@ export function render(root) {
     else {
       const sc = Math.round(+rd.score || 0);
       root.append(h('div', { class: 'card' },
-        h('div', { class: 'row gap' },
-          ring({ value: sc, max: 100, size: 96, stroke: 10, color: sc >= 70 ? 'var(--go)' : sc >= 45 ? 'var(--build)' : 'var(--peak)', label: String(sc), sub: '/ 100' }),
+        h('div', { class: 'row gap tr-rscore' },
+          fig(String(sc), '/100'),
           h('div', { class: 'grow small dim' }, sc >= 70 ? 'Race-ready foundations — sharpen pacing and transitions.' : sc >= 45 ? 'Getting there. Close the gaps below to raise your floor.' : 'Early days — consistency in the plan will move this fast.')),
+        ticks({ value: sc, max: 100, n: 41, label: `HYROX readiness ${sc} of 100` }),
         h('div', { class: 'stack mt' }, (rd.parts || []).map((pt) => {
           const v = Math.round(+pt.score || 0);
           return h('div', { class: 'tr-rpart' },
             h('div', { class: 'row between small' }, h('b', null, pt.label), h('span', { class: 'num muted' }, String(v))),
-            h('div', { class: 'bar thin' + (v >= 70 ? ' go' : '') }, h('i', { style: { width: Math.max(2, Math.min(100, v)) + '%' } })),
+            ticks({ value: Math.max(0, Math.min(100, v)), max: 100, n: 41, label: `${pt.label} ${v} of 100` }),
             pt.tip ? h('div', { class: 'xs muted' }, pt.tip) : null);
         }))));
     }
@@ -156,7 +157,7 @@ export function render(root) {
       temps.map((t) => h('a', { class: 'li', href: '#/session/' + encodeURIComponent(t.id) }, typeBadge(t.type, 36),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, t.title), h('div', { class: 'li-sub' }, [t.estMin ? `${t.estMin} min` : null, t.summary].filter(Boolean).join(' · '))), icon('chevR', 16))),
       h('button', { class: 'li', type: 'button', on: { click: () => benchmarkSheet() } },
-        h('span', { class: 'badge tr-hx' }, icon('timer', 18)),
+        h('span', { class: 'badge tr-hx' }, 'TIME'),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Log a station benchmark'), h('div', { class: 'li-sub' }, 'Time a station (or a 1 km run) to sharpen your prediction')),
         icon('plus', 18)))));
 
@@ -188,7 +189,7 @@ function stationCard(st, i, s) {
       h('div', { class: 'grow' },
         h('h3', null, st.name),
         h('div', { class: 'xs muted num' }, [work, spec].filter(Boolean).join(' · '))),
-      best ? h('span', { class: 'pill go' }, icon('trophy', 12), fmtDur(best.timeSec)) : null,
+      best ? h('span', { class: 'pill go' }, 'PR ' + fmtDur(best.timeSec)) : null,
       h('span', { class: 'tr-chev muted' }, icon('chevR', 16))),
     (st.tips || []).length ? h('ul', { class: 'tr-cues small mt' }, st.tips.map((t) => h('li', null, String(t)))) : null,
     subs.length ? h('div', { class: 'mt' },
@@ -196,8 +197,8 @@ function stationCard(st, i, s) {
       h('div', { class: 'chips' }, subs.map((e) => h('button', { type: 'button', class: 'chip', on: { click: () => exerciseSheet(e.id) } }, e.name)))) : null,
     best ? h('a', { class: 'xs muted tr-best', href: '#/history/' + encodeURIComponent(best.id) }, `Best ${fmtDur(best.timeSec)} · ${fmtDate(best.date)} →`) : null,
     h('div', { class: 'row gap mt' },
-      h('a', { class: 'btn ghost sm grow', href: '#/library/' + encodeURIComponent(stEx) }, icon('book', 16), 'Technique'),
-      h('button', { class: 'btn subtle sm grow', on: { click: () => benchmarkSheet(st.id) } }, icon('timer', 16), 'Log time')));
+      h('a', { class: 'btn ghost sm grow', href: '#/library/' + encodeURIComponent(stEx) }, 'Technique'),
+      h('button', { class: 'btn subtle sm grow', on: { click: () => benchmarkSheet(st.id) } }, 'Log time')));
   det.addEventListener('toggle', () => { if (det.open) hx.open.add(st.id); else hx.open.delete(st.id); });
   return det;
 }

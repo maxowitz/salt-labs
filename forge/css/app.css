@@ -513,3 +513,8 @@ body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 0; margin-right: 6px; vertical-align: 0; flex: none; }
 /* a section rule already separates; a ruled region directly under it doesn't need a second line */
 .section-head + .card, .section-head + .list, .section-head + .ledger { border-top: 0; padding-top: 0; }
+/* tap targets ≥ 44px without changing the visual size (UX r1) */
+button.rb-cell::before { content: ""; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+.toggle input { inset: -9px -4px; width: auto; height: auto; }
+a.pill { position: relative; }
+a.pill::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }

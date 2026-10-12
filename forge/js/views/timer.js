@@ -16,7 +16,7 @@ const DEFAULTS = {
   intervals: { work: 40, rest: 20, rounds: 10 },
   prep: 10,
 };
-const MODES = [['emom', 'EMOM'], ['amrap', 'AMRAP'], ['tabata', 'Tabata'], ['intervals', 'Intervals'], ['stopwatch', 'Stopwatch']];
+const MODES = [['emom', 'EMOM'], ['amrap', 'AMRAP'], ['tabata', 'Tabata'], ['intervals', 'Interval'], ['stopwatch', 'Clock']];
 const BLURB = {
   emom: 'Every minute on the minute: do the work, rest what is left of the minute.',
   amrap: 'As many rounds as possible. Tap the counter after each round.',
@@ -89,7 +89,7 @@ export async function render(root) {
           row('Rest', stepper(c.rest, { min: 0, max: 1200, step: 5, label: 'rest', fmt: secFmt, onChange: (v) => { c.rest = v; updTotal(); } })),
           row('Rounds', stepper(c.rounds, { min: 1, max: 99, label: 'rounds', onChange: (v) => { c.rounds = v; updTotal(); } })));
       } else {
-        put(card, h('div', { class: 'tm-sw-hint' }, icon('timer', 28), h('span', null, 'Start, tap Lap at each split, stop when done.')));
+        put(card, h('div', { class: 'tm-sw-hint' }, h('span', null, 'Start, tap Lap at each split, stop when done.')));
       }
       if (m !== 'stopwatch') {
         put(card, row('Get-ready countdown', seg([[0, 'Off'], [5, '5 s'], [10, '10 s']], cfg.prep, (v) => { cfg.prep = v; updTotal(); }, { label: 'Get ready countdown' })));
@@ -102,7 +102,7 @@ export async function render(root) {
       h('div', { class: 'page-head' }, h('h1', null, 'Timers')),
       h('div', { class: 'tm-modes' }, seg(MODES, cfg.mode, (v) => { cfg.mode = v; drawBody(); }, { label: 'Timer type' })),
       body,
-      h('button', { class: 'btn primary xl block tm-start', on: { click: () => { unlockAudio(); run(); } } }, icon('play'), 'Start'));
+      h('button', { class: 'btn primary xl block tm-start', on: { click: () => { unlockAudio(); run(); } } }, h('span', null, 'Start'), h('span', { class: 'k' }, '→')));
     drawBody();
   }
 
@@ -144,7 +144,7 @@ export async function render(root) {
       laps.push({ t, split: t - prev });
       haptic();
       put(clear(lapsEl), h('div', { class: 'card flush' }, h('div', { class: 'list' }, laps.slice().reverse().map((l, i) => h('div', { class: 'li' },
-        h('span', { class: 'badge num' }, String(laps.length - i)),
+        h('span', { class: 'badge num' }, String(laps.length - i).padStart(2, '0')),
         h('div', { class: 'li-main num' }, fmtClock(l.split)),
         h('div', { class: 'li-end num muted' }, fmtClock(l.t)))))));
     }
@@ -176,7 +176,7 @@ export async function render(root) {
       rc ? rc.el : null,
       ctl.el,
       mode === 'stopwatch' ? lapsEl : null,
-      h('button', { class: 'btn ghost block', on: { click: () => run() } }, icon('repeat'), 'Restart')));
+      h('button', { class: 'btn ghost block', on: { click: () => run() } }, 'Restart')));
     upd();
     tick = setInterval(upd, 200);
   }

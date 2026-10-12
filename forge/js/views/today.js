@@ -249,7 +249,7 @@ function sessionSummary(sess) {
   return { vol, dist, sets: (sess.sets || []).length };
 }
 
-const BLOCK_LETTER = (i) => String.fromCharCode(65 + (i % 26));
+const BLOCK_LETTER = (i) => String(i + 1).padStart(2, '0');
 
 function statRow(items) {
   return h('div', { class: 'stat-row' }, items.filter(Boolean).map(([v, unit, k]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, v, unit ? h('small', null, unit) : null), h('span', { class: 'k' }, k))));

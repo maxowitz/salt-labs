@@ -1,8 +1,9 @@
 // FORGE — Train (#/train, #/train/week/<n>): plan week view, phase timeline, more sessions, quick logging.
 import { store, todayISO, uid, daysBetween } from '../store.js';
 import {
-  h, icon, toast, sheet, fmtDist, fmtDur, fmtDate, navigate, field, emptyState, clear, num, parseDur, seg, M_PER_MI,
+  h, icon, toast, sheet, fmtDist, fmtDur, fmtDate, navigate, field, emptyState, clear, num, parseDur, seg, M_PER_MI, masthead, sectionHead,
 } from '../ui.js';
+import { ribbon, ticks } from '../charts.js';
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { weekSummary } from '../engine/coach.js';
 import {
@@ -46,16 +47,18 @@ export function render(root, { args }) {
 }
 
 function header(s, extra) {
-  return h('div', { class: 'page-head' },
-    h('div', null, h('div', { class: 'eyebrow' }, s.profile.name ? `Let's work, ${s.profile.name}` : 'Training plan'), h('h1', null, 'Train')),
-    extra || null);
+  return h('div', { class: 'tr-head' },
+    masthead(fmtDate(todayISO(), { weekday: 'short', day: 'numeric', month: 'short' })),
+    h('div', { class: 'page-head' },
+      h('h1', null, 'Train'),
+      extra || null));
 }
 
 function renderNoPlan(root, s) {
   root.append(header(s));
   if (s.activeWorkout) root.append(activeBanner(s));
   root.append(h('div', { class: 'card hero stack' },
-    h('div', { class: 'row gap' }, h('span', { class: 'tr-tbadge t-hyrox', style: { width: '48px', height: '48px' } }, icon('calendar', 24)),
+    h('div', { class: 'row gap' },
       h('div', { class: 'grow' }, h('h2', null, 'No training plan yet'), h('p', { class: 'small muted' }, 'Build a periodised Base → Build → Peak → Taper plan around your bells, cardio kit and race date.'))),
     h('button', {
       class: 'btn primary xl block', on: {
@@ -72,7 +75,7 @@ function renderNoPlan(root, s) {
           }
         },
       },
-    }, icon('zap', 20), 'Generate my plan')));
+    }, 'Generate my plan')));
   root.append(quickActions(s), moreSessions(s));
 }
 
@@ -81,7 +84,7 @@ function activeBanner(s) {
   return h('a', { class: 'card tr-live', href: '#/workout/' + encodeURIComponent(s.activeWorkout.workoutId) },
     h('span', { class: 'tr-live-dot', 'aria-hidden': 'true' }),
     h('div', { class: 'grow' }, h('div', { class: 'eyebrow go' }, 'In progress'), h('div', { class: 'tr-live-t' }, w?.title || 'Workout')),
-    h('span', { class: 'btn go sm' }, icon('play', 16), 'Resume'));
+    h('span', { class: 'btn primary sm' }, 'Resume →'));
 }
 
 function renderPlan(root, s, args) {
@@ -96,13 +99,13 @@ function renderPlan(root, s, args) {
   const dtr = raceDate ? daysBetween(today, raceDate) : null;
   const curPhase = weeks[cur]?.phase;
 
-  root.append(header(s, h('a', { class: 'icon-btn filled', href: '#/history?from=train', 'aria-label': 'Training history' }, icon('list', 20))));
+  root.append(header(s, h('a', { class: 'link-btn', href: '#/history?from=train', 'aria-label': 'Training history' }, 'History →')));
 
   // status pills
   root.append(h('div', { class: 'row wrap tr-pills' },
     phasePill(curPhase),
     h('span', { class: 'pill' }, `Week ${cur + 1} of ${weeks.length}`),
-    dtr == null ? null : h('a', { class: 'pill', href: '#/hyrox' }, icon('flag', 12), dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} to race` : dtr === 0 ? 'Race day!' : 'Race complete')));
+    dtr == null ? null : h('a', { class: 'pill', href: '#/hyrox' }, dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} to race` : dtr === 0 ? 'Race day!' : 'Race complete')));
 
   if (s.activeWorkout) root.append(activeBanner(s));
 
@@ -143,7 +146,7 @@ function renderPlan(root, s, args) {
     },
     h('span', { class: 'tr-dow' }, fmtDate(d.date, { weekday: 'short' }).slice(0, 3)),
     h('span', { class: 'tr-dnum num' }, String(+d.date.slice(8))),
-    h('span', { class: `tr-mark t-${w?.type || 'rest'}`, 'aria-hidden': 'true' }, st.state === 'done' ? icon('check', 12) : st.state === 'missed' ? icon('x', 11) : null));
+    h('span', { class: `tr-mark t-${w?.type || 'rest'}`, 'aria-hidden': 'true' }, st.state === 'done' ? '✓' : st.state === 'missed' ? '✕' : w ? (typeMeta(w.type).short || '') : '—'));
   }));
   root.append(strip);
 
@@ -153,7 +156,7 @@ function renderPlan(root, s, args) {
   let sum = null;
   try { sum = weekSummary(s.sessions, first); } catch {}
   root.append(h('div', { class: 'tr-wsum' },
-    h('div', { class: 'tr-wsum-bar' }, h('div', { class: 'bar go thin' }, h('i', { style: { width: `${planned.length ? (100 * doneCount) / planned.length : 0}%` } }))),
+    h('div', { class: 'tr-wsum-bar' }, ticks({ value: doneCount, max: Math.max(1, planned.length), n: 41, label: `${doneCount} of ${planned.length} sessions done` })),
     h('div', { class: 'row between xs muted num' },
       h('span', null, h('b', { class: 'dim' }, `${doneCount}/${planned.length}`), ' sessions done'),
       sum ? h('span', null, [sum.minutes ? `${Math.round(sum.minutes)} min` : null, (sum.runM || sum.cardioM) ? fmtDist((sum.runM || 0) + (sum.cardioM || 0), s.profile.units) : null, sum.kbVolumeKg ? `${num(sum.kbVolumeKg / 1000, 1)} t moved` : null].filter(Boolean).join(' · ')) : null)));
@@ -176,17 +179,12 @@ function phaseTimeline(plan, wi, cur, today) {
     const off = daysBetween(firstDay, today);
     if (off >= 0 && off < total) pos = ((off + 0.5) / total) * 100;
   }
-  return h('div', { class: 'card tight tr-tl' },
-    h('div', { class: 'tr-tl-labels' }, groups.map((g) => h('span', { class: `tr-tl-lab ph-${g.phase}`, style: { flex: String(g.n) } }, g.n >= 2 ? phaseLabel(g.phase) : phaseLabel(g.phase).slice(0, 1)))),
-    h('div', { class: 'tr-tl-bar' },
-      weeks.map((w, i) => h('a', {
-        class: `tr-tl-seg ph-${w.phase}${i < cur ? ' past' : ''}${i === wi ? ' view' : ''}${w.deload ? ' deload' : ''}`,
-        href: `#/train/week/${i + 1}`, 'aria-label': `Week ${i + 1}: ${phaseLabel(w.phase)}${w.deload ? ' (deload)' : ''}`,
-      })),
-      pos != null ? h('span', { class: 'tr-tl-now', style: { left: pos + '%' }, title: 'Today' }) : null),
-    h('div', { class: 'row between xs muted tr-tl-foot' },
+  return h('div', { class: 'tr-tl' },
+    ribbon({ weeks, current: cur, selected: wi, onPick: (i) => navigate(`#/train/week/${i + 1}`), ariaLabel: 'Plan weeks — pick a week' }),
+    h('div', { class: 'row between data tr-tl-foot' },
       h('span', null, firstDay ? fmtDate(firstDay, { month: 'short', day: 'numeric' }) : ''),
-      h('span', null, plan.raceDate ? h('span', null, icon('flag', 11), ' ', fmtDate(plan.raceDate, { month: 'short', day: 'numeric' })) : lastDay ? fmtDate(lastDay, { month: 'short', day: 'numeric' }) : '')));
+      pos != null ? h('span', null, `Week ${cur + 1} of ${weeks.length}`) : null,
+      h('span', null, plan.raceDate ? `Race ${fmtDate(plan.raceDate, { month: 'short', day: 'numeric' })}` : lastDay ? fmtDate(lastDay, { month: 'short', day: 'numeric' }) : '')));
 }
 
 function dayCard(d, st, s, today) {
@@ -197,14 +195,14 @@ function dayCard(d, st, s, today) {
     const logged = st.state === 'done' ? st.session : null;
     return h('div', { class: `tr-rest${d.date === today ? ' is-today' : ''}`, 'data-date': d.date },
       h('div', { class: 'tr-when' }, h('b', null, when), h('span', { class: 'muted' }, ' · ' + dateLbl)),
-      logged ? h('a', { class: 'tr-rest-log', href: '#/history/' + logged.id }, icon('check', 14), `Logged: ${logged.title || 'session'}`) :
+      logged ? h('a', { class: 'tr-rest-log', href: '#/history/' + logged.id }, `✓ Logged: ${logged.title || 'session'}`) :
         h('span', { class: 'muted small' }, 'Rest & recover', recoveryLink()));
   }
   const meta = typeMeta(w.type);
   const done = st.state === 'done';
   return h('div', { class: `tr-dcard-wrap${d.date === today ? ' is-today' : ''}`, 'data-date': d.date },
     h('div', { class: 'tr-when' }, h('b', null, when), h('span', { class: 'muted' }, ' · ' + dateLbl),
-      done ? h('span', { class: 'pill go' }, icon('check', 12), 'Done') : st.state === 'missed' ? h('span', { class: 'pill danger' }, 'Missed') : null),
+      done ? h('span', { class: 'pill go' }, '✓ Done') : st.state === 'missed' ? h('span', { class: 'pill danger' }, 'Missed') : null),
     h('div', { class: `card tr-dcard s-${st.state}` },
       h('a', { class: 'tr-dcard-link', href: '#/session/' + encodeURIComponent(w.id) },
         h('div', { class: 'row gap top' }, typeBadge(w.type, 42),
@@ -212,9 +210,9 @@ function dayCard(d, st, s, today) {
             h('div', { class: 'tr-dc-title' }, w.title),
             h('div', { class: 'xs muted tr-dc-meta' }, [meta.label, w.estMin ? `${w.estMin} min` : null].filter(Boolean).join(' · ')),
             blockSummary(w) ? h('div', { class: 'small dim tr-dc-blocks' }, blockSummary(w)) : null),
-          done ? h('span', { class: 'tr-donecheck', 'aria-label': 'Completed' }, icon('check', 18)) : h('span', { class: 'muted' }, icon('chevR', 18)))),
+          done ? h('span', { class: 'tr-donecheck', 'aria-label': 'Completed' }, '✓') : h('span', { class: 'muted' }, icon('chevR', 18)))),
       d.date === today && !done ? h('div', { class: 'row gap tr-dc-actions' },
-        h('button', { type: 'button', class: 'btn primary sm grow', on: { click: () => startWorkout(w.id, wouldScale(w)) } }, icon('play', 16), s.activeWorkout?.workoutId === w.id ? 'Resume' : 'Start'),
+        h('button', { type: 'button', class: 'btn primary sm grow', on: { click: () => startWorkout(w.id, wouldScale(w)) } }, s.activeWorkout?.workoutId === w.id ? 'Resume' : 'Start'),
         h('a', { class: 'btn ghost sm', href: '#/session/' + encodeURIComponent(w.id) }, 'Details')) : null));
 }
 
@@ -227,9 +225,9 @@ const addDay = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); retur
 
 function quickActions(s) {
   const tile = (ic, label, sub, onClick, href) => h(href ? 'a' : 'button', { class: 'tr-qa', href: href || null, type: href ? null : 'button', on: onClick ? { click: onClick } : null },
-    h('span', { class: 'tr-qa-ic' }, icon(ic, 20)), h('span', { class: 'tr-qa-l' }, label), h('span', { class: 'tr-qa-s' }, sub));
+    h('span', { class: 'tr-qa-l' }, label), h('span', { class: 'tr-qa-s' }, sub));
   return h('div', null,
-    h('div', { class: 'section-head' }, h('h2', null, 'Quick actions')),
+    sectionHead('Quick actions', null, 1),
     h('div', { class: 'tr-qagrid' },
       tile('timer', 'Timers', 'Interval timers', null, '#/timer'),
       tile('book', 'Library', 'Technique & cues', null, '#/library'),
@@ -257,9 +255,9 @@ function moreSessions() {
     h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, t.title), h('div', { class: 'li-sub' }, [t.estMin ? `${t.estMin} min` : null, t.summary || blockSummary(t)].filter(Boolean).join(' · '))),
     icon('chevR', 16));
   return h('div', null,
-    h('div', { class: 'section-head' }, h('h2', null, 'More sessions')),
+    sectionHead('More sessions', null, 2),
     h('a', { class: 'card clickable tr-free', href: free ? '#/session/' + encodeURIComponent(free.id) : '#/workout/free' },
-      h('span', { class: 'tr-qa-ic' }, icon('plus', 22)),
+      h('span', { class: 'tr-tbadge' }, '+'),
       h('div', { class: 'grow' }, h('div', { class: 'tr-dc-title' }, free?.title || 'Free workout'), h('div', { class: 'xs muted' }, 'Blank session — log anything as you go')),
       icon('chevR', 18)),
     temps.length ? groups.filter((g) => g.items.length).map((g) => h('div', { class: 'mt' }, h('h4', { class: 'tr-gh' }, g.label), h('div', { class: 'card flush' }, h('div', { class: 'list' }, g.items.map(row)))))
@@ -343,7 +341,7 @@ export function logCardioSheet(preset = {}) {
             toast(sess.prs?.length ? `PR · ${sess.prs[0]}` : `${label} logged ✓`, { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
           }),
         },
-      }, icon('check'), 'Save')),
+      }, 'Save')),
   });
 }
 
@@ -411,7 +409,7 @@ export function logPastSheet() {
             toast('Workout logged ✓', { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
           }),
         },
-      }, icon('check'), 'Save workout')),
+      }, 'Save workout')),
   });
 }
 

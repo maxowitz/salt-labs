@@ -24,6 +24,8 @@ function ex(id) {
 }
 const allExercises = () => (Array.isArray(EXERCISES) ? EXERCISES : []);
 export const catIcon = (c) => CAT_ICON[c] || 'bell';
+const CAT_CODE = { kb: 'KB', run: 'RUN', erg: 'ERG', bodyweight: 'BW', hyrox: 'HRX', mobility: 'MOB' };
+const catCode = (c) => CAT_CODE[c] || String(c || 'EX').slice(0, 3).toUpperCase();
 
 function stationFor(e) {
   if (!e?.hyrox) return null;
@@ -79,7 +81,7 @@ export function exerciseSheet(exId) {
       listBlock('Cues', e.cues, 'ol'),
       listBlock('Common faults', e.faults, 'ul', 'tr-faults'),
       (e.muscles || []).length ? h('p', { class: 'small dim' }, h('b', null, 'Muscles: '), e.muscles.join(', ')) : null,
-      h('button', { class: 'btn ghost block', on: { click: () => { close(); setTimeout(() => navigate('#/library/' + encodeURIComponent(exId)), 0); } } }, icon('book', 18), 'Open in library')),
+      h('button', { class: 'btn ghost block', on: { click: () => { close(); setTimeout(() => navigate('#/library/' + encodeURIComponent(exId)), 0); } } }, 'Open in library')),
   });
 }
 
@@ -147,7 +149,7 @@ function renderList(root) {
       return;
     }
     list.append(h('div', { class: 'list' }, rows.map((e) => h('a', { class: 'li', href: '#/library/' + encodeURIComponent(e.id) },
-      h('span', { class: `tr-cbadge c-${e.category}` }, icon(catIcon(e.category), 18)),
+      h('span', { class: `tr-cbadge c-${e.category}` }, catCode(e.category)),
       h('div', { class: 'li-main' },
         h('div', { class: 'li-title' }, e.name),
         h('div', { class: 'li-sub' }, [cap(e.pattern), (e.muscles || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))),
@@ -184,7 +186,7 @@ function renderDetail(root, exId) {
 
     root.append(h('div', { class: 'card hero' },
       h('div', { class: 'row gap top' },
-        h('span', { class: `tr-cbadge lg c-${e.category}` }, icon(catIcon(e.category), 26)),
+        h('span', { class: `tr-cbadge lg c-${e.category}` }, catCode(e.category)),
         h('div', { class: 'grow' }, h('h1', { class: 'tr-stitle' }, e.name), h('div', { class: 'chips mt' }, metaPills(e)))),
       (e.muscles || []).length ? h('p', { class: 'small dim mt' }, h('b', null, 'Muscles: '), e.muscles.join(', ')) : null));
 
@@ -206,9 +208,9 @@ function renderDetail(root, exId) {
     const reg = e.regression ? ex(e.regression) : null, prog = e.progression ? ex(e.progression) : null;
     if (reg || prog || station) {
       root.append(h('div', { class: 'card flush mt' }, h('div', { class: 'list' },
-        reg ? h('a', { class: 'li', href: '#/library/' + encodeURIComponent(reg.id) }, h('span', { class: 'badge' }, icon('chevL', 16)), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'Regression — easier'), h('div', { class: 'li-title' }, reg.name)), icon('chevR', 16)) : null,
-        prog ? h('a', { class: 'li', href: '#/library/' + encodeURIComponent(prog.id) }, h('span', { class: 'badge' }, icon('chevR', 16)), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'Progression — harder'), h('div', { class: 'li-title' }, prog.name)), icon('chevR', 16)) : null,
-        station ? h('a', { class: 'li', href: '#/hyrox' }, h('span', { class: 'badge tr-hx' }, icon('flag', 16)), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'HYROX station'), h('div', { class: 'li-title' }, station.name)), icon('chevR', 16)) : null)));
+        reg ? h('a', { class: 'li', href: '#/library/' + encodeURIComponent(reg.id) }, h('span', { class: 'badge' }, 'EASY'), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'Regression — easier'), h('div', { class: 'li-title' }, reg.name)), icon('chevR', 16)) : null,
+        prog ? h('a', { class: 'li', href: '#/library/' + encodeURIComponent(prog.id) }, h('span', { class: 'badge' }, 'HARD'), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'Progression — harder'), h('div', { class: 'li-title' }, prog.name)), icon('chevR', 16)) : null,
+        station ? h('a', { class: 'li', href: '#/hyrox' }, h('span', { class: 'badge tr-hx' }, 'HRX'), h('div', { class: 'li-main' }, h('div', { class: 'li-sub' }, 'HYROX station'), h('div', { class: 'li-title' }, station.name)), icon('chevR', 16)) : null)));
     }
 
     // history

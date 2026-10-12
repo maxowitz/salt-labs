@@ -62,7 +62,7 @@ function renderList(root) {
       return h('a', { class: 'li', href: '#/history/' + encodeURIComponent(x.id) + q() },
         typeBadge(x.type, 36),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, x.title || typeMeta(x.type).label), h('div', { class: 'li-sub' }, sub)),
-        arr2(x.prs).length ? h('span', { class: 'pill go', title: arr2(x.prs).join('\n') }, icon('trophy', 12), String(arr2(x.prs).length)) : null,
+        arr2(x.prs).length ? h('span', { class: 'pill go', title: arr2(x.prs).join('\n') }, `PR ${arr2(x.prs).length}`) : null,
         h('span', { class: 'muted' }, icon('chevR', 16)));
     }))));
   }
@@ -92,11 +92,11 @@ function renderDetail(root, id) {
       vol ? stat(fmtWeight(vol, units), 'Volume') : dist ? stat(fmtDist(dist, units), 'Distance') : stat(String(sets.length), 'Sets'),
       reps ? stat(num(reps), 'Reps') : stat(x.rpe ? String(x.rpe) : '–', 'RPE'),
       reps ? stat(x.rpe ? String(x.rpe) : '–', 'RPE') : null),
-    w ? h('a', { class: 'link-btn tr-plink', href: '#/session/' + encodeURIComponent(w.id) }, icon('calendar', 14), ` Planned: ${w.title} →`) : null,
+    w ? h('a', { class: 'link-btn tr-plink', href: '#/session/' + encodeURIComponent(w.id) }, `Planned: ${w.title} →`) : null,
     x.readiness != null ? h('div', { class: 'xs muted mt' }, `Readiness that day: ${Math.round(x.readiness)}/100`) : null));
 
   if (arr2(x.prs).length) {
-    root.append(h('div', { class: 'callout go mt stack sm' }, h('div', { class: 'row' }, icon('trophy', 18), h('b', null, `${arr2(x.prs).length} personal record${arr2(x.prs).length > 1 ? 's' : ''}`)),
+    root.append(h('div', { class: 'callout go mt stack sm' }, h('div', { class: 'row' }, h('span', { class: 'stamp go' }, 'PR'), h('b', null, `${arr2(x.prs).length} personal record${arr2(x.prs).length > 1 ? 's' : ''}`)),
       h('ul', { class: 'tr-cues small' }, arr2(x.prs).map((p) => h('li', null, String(p))))));
   }
 
@@ -132,7 +132,7 @@ function renderDetail(root, id) {
       const pace = c.distanceM > 0 && c.timeSec > 0 ? (c.timeSec / c.distanceM) * 1000 : null;
       const erg = c.mode === 'row' || c.mode === 'ski';
       return h('div', { class: 'li' },
-        h('span', { class: 'badge' }, icon(c.mode === 'run' || c.mode === 'walk' ? 'run' : 'zap', 18)),
+        h('span', { class: 'badge' }, String(c.mode || 'run').slice(0, 3).toUpperCase()),
         h('div', { class: 'li-main' },
           h('div', { class: 'li-title' }, `${cap(c.mode)}${c.distanceM ? ' · ' + fmtDist(c.distanceM, erg ? 'metric' : units) : ''}`),
           h('div', { class: 'li-sub num' }, [c.timeSec ? fmtDur(c.timeSec) : null, pace ? (erg ? `${fmtDur(pace / 2)} /500 m` : fmtPace(pace, units)) : null, c.avgHr ? `${c.avgHr} bpm` : null].filter(Boolean).join(' · '))));
@@ -148,7 +148,7 @@ function renderDetail(root, id) {
     h('div', { class: 'xs muted mt' }, `Session RPE: ${x.rpe || '–'}`)));
 
   root.append(h('div', { class: 'row gap mt-lg' },
-    h('button', { class: 'btn ghost grow', on: { click: () => editSheet(x) } }, icon('edit', 18), 'Edit RPE & notes'),
+    h('button', { class: 'btn ghost grow', on: { click: () => editSheet(x) } }, 'Edit RPE & notes'),
     h('button', {
       class: 'btn ghost grow tr-del', on: {
         click: async () => {
