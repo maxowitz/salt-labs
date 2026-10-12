@@ -171,7 +171,7 @@ function headerBlock(s, today) {
   return h('header', { class: 'today-head' },
     h('div', { class: 'today-hello' },
       h('div', { class: 'eyebrow' }, fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })),
-      h('h1', null, greeting(), name ? ',' : '', name ? h('br') : null, name ? h('span', { class: 'accent' }, name) : null),
+      h('h1', null, greeting(), name ? ',' : '', name ? h('br') : null, name ? h('span', { class: 'today-name' }, name) : null),
       ph ? h('div', { class: 'row wrap mt' },
         h('span', { class: `pill ${ph.phase}` }, P[ph.phase]?.label || ph.phase),
         h('span', { class: 'pill' }, ph.before ? 'Starts soon' : ph.after ? 'Plan complete' : `Week ${ph.weekNo} of ${ph.total}`),
@@ -299,7 +299,7 @@ function sessionCard(s, today) {
   const blocks = (w.blocks || []).filter((b) => b.kind !== 'warmup' && b.kind !== 'cooldown');
   return h('section', { class: `card hero session-card type-${w.type || 'strength'}` },
     h('div', { class: 'row between' },
-      h('div', { class: 'row' }, h('span', { class: 'pill accent' }, icon(tm.icon, 13), tm.label), w.phase ? h('span', { class: `pill ${w.phase}` }, w.phase) : null),
+      h('div', { class: 'row' }, h('span', { class: 'pill' }, icon(tm.icon, 13), tm.label), w.phase ? h('span', { class: `pill ${w.phase}` }, w.phase) : null),
       h('span', { class: 'muted small num' }, `~${w.estMin || 45} min`)),
     h('h2', { class: 'session-title' }, w.title || 'Today’s session'),
     w.summary ? h('p', { class: 'small dim' }, w.summary) : null,
