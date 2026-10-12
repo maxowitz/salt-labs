@@ -246,8 +246,14 @@ export function stepper(value, { min = 0, max = 9999, step = 1, onChange, label,
     h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Increase ' + (label || ''), on: { click: () => { haptic(); set(v + step); } } }, icon('plus')));
 }
 
+let fieldSeq = 0;
 export function field(label, input, hint) {
-  return h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), input, hint ? h('span', { class: 'field-hint' }, hint) : null);
+  // A <label> forwards clicks to its first button, which breaks seg/stepper groups — only wrap single form controls.
+  const single = input instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA)$/.test(input.tagName);
+  if (single) return h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), input, hint ? h('span', { class: 'field-hint' }, hint) : null);
+  const id = 'fl' + ++fieldSeq;
+  return h('div', { class: 'field', role: 'group', 'aria-labelledby': id },
+    h('span', { class: 'field-label', id }, label), input, hint ? h('span', { class: 'field-hint' }, hint) : null);
 }
 
 export function emptyState(iconName, title, text, action) {
