@@ -108,16 +108,17 @@ export function render(root) {
         h('div', { class: 'callout info small mb' }, h('b', null, `Run ${fmtPace(runAvg, p.units)}`), ` (${fmtDur(runAvg)} per 1 km). Go out no faster than this on run 1 — the first km always feels easy.`, pz?.race ? ` Your 5 km-derived race pace: ${fmtPace(Array.isArray(pz.race) ? pz.race[0] : pz.race, p.units)}.` : ''),
         h('table', { class: 'tr-table' },
           h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, 'Segment'), h('th', { class: 'right' }, 'Target'), h('th', { class: 'right' }, 'Clock'))),
-          h('tbody', null, splits.map((x, i) => {
+          h('tbody', null, (() => { let n = 0; return splits.map((x) => {
             clock += +x.sec || 0;
             const isRun = /run/i.test(x.name), isRox = /rox/i.test(x.name);
             if (!hx.allSplits && !isRun) return null;
+            n++;
             return h('tr', { class: isRun ? 'run' : isRox ? 'rox' : 'st' },
-              h('td', { class: 'muted' }, String(i + 1)),
+              h('td', { class: 'muted' }, String(n)),
               h('td', null, h('span', { class: `dot ${isRun ? 'd-run' : isRox ? 'd-rox' : 'd-st'}` }), ' ', x.name),
               h('td', { class: 'right num' }, fmtDur(x.sec)),
               h('td', { class: 'right num muted' }, fmtDur(clock)));
-          })),
+          }); })()),
           h('tfoot', null, h('tr', null, h('td', null), h('td', null, 'Finish'), h('td', null), h('td', { class: 'right num' }, fmtDur(pred.totalSec))))),
         h('button', { type: 'button', class: 'btn ghost sm block mt', 'aria-expanded': String(hx.allSplits), on: { click: () => { hx.allSplits = !hx.allSplits; draw(); } } },
           hx.allSplits ? 'Runs only' : `Show all ${splits.length} splits`)));
