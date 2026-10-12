@@ -51,6 +51,17 @@ function cardioMode(id) {
 const isKbEx = (id) => ex(id).category === 'kb' || /^kb[-_]/.test(id || '');
 const isDouble = (id) => !!ex(id).double || /double|^kb-?2|2kb|-x2/.test(id || '');
 
+/** "24 kg", or "2 × 24 kg" for double-bell lifts. */
+const bellText = (kg, exId) => (isDouble(exId) ? `2 × ${fmtBell(kg)}` : fmtBell(kg));
+
+function pairedBells(profile) {
+  const fromCoach = safe(() => coach.pairedBells?.(profile), null);
+  if (Array.isArray(fromCoach)) return fromCoach;
+  const m = new Map();
+  for (const b of profile?.bells || []) if (+b.kg > 0) m.set(+b.kg, (m.get(+b.kg) || 0) + Math.max(1, +b.count || 1));
+  return [...m].filter(([, n]) => n >= 2).map(([kg]) => kg).sort((a, b) => a - b);
+}
+
 function ownedBells(profile) {
   const fromCoach = safe(() => coach.ownedBells?.(profile), null);
   if (Array.isArray(fromCoach) && fromCoach.length) return fromCoach;
@@ -335,6 +346,8 @@ function player(ctx, aw, { fresh = false } = {}) {
   const profile = st.profile || {};
   const priorSessions = st.sessions || [];
   const bells = ownedBells(profile);
+  const pairs = pairedBells(profile);
+  const bellPool = (exId) => (isDouble(exId) && pairs.length ? pairs : bells);
   aw.blocks = aw.blocks || {};
   aw.log = Array.isArray(aw.log) ? aw.log : [];
   aw.workout.blocks = Array.isArray(aw.workout.blocks) ? aw.workout.blocks : [];
@@ -568,7 +581,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       } else {
         kg = it.kg ?? safe(() => coach.suggestWeight?.(it.exId, profile, priorSessions), null) ?? last?.kg ?? null;
       }
-      if (kg == null && !tooHeavy && isKbEx(it.exId) && bells.length) kg = bells[0];
+      if (kg == null && !tooHeavy && isKbEx(it.exId) && bellPool(it.exId).length) kg = bellPool(it.exId)[0];
       const track = ex(it.exId).track || 'reps';
       const hasT = it.reps != null || it.timeSec != null || it.distanceM != null;
       bs.draft[ii] = {
@@ -608,8 +621,8 @@ function player(ctx, aw, { fresh = false } = {}) {
     const n = setCount(bi, ii);
     const rest = it.restSec ?? b.restSec ?? 90;
 
-    const bellRow = showBells ? bellPicker(d.kg, (kg) => { d.kg = kg; d.tooHeavy = false; save(); redraw(); }) : null;
-    const hint = [d.kg ? `${fmtBell(d.kg)} = ${bellLb(d.kg)}` : null, d.reason || null].filter(Boolean).join(' · ');
+    const bellRow = showBells ? bellPicker(d.kg, (kg) => { d.kg = kg; d.tooHeavy = false; save(); redraw(); }, it.exId) : null;
+    const hint = [d.kg ? `${bellText(d.kg, it.exId)} = ${isDouble(it.exId) ? '2 × ' : ''}${bellLb(d.kg)}` : null, d.reason || null].filter(Boolean).join(' · ');
     const regress = d.tooHeavy && d.kg == null ? h('div', { class: 'callout wo-regress' },
       h('div', null, 'Your lightest bell is too heavy for this lift today.'),
       e.regression ? h('button', { class: 'btn sm mt', on: { click: () => { it.exId = e.regression; delete aw.blocks[bi].draft[ii]; save(); redraw(); } } }, `Swap to ${exName(e.regression)}`) : null,
@@ -626,7 +639,7 @@ function player(ctx, aw, { fresh = false } = {}) {
           h('h3', { class: 'wo-ex-name' }, e.name),
           h('div', { class: 'wo-ex-target' },
             [it.sets ? `${it.sets} × ${it.reps ?? (it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? it.distanceM + ' m' : '')}${it.perSide ? ' / side' : ''}` : itemTarget(it, b), `rest ${fmtDur(rest)}`, it.note].filter(Boolean).join(' · ')),
-          last ? h('div', { class: 'wo-ghost' }, `Last: ${last.kg ? fmtBell(last.kg) + ' × ' : ''}${last.reps ?? (last.timeSec ? fmtDur(last.timeSec) : '')}${last.rpe ? ' @ RPE ' + last.rpe : ''}${last.date ? ' · ' + last.date.slice(5) : ''}`) : null),
+          last ? h('div', { class: 'wo-ghost' }, `Last: ${last.kg ? bellText(last.kg, it.exId) + ' × ' : ''}${last.reps ?? (last.timeSec ? fmtDur(last.timeSec) : '')}${last.rpe ? ' @ RPE ' + last.rpe : ''}${last.date ? ' · ' + last.date.slice(5) : ''}`) : null),
         infoBtn(it.exId)),
       regress,
       bellRow,
@@ -651,12 +664,12 @@ function player(ctx, aw, { fresh = false } = {}) {
       else if (dist != null) edit = stepper(dist, { min: 5, max: 5000, step: 5, label: 'metres', fmt: (v) => `${v} m`, onChange: (v) => { d.distanceM = v; save(); } });
     }
     const val = h('div', { class: 'wo-set-val' },
-      h('span', { class: 'wo-set-kg num' }, kg ? [fmtBell(kg).replace(/\s*kg$/, ''), h('small', { class: 'unit' }, 'kg')] : d.tooHeavy && !done ? '—' : 'BW'),
+      h('span', { class: 'wo-set-kg num' }, kg ? [isDouble(it.exId) ? h('small', { class: 'unit' }, '2×') : null, fmtBell(kg).replace(/\s*kg$/, ''), h('small', { class: 'unit' }, 'kg')] : d.tooHeavy && !done ? '—' : 'BW'),
       h('span', { class: 'wo-x' }, '×'),
       edit || h('span', { class: 'wo-set-reps num' }, reps != null ? String(reps) : amount, reps != null && it.perSide ? h('small', { class: 'wo-side' }, ' / side') : null));
     const check = h('button', {
       class: 'wo-check' + (done ? ' done' : '') + (isCur ? ' cur' : ''), type: 'button',
-      'aria-label': done ? `Undo set ${si + 1}` : `Log set ${si + 1}: ${kg ? fmtBell(kg) : 'bodyweight'} × ${amount}`,
+      'aria-label': done ? `Undo set ${si + 1}` : `Log set ${si + 1}: ${kg ? bellText(kg, it.exId) : 'bodyweight'} × ${amount}`,
       on: {
         click: () => {
           if (done) {
@@ -665,7 +678,7 @@ function player(ctx, aw, { fresh = false } = {}) {
             toast('Set removed');
           } else {
             aw.log.push({
-              type: 'set', block: bi, item: ii, set: si, exId: it.exId, kg: kg ?? null, reps: reps ?? null, timeSec: reps == null ? timeSec ?? null : null,
+              type: 'set', block: bi, item: ii, set: si, blockKind: W.blocks[bi].kind || 'strength', targetReps: it.reps ?? null, exId: it.exId, kg: kg ?? null, reps: reps ?? null, timeSec: reps == null ? timeSec ?? null : null,
               distanceM: reps == null && timeSec == null ? dist ?? null : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(),
               ...(it.benchmark ? { benchmark: true } : {}),
             });
@@ -706,22 +719,26 @@ function player(ctx, aw, { fresh = false } = {}) {
     for (let ii = 0; ii < b.items.length; ii++) for (let si = 0; si < setCount(bi, ii); si++) {
       if (!logged.some((l) => l.item === ii && l.set === si)) {
         const d = draftFor(bi, ii);
-        return `Next: ${exName(b.items[ii].exId)} · set ${si + 1} · ${d.kg ? fmtBell(d.kg) + ' × ' : ''}${d.reps ?? (d.timeSec != null ? fmtDur(d.timeSec) : d.distanceM != null ? d.distanceM + ' m' : '')}`;
+        return `Next: ${exName(b.items[ii].exId)} · set ${si + 1} · ${d.kg ? bellText(d.kg, b.items[ii].exId) + ' × ' : ''}${d.reps ?? (d.timeSec != null ? fmtDur(d.timeSec) : d.distanceM != null ? d.distanceM + ' m' : '')}`;
       }
     }
     return '';
   }
 
-  function bellPicker(value, onPick) {
-    if (!bells.length) {
+  function bellPicker(value, onPick, exId) {
+    const pool = bellPool(exId);
+    if (!pool.length) {
       return h('div', { class: 'wo-bells-step' }, stepper(value || 16, { min: 2, max: 100, step: 2, label: 'kg', fmt: (v) => `${v} kg`, onChange: onPick }));
     }
-    const opts = [...new Set([...bells, ...(value && !bells.includes(value) ? [value] : [])])].sort((a, b) => a - b);
-    return h('div', { class: 'chips scroll wo-bells', role: 'radiogroup', 'aria-label': 'Kettlebell' },
+    const opts = [...new Set([...pool, ...(value && !pool.includes(value) ? [value] : [])])].sort((a, b) => a - b);
+    const dbl = isDouble(exId);
+    const row = h('div', { class: 'chips scroll wo-bells', role: 'radiogroup', 'aria-label': dbl ? 'Kettlebell pair' : 'Kettlebell' },
       opts.map((kg) => h('button', {
         type: 'button', class: 'chip wo-bell' + (kg === value ? ' on' : ''), role: 'radio', 'aria-checked': String(kg === value),
         on: { click: () => { haptic(); onPick(kg); } },
-      }, h('span', { class: 'num' }, fmtBell(kg).replace(/\s*kg$/, '')), h('small', { class: 'unit' }, 'kg'))));
+      }, dbl ? h('small', { class: 'unit' }, '2×') : null, h('span', { class: 'num' }, fmtBell(kg).replace(/\s*kg$/, '')), h('small', { class: 'unit' }, 'kg'))));
+    if (dbl && !pairs.length) return [row, h('div', { class: 'wo-hint' }, 'Double-bell lift — you don’t own a matching pair, so use one bell per side or swap the exercise.')];
+    return row;
   }
 
   function infoBtn(exId) {
@@ -824,7 +841,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       return h('div', { class: 'wo-item' + (big ? ' big' : '') },
         h('span', { class: 'wo-item-reps num' }, it.reps ? `${it.reps}${it.perSide ? ' / side' : ''}` : it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? fmtTarget(it.distanceM) : '—'),
         h('span', { class: 'wo-item-name' }, exName(it.exId)),
-        kg ? h('span', { class: 'wo-item-kg num' }, fmtBell(kg)) : null,
+        kg ? h('span', { class: 'wo-item-kg num' }, bellText(kg, it.exId)) : null,
         infoBtn(it.exId));
     }
 
@@ -883,11 +900,12 @@ function player(ctx, aw, { fresh = false } = {}) {
       const splits = (state?.segLog || []).filter((l) => segs[l.index]?.kind === 'work');
       if (isAmrap) {
         // reps per item = rounds × reps + extra reps distributed in item order
+        // One entry per completed round (+ the partial round), tagged blockKind 'amrap' so progression can skip it.
+        for (let r = 0; r < rounds; r++) b.items.forEach((it, ii) => pushItem(it, ii, it.reps || null, 1, it.reps ? null : it.timeSec ?? null));
         let extraLeft = bs.extraReps || 0;
         b.items.forEach((it, ii) => {
-          const per = it.reps || 0;
-          const add = Math.min(extraLeft, per); extraLeft -= add;
-          pushItem(it, ii, rounds * per + add, rounds, null);
+          const add = Math.min(extraLeft, it.reps || 0); extraLeft -= add;
+          if (add > 0) pushItem(it, ii, add, 1, null);
         });
       } else {
         const work = segs.filter((x) => x.kind === 'work').filter((x) => (x.meta.round || 0) <= rounds);
@@ -910,7 +928,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       if (isCardioEx(it.exId)) {
         aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: (it.distanceM || 0) * (rounds || 1) || null, timeSec: timeSec ?? null, avgHr: null, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       } else {
-        aw.log.push({ type: 'set', block: bi, item: ii, set: null, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
+        aw.log.push({ type: 'set', block: bi, item: ii, set: null, blockKind: b.kind, targetReps: it.reps ?? null, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       }
     }
 
@@ -931,7 +949,7 @@ function player(ctx, aw, { fresh = false } = {}) {
           h('div', { class: 'eyebrow' }, 'Each ' + (b.kind === 'emom' && !b.alternate ? 'minute' : b.kind === 'amrap' ? 'round' : b.kind === 'emom' ? 'minute, alternate' : 'round')),
           b.items.map((it, ii) => h('div', { class: 'wo-setup-item' },
             h('div', { class: 'row between' }, itemLine(it, ii, false)),
-            bs.kg[ii] != null || isKbEx(it.exId) ? bellPicker(bs.kg[ii], (kg) => { bs.kg[ii] = kg; save(); draw(); }) : null))));
+            bs.kg[ii] != null || isKbEx(it.exId) ? bellPicker(bs.kg[ii], (kg) => { bs.kg[ii] = kg; save(); draw(); }, it.exId) : null))));
       }
       if (finished || bs.manual) put(wrap, resultForm());
       else if (started) put(wrap, h('button', { class: 'link-btn wo-endblock', on: { click: () => { timer.end(); bs.timerDone = true; bs.roundsDone = null; save(); draw(); } } }, 'End block early & log'));
@@ -1055,7 +1073,7 @@ function player(ctx, aw, { fresh = false } = {}) {
                 if (!m && !sec) { toast('Enter a time or distance first'); return; }
                 const hr = +is.hr > 0 ? Math.round(+is.hr) : null;
                 if (cardio) aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: m ? Math.round(m) : null, timeSec: sec ? Math.round(sec) : null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
-                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
+                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, blockKind: b.kind, targetReps: it.reps ?? null, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
                 t?.stop(); blockTimers.delete(key); is.timer = t ? t.snapshot() : null; t = null;
                 haptic(30); beep('done');
                 save(); redrawAll();
@@ -1244,6 +1262,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     const sets = aw.log.filter((l) => l.type === 'set').map((l) => ({
       exId: l.exId, kg: l.kg ?? null, reps: l.reps ?? null, timeSec: l.timeSec ?? null, distanceM: l.distanceM ?? null, rpe: l.rpe ?? null,
       block: W.blocks[l.block]?.title || KIND_LABEL[W.blocks[l.block]?.kind] || String(l.block),
+      blockKind: l.blockKind || W.blocks[l.block]?.kind || 'strength', targetReps: l.targetReps ?? null,
       ...(l.double ? { double: true } : {}), ...(l.perSide ? { perSide: true } : {}), ...(l.benchmark ? { benchmark: true } : {}),
     }));
     const cardio = aw.log.filter((l) => l.type === 'cardio').map((l) => ({ mode: l.mode, distanceM: l.distanceM ?? null, timeSec: l.timeSec ?? null, avgHr: l.avgHr ?? null, exId: l.exId, ...(l.benchmark ? { benchmark: true } : {}) }));
@@ -1322,7 +1341,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       byEx.size || sess.cardio.length ? h('div', { class: 'card flush' }, h('div', { class: 'list' },
         [...byEx].map(([exId, e]) => h('div', { class: 'li' },
           h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, exName(exId)), h('div', { class: 'li-sub' }, `${plural(e.sets, 'set')}${e.reps ? ` · ${e.reps} reps` : ''}${e.time ? ' · ' + fmtDur(e.time) : ''}${e.dist ? ' · ' + fmtTarget(e.dist) : ''}`)),
-          h('div', { class: 'li-end num' }, e.top ? fmtBell(e.top) : 'BW'))),
+          h('div', { class: 'li-end num' }, e.top ? bellText(e.top, exId) : 'BW'))),
         sess.cardio.map((c) => h('div', { class: 'li' },
           h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, pretty(c.mode)), h('div', { class: 'li-sub' }, [c.timeSec ? fmtDur(c.timeSec) : null, c.avgHr ? c.avgHr + ' bpm' : null].filter(Boolean).join(' · '))),
           h('div', { class: 'li-end num' }, c.distanceM ? fmtDist(c.distanceM, u) : '', c.distanceM && c.timeSec ? h('div', { class: 'xs muted' }, fmtPace(c.timeSec / (c.distanceM / 1000), u)) : null))))) : null,

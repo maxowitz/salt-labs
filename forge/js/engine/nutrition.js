@@ -117,31 +117,57 @@ export function tdee(profile, opts = {}) {
   return Math.round(bmr(profile) * activityFactor(profile?.activity) + train.kcal);
 }
 
-/** Goal-adjusted kcal for a maintenance estimate. A goal rate (kg/week) wins over the % rule. */
+/**
+ * Goal-adjusted kcal for a maintenance estimate.
+ *  - An explicit goal rate (kg/week) wins, clamped to what is deliverable (maxGoalRate).
+ *  - Default cut (R2 P1-2): athletes training ≥ 4×/wk get the gentler of −15 % or 0.5 % body weight per
+ *    week; others −20 %. Gain +10 %. Never below kcalFloor.
+ */
 export function goalKcal(maintenance, profile = {}, opts = {}) {
   const goal = profile?.goal;
   const rate = n(opts.goalRateKgWk ?? profile?.goalRateKgWk, NaN);
   let kcal;
   if (goal !== 'maintain' && Number.isFinite(rate) && rate !== 0) {
-    kcal = maintenance + (rate * KCAL_PER_KG) / 7;
-    kcal = Math.min(maintenance * 1.15, Math.max(maintenance * 0.75, kcal));
+    const r = goal === 'lose' ? -Math.min(Math.abs(rate), maxGoalRate(profile, maintenance)) : Math.min(Math.abs(rate), maxGoalRate({ ...profile, goal: 'gain' }, maintenance));
+    kcal = maintenance + (r * KCAL_PER_KG) / 7;
+  } else if (goal === 'lose') {
+    kcal = maintenance - defaultDeficit(profile, maintenance);
   } else {
     kcal = maintenance * (1 + (GOAL_ADJUST[goal] ?? 0));
   }
   return round(Math.max(kcal, kcalFloor(profile)), 10);
 }
 
+/** Default daily deficit for "lose" with no explicit rate. */
+export function defaultDeficit(profile = {}, maintenance) {
+  const { kg } = profileNums(profile);
+  if (n(profile.daysPerWeek, 4) >= 4) return Math.min(0.15 * maintenance, (0.005 * kg * KCAL_PER_KG) / 7);
+  return 0.2 * maintenance;
+}
+
 /**
- * Macro split for a kcal target (R1 P1-2/P1-3):
- *   protein 2.0 g/kg (2.2 when cutting) and fat 0.8 g/kg (≥ 20 % kcal) of the BMI-25 reference weight,
- *   carbs = remainder. Cutting hybrid athletes (≥ 4 days/wk) get a 3.5 g/kg carb floor, funded first
- *   from fat (down to max(0.6 g/kg, 20 % kcal)), then protein (down to 1.8 g/kg).
+ * Fastest weekly rate (kg/week, positive) the target can actually deliver (R2 P1-4):
+ * lose → min(25 % of maintenance, maintenance − kcal floor, 1 % body weight/week);
+ * gain → min(15 % of maintenance, 0.5 % body weight/week).
+ */
+export function maxGoalRate(profile = {}, maintenance) {
+  const { kg } = profileNums(profile);
+  if (profile.goal === 'gain') return Math.max(0, Math.min((0.15 * maintenance * 7) / KCAL_PER_KG, 0.005 * kg));
+  const deficit = Math.max(0, Math.min(0.25 * maintenance, maintenance - kcalFloor(profile)));
+  return Math.max(0, Math.min((deficit * 7) / KCAL_PER_KG, 0.01 * kg));
+}
+
+/**
+ * Macro split for a kcal target (R1 P1-2/P1-3, R2 P2-8):
+ *   protein 2.0 g/kg (2.2 when cutting) and fat 0.8 g/kg of the BMI-25 reference weight, fat ≥ 20 % kcal
+ *   (≥ 25 % when gaining), carbs = remainder. Cutting hybrid athletes (≥ 4 days/wk) get a 3.5 g/kg carb
+ *   floor, funded first from fat (down to max(0.6 g/kg, 20 % kcal)), then protein (down to 1.8 g/kg).
  */
 export function macrosForKcal(profile = {}, kcal) {
   const { refKg } = profileNums(profile);
   const lose = profile.goal === 'lose';
   let protein = Math.round(refKg * (lose ? 2.2 : 2.0));
-  const fatPct = (0.2 * kcal) / 9;
+  const fatPct = ((profile.goal === 'gain' ? 0.25 : 0.2) * kcal) / 9;
   let fat = Math.round(Math.max(0.8 * refKg, fatPct));
   let carbs = (kcal - protein * 4 - fat * 9) / 4;
   const notes = [];
@@ -165,10 +191,11 @@ export function macrosForKcal(profile = {}, kcal) {
 
 /**
  * Daily targets from the profile — kcal is the weekly-average day.
- * opts: { plan } to use the real plan's training load (else profile.daysPerWeek × 55 min).
+ * opts: { plan } to use the real plan's training load (else profile.daysPerWeek × 60 min).
+ * Water: 35 ml per kg of reference weight + 500 ml per average training hour (R2 P2-9).
  */
 export function computeTargets(profile = {}, opts = {}) {
-  const { kg } = profileNums(profile);
+  const { refKg } = profileNums(profile);
   const train = opts.plan ? planDailyTraining(opts.plan, profile) : assumedDailyTraining(profile);
   const hours = opts.trainingHours != null ? Math.max(0, n(opts.trainingHours)) : train.hours;
   const maintenance = round(bmr(profile) * activityFactor(profile.activity) + train.kcal, 10);
@@ -176,12 +203,35 @@ export function computeTargets(profile = {}, opts = {}) {
   const m = macrosForKcal(profile, kcal);
   const notes = [...m.notes];
   if (kcal <= kcalFloor(profile) + 10) notes.push('kcal-floor');
+  const ea = (kcal - train.kcal) / fatFreeMass(profile);
+  if (ea < 30) notes.push('low-ea');
   return {
     kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat,
-    waterMl: round(35 * kg + 500 * hours, 50),
+    waterMl: round(35 * refKg + 500 * hours, 50),
     maintenance, trainKcalAvg: train.kcal, trainHoursAvg: Math.round(train.hours * 100) / 100,
     notes,
   };
+}
+
+/** Fat-free mass estimate (kg): body fat from BMI (Deurenberg 1991), clamped 6–50 %. */
+export function fatFreeMass(profile = {}) {
+  const { kg, cm, age, female } = profileNums(profile);
+  const bmi = kg / (cm / 100) ** 2;
+  const bf = Math.min(50, Math.max(6, 1.2 * bmi + 0.23 * age - 10.8 * (female ? 0 : 1) - 5.4));
+  return Math.round(kg * (1 - bf / 100) * 10) / 10;
+}
+
+/**
+ * Energy availability for a day (R2 P1-2): (intake − exercise kcal) / FFM.
+ * intakeKcal defaults to that day's target, so it reads as "planned EA".
+ * → {ea, ffm, exerciseKcal, intakeKcal, low: ea < 30}
+ */
+export function energyAvailability(state = {}, dateISO, intakeKcal) {
+  const d = dayTargetsFor(state, dateISO);
+  const ffm = fatFreeMass(state.profile || {});
+  const intake = intakeKcal != null ? n(intakeKcal) : d.kcal;
+  const ea = Math.round(((intake - d.trainingKcal) / ffm) * 10) / 10;
+  return { ea, ffm, exerciseKcal: d.trainingKcal, intakeKcal: Math.round(intake), low: ea < 30 };
 }
 
 /**
@@ -263,6 +313,47 @@ function weekAvgTraining(state, iso) {
   return { kcal: n(t.trainKcalAvg, assumed.kcal), hours: n(t.trainHoursAvg, assumed.hours), source: 'assumed' };
 }
 
+/** Un-floored kcal for one day: weekly-average target ± training difference, with Peak/Taper easing. */
+function rawDayKcal(state, iso) {
+  const profile = state.profile || {};
+  const t = state.targets || {};
+  const baseKcal = n(t.kcal, 2400);
+  const tr = dayTraining(state, iso);
+  const wk = weekAvgTraining(state, iso);
+  const known = tr.source !== 'none';
+  const pd = planDay(state, iso);
+  const phase = pd?.week?.phase || null;
+  const notes = [];
+  let kcal = baseKcal + (known ? tr.kcal - wk.kcal : 0);
+  if (profile.goal === 'lose' && (phase === 'peak' || phase === 'taper')) {
+    const maint = n(t.maintenance, 0) || tdee(profile, { plan: state.plan });
+    const cap = phase === 'taper' ? 0 : -0.10;
+    const cur = baseKcal / maint - 1;
+    if (cur < cap) { kcal += maint * (cap - cur); notes.push(phase === 'taper' ? 'taper-maintenance' : 'peak-deficit-eased'); }
+  }
+  return { kcal, tr, wk, known, pd, phase, notes };
+}
+
+/**
+ * Per-day kcal floor with weekly re-balance (R2 P1-1): every day ≥ kcalFloor(profile); what the low days
+ * are raised by is taken back from the days with headroom so the week still averages to the target
+ * (when there is enough headroom). Without a plan week only the floor applies.
+ */
+function flooredDayKcal(state, iso, raw) {
+  const fl = kcalFloor(state.profile || {});
+  if (!raw.pd) return { kcal: Math.max(raw.kcal, fl), raised: raw.kcal < fl };
+  const dates = weekDates(state, iso);
+  const raws = dates.map((d) => (d === iso ? raw.kcal : rawDayKcal(state, d).kcal));
+  const need = raws.reduce((a, k) => a + Math.max(0, fl - k), 0);
+  const i = dates.indexOf(iso);
+  if (raws[i] < fl) return { kcal: fl, raised: true };
+  if (!need) return { kcal: raws[i], raised: false };
+  const headroom = raws.map((k) => Math.max(0, k - fl));
+  const H = headroom.reduce((a, x) => a + x, 0);
+  const take = Math.min(need, H);
+  return { kcal: raws[i] - (H ? (take * headroom[i]) / H : 0), raised: false, rebalanced: true };
+}
+
 /**
  * THE shared day-target selector (Today, Fuel, Progress all use this).
  * dayTargetsFor(state, dateISO) → {
@@ -272,31 +363,21 @@ function weekAvgTraining(state, iso) {
  *   sessions: [{title, type, min, kcal, intensity, source:'logged'|'planned'}],
  *   source: 'logged'|'planned'|'rest'|'none', phase, weekAvgTrainingKcal, notes: string[]
  * }
- * kcal = targets.kcal + (day training kcal − week-average training kcal): weekly balanced.
- * Carbs carry the difference, then a session-scaled g/kg floor is funded from fat (kcal unchanged).
- * Cutting in Peak (−10 % max) / Taper (maintenance) eases the deficit.
+ * kcal = targets.kcal + (day training kcal − week-average training kcal), floored per day and
+ * re-balanced across the plan week. Carbs carry the difference, then a session-scaled g/kg floor is
+ * funded from fat (kcal unchanged). Cutting in Peak (−10 % max) / Taper (maintenance) eases the deficit.
  */
 export function dayTargetsFor(state = {}, dateISO) {
   const profile = state.profile || {};
   const t = state.targets || {};
   const { kg, refKg } = profileNums(profile);
   const base = { kcal: n(t.kcal, 2400), protein: n(t.protein, 160), carbs: n(t.carbs, 250), fat: n(t.fat, 70), waterMl: n(t.waterMl, 3000) };
-  const tr = dayTraining(state, dateISO);
-  const wk = weekAvgTraining(state, dateISO);
-  const known = tr.source !== 'none';
-  const pd = planDay(state, dateISO);
-  const phase = pd?.week?.phase || null;
-  const notes = [];
-
-  let kcal = base.kcal + (known ? tr.kcal - wk.kcal : 0);
-  // gentler deficit close to the race
-  if (profile.goal === 'lose' && (phase === 'peak' || phase === 'taper')) {
-    const maint = n(t.maintenance, 0) || tdee(profile, { plan: state.plan });
-    const cap = phase === 'taper' ? 0 : -0.10;
-    const cur = base.kcal / maint - 1;
-    if (cur < cap) { kcal += maint * (cap - cur); notes.push(phase === 'taper' ? 'taper-maintenance' : 'peak-deficit-eased'); }
-  }
-  kcal = Math.round(kcal);
+  const raw = rawDayKcal(state, dateISO);
+  const { tr, wk, known, phase } = raw;
+  const notes = [...raw.notes];
+  const fl = flooredDayKcal(state, dateISO, raw);
+  if (fl.raised) notes.push('kcal-floor-day');
+  const kcal = Math.round(fl.kcal);
   let carbs = base.carbs + (kcal - base.kcal) / 4;
   let fat = base.fat;
   const intensity = known ? (tr.kcal > 0 ? tr.intensity : 'rest') : null;
@@ -313,11 +394,57 @@ export function dayTargetsFor(state = {}, dateISO) {
   const waterMl = round(base.waterMl + 500 * (hours - wk.hours), 50);
   return {
     kcal, protein: Math.round(base.protein), carbs: Math.max(0, Math.round(carbs)), fat: Math.round(fat),
-    waterMl: Math.max(round(30 * kg, 50), waterMl), fiber: fiberTarget(kcal),
+    waterMl: Math.max(round(30 * refKg, 50), waterMl), fiber: fiberTarget(kcal),
     dayType: known ? (tr.kcal > 0 ? 'training' : 'rest') : null, intensity,
     trainingKcal: tr.kcal, trainingMin: tr.min, sessions: tr.items, source: tr.source,
-    phase, weekAvgTrainingKcal: Math.round(wk.kcal), notes,
+    phase, weekAvgTrainingKcal: Math.round(wk.kcal), carbsPerKg: Math.round((Math.max(0, carbs) / refKg) * 10) / 10, notes,
   };
+}
+
+/**
+ * Pre-session fuelling prompt for a date (R2 P2-5).
+ * fuelingNote(state, dateISO) → null (no session) | {
+ *   title, min, intensity,          // the day's (first) session
+ *   pre:    string|null,            // e.g. "Hill Sprint Power (45 min): 1–1.5 g/kg carbs 2–3 h before (≈ 80–120 g)."
+ *   during: string|null,            // ≥ 75 min: carbs + fluid per hour
+ *   warn:   string|null,            // hard day whose carbs are below the session floor
+ *   carbsG: [lo, hi] | null         // pre-session carb range in grams
+ * }
+ */
+export function fuelingNote(state = {}, dateISO) {
+  const d = dayTargetsFor(state, dateISO);
+  if (d.dayType !== 'training' || !d.sessions?.length) return null;
+  const s0 = d.sessions.reduce((a, x) => (RANK[x.intensity] > RANK[a.intensity] ? x : a), d.sessions[0]);
+  const { refKg } = profileNums(state.profile || {});
+  const range = s0.intensity === 'hard' ? [1, 1.5] : s0.intensity === 'moderate' ? [0.5, 1] : null;
+  const carbsG = range ? [Math.round((range[0] * refKg) / 10) * 10, Math.round((range[1] * refKg) / 10) * 10] : null;
+  const label = `${s0.title}${s0.min ? ` (${s0.min} min)` : ''}`;
+  const pre = range
+    ? `${label}: have ${range[0]}–${range[1]} g/kg carbs 2–3 h before (≈ ${carbsG[0]}–${carbsG[1]} g), plus a little protein.`
+    : `${label}: an easy session — a normal meal 2–3 h before is plenty.`;
+  const during = d.trainingMin >= 75 ? `It’s ${d.trainingMin} min: take 30–60 g carbs per hour and 500–750 ml fluid with sodium during.` : null;
+  const floorG = CARB_FLOOR[d.intensity] ?? 4;
+  const warn = d.intensity === 'hard' && d.notes.includes('carb-floor-unmet')
+    ? `Today’s carbs (${d.carbs} g ≈ ${d.carbsPerKg} g/kg) are below the ${floorG} g/kg we’d suggest for a hard session — consider easing the deficit today.`
+    : null;
+  return { title: s0.title, min: s0.min, intensity: s0.intensity, pre, during, warn, carbsG };
+}
+
+/**
+ * Sodium total with coverage (R2 P1-3). Items without sodium data make the total a lower bound.
+ * → {mg, known, total, kcalShare (0–1 of kcal from items with data), complete: kcalShare ≥ 0.8}
+ */
+export function sodiumSummary(entries = []) {
+  let mg = 0, known = 0, total = 0, kAll = 0, kKnown = 0;
+  for (const e of entries) {
+    if (!e) continue;
+    total++;
+    const k = Math.max(0, n(e.kcal));
+    kAll += k;
+    if (e.na != null && Number.isFinite(+e.na)) { known++; mg += +e.na; kKnown += k; }
+  }
+  const kcalShare = kAll ? kKnown / kAll : known === total && total ? 1 : 0;
+  return { mg: Math.round(mg), known, total, kcalShare: Math.round(kcalShare * 100) / 100, complete: total > 0 && kcalShare >= 0.8 };
 }
 
 /** Weekly-average view: the 7 day targets of the week containing iso and their averages. */
@@ -409,8 +536,30 @@ export function adaptiveTdee(state = {}, todayISO) {
   if (weighIns.length < 4) return { ...out, reason: 'Log your weight at least 2–3 times a week.' };
   if (intakeDays < 10) return { ...out, reason: `Log complete food days on at least 10 of the last ${days} days — you have ${intakeDays}.` };
 
-  const pts = weighIns.map((b) => ({ x: isoToDay(b.date) - startDay, y: +b.kg }));
-  const fit = robustTrend(pts);
+  let pts = weighIns.map((b) => ({ x: isoToDay(b.date) - startDay, y: +b.kg }));
+  let fit = robustTrend(pts);
+  // R2 P2-6: drop gross outliers, then guard against a step change at the end of the window
+  // (carb-load / creatine / sodium water): if the last 3 days' residuals all share a sign and are large,
+  // fit without them and lower confidence one notch.
+  let stepGuard = false;
+  const tol = Math.max(0.25, 2.5 * fit.mad);
+  const kept = pts.filter((p) => Math.abs(p.y - (fit.intercept + fit.slope * p.x)) <= tol);
+  if (kept.length >= 4 && kept.length < pts.length) {
+    const dropped = pts.filter((p) => !kept.includes(p));
+    const lateSameSign = dropped.filter((p) => p.x > days - 4);
+    if (lateSameSign.length >= 2 && new Set(lateSameSign.map((p) => Math.sign(p.y - (fit.intercept + fit.slope * p.x)))).size === 1) stepGuard = true;
+    pts = kept; fit = robustTrend(pts);
+  }
+  const tail = pts.filter((p) => p.x > days - 3);
+  if (tail.length >= 2 && pts.length - tail.length >= 4) {
+    const res = tail.map((p) => p.y - (fit.intercept + fit.slope * p.x));
+    const thr = Math.max(0.3, 1.5 * fit.mad);
+    if (res.every((r) => r > thr) || res.every((r) => r < -thr)) {
+      pts = pts.filter((p) => p.x <= days - 3);
+      fit = robustTrend(pts);
+      stepGuard = true;
+    }
+  }
   const dataTdee = out.avgIntake - fit.slope * KCAL_PER_KG;
   const w = Math.min(1, days / ADAPTIVE_WINDOW);
   let est = w * dataTdee + (1 - w) * formulaTdee;
@@ -425,6 +574,7 @@ export function adaptiveTdee(state = {}, todayISO) {
   if (days >= 21 && coverage >= 0.8 && weighIns.length >= 10 && fit.mad <= 0.8) confidence = 'high';
   else if (coverage >= 0.6 && weighIns.length >= 6 && fit.mad <= 1.5) confidence = 'med';
   if (clamped) confidence = 'low';
+  if (stepGuard) confidence = confidence === 'high' ? 'med' : 'low';
 
   let suggestion = null;
   const rate = targets.goalRateKgWk ?? profile.goalRateKgWk;
@@ -438,7 +588,8 @@ export function adaptiveTdee(state = {}, todayISO) {
   }
   return {
     ...out, tdee: est, dataTdee: Math.round(dataTdee), weeklyChangeKg: Math.round(fit.slope * 7 * 100) / 100, confidence, suggestion,
-    reason: clamped ? 'Estimate looks off — check that you are logging everything.' : '',
+    stepGuard,
+    reason: clamped ? 'Estimate looks off — check that you are logging everything.' : stepGuard ? 'Your last few weigh-ins jumped (water, carbs or creatine?) — they’re left out until the trend settles.' : '',
   };
 }
 
@@ -460,6 +611,9 @@ export function tokenize(s) {
   return norm(s).replace(/[^a-z0-9%]+/g, ' ').trim().split(' ').filter(Boolean);
 }
 const singular = (w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
+/** Words a user adds that the database may not repeat ("pan-seared salmon", "salmon fillet"). */
+const SOFT_WORDS = new Set(['pan', 'seared', 'grilled', 'roasted', 'baked', 'fried', 'steamed', 'boiled', 'poached', 'sauteed', 'broiled', 'fresh', 'homemade',
+  'fillet', 'fillets', 'filet', 'sliced', 'chopped', 'diced', 'plain', 'cooked', 'organic', 'my', 'a', 'an', 'the', 'of', 'with', 'some', 'piece', 'serving', 'portion']);
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function editDistanceWithin1(a, b) {
@@ -498,6 +652,7 @@ function indexOf(food) {
   let ix = indexCache.get(food);
   if (!ix) {
     ix = { name: tokenize(food.name), brand: tokenize(food.brand), tags: (food.tags || []).flatMap(tokenize), full: norm(food.name).trim(),
+      serving: tokenize(food.serving?.label).filter((w) => !/^\d/.test(w)),
       primary: (food.primary || []).map((a) => norm(a).trim()) };
     indexCache.set(food, ix);
   }
@@ -517,16 +672,25 @@ export function searchFoods(query, foods = [], opts = {}) {
   const q = toks.join(' ');
   const qRe = new RegExp('^' + escapeRe(norm(query).trim().replace(/\s+/g, ' ')) + '\\b');
   const recent = opts.recent || [], favs = new Set(opts.favorites || []);
+  const allSoft = toks.every((t) => SOFT_WORDS.has(t));
   const scored = [];
   foods.forEach((food, idx) => {
     if (!food || !food.name) return;
     const ix = indexOf(food);
-    let score = 0;
+    let score = 0, hard = 0;
     for (const t of toks) {
-      const s = Math.max(tokenScore(t, ix.name, 1, true), tokenScore(t, ix.brand, 0.6, false), tokenScore(t, ix.tags, 0.4, false));
+      if (SOFT_WORDS.has(t) && !allSoft) {
+        // cooking method / filler: counts only as a whole-word hit on the name or tags, else a small penalty (R2 P2-1)
+        const soft = Math.max(tokenScore(t, ix.name, 1, false), tokenScore(t, ix.tags, 0.4, false), tokenScore(t, ix.serving, 0.3, false));
+        score += soft >= 4 ? soft : -2;
+        continue;
+      }
+      const s = Math.max(tokenScore(t, ix.name, 1, true), tokenScore(t, ix.brand, 0.6, false), tokenScore(t, ix.tags, 0.4, false), tokenScore(t, ix.serving, 0.3, false));
       if (!s) return;
+      hard++;
       score += s;
     }
+    if (!hard) return;
     if (ix.primary.includes(q)) score += 60; // curated alias is explicit intent: beats any name-prefix bonus
     if (ix.full === q) score += 50;
     else if (qRe.test(ix.full)) score += 25;
