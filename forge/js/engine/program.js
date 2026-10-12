@@ -877,6 +877,11 @@ function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, maxLongSec = nul
   const isHybrid = (b) => b.kind === 'circuit' && b.items.some((it) => it.exId === 'run-1k');
   const isQuality = (b) => b.kind === 'intervals' && !!runItem(b);
 
+  // The long run itself grows ≤ 10 min per loading week.
+  if (maxLongSec) for (const b of blocks) if (b.kind === 'cardio') for (const it of b.items) if (it.exId === 'run-long' && it.timeSec > maxLongSec + 600) {
+    it.timeSec = maxLongSec + 600;
+    b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
+  }
   if (over()) shrink(['run-easy'], () => easyFloorSec);
   cutRounds(isHybrid, () => 3);
   // Quality: fewer reps (1 km / VO2) or shorter reps (cruise/tempo), never below the floor.
@@ -978,7 +983,7 @@ export function generatePlan(profile, startISO) {
     const guarded = !taper && !isRaceWeek && !lay.post;
     // The first Build week may reach +20% (new block, new session types); otherwise +15%.
     const firstBuild = phase === 'build' && pl === 0 && !deload;
-    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15), deload ? 900 : 1200, deload ? null : maxLongSec);
+    if (guarded && (prevKm != null || maxLongSec)) capRunVolume(ctx, list, prevKm == null ? Infinity : prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15), deload ? 900 : 1200, deload ? null : maxLongSec);
     if (guarded && !deload && !hasSim) {
       prevKm = runKmOf(ctx, list);
       const longs = list.flatMap((x) => x.blocks).flatMap((b) => b.items || []).filter((it) => it.exId === 'run-long').map((it) => it.timeSec);
