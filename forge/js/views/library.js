@@ -94,7 +94,7 @@ function lastText(l, units) {
 function metaPills(e) {
   return [
     e.category ? h('span', { class: 'pill' }, CAT_LABEL[e.category] || cap(e.category)) : null,
-    e.pattern ? h('span', { class: 'pill' }, cap(e.pattern)) : null,
+    e.pattern && cap(e.pattern).toLowerCase() !== String(CAT_LABEL[e.category] || e.category || '').toLowerCase() ? h('span', { class: 'pill' }, cap(e.pattern)) : null,
     e.double ? h('span', { class: 'pill' }, 'Double bell') : null,
     e.unilateral ? h('span', { class: 'pill' }, 'Unilateral') : null,
     e.hyrox ? h('span', { class: 'pill' }, 'HYROX') : null,

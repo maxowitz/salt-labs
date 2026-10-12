@@ -6,7 +6,7 @@ import {
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { weekSummary } from '../engine/coach.js';
 import {
-  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker,
+  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker, startWorkout, wouldScale,
 } from './session.js';
 
 function sortedDays(week) { return [...(week?.days || [])].sort((a, b) => String(a.date).localeCompare(String(b.date))); }
@@ -96,13 +96,13 @@ function renderPlan(root, s, args) {
   const dtr = raceDate ? daysBetween(today, raceDate) : null;
   const curPhase = weeks[cur]?.phase;
 
-  root.append(header(s, h('a', { class: 'icon-btn filled', href: '#/history', 'aria-label': 'Training history' }, icon('list', 20))));
+  root.append(header(s, h('a', { class: 'icon-btn filled', href: '#/history?from=train', 'aria-label': 'Training history' }, icon('list', 20))));
 
   // status pills
   root.append(h('div', { class: 'row wrap tr-pills' },
     phasePill(curPhase),
     h('span', { class: 'pill' }, `Week ${cur + 1} of ${weeks.length}`),
-    dtr == null ? null : h('a', { class: 'pill accent', href: '#/hyrox' }, icon('flag', 12), dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} to race` : dtr === 0 ? 'Race day!' : 'Race complete')));
+    dtr == null ? null : h('a', { class: 'pill', href: '#/hyrox' }, icon('flag', 12), dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} to race` : dtr === 0 ? 'Race day!' : 'Race complete')));
 
   if (s.activeWorkout) root.append(activeBanner(s));
 
@@ -177,7 +177,7 @@ function phaseTimeline(plan, wi, cur, today) {
     if (off >= 0 && off < total) pos = ((off + 0.5) / total) * 100;
   }
   return h('div', { class: 'card tight tr-tl' },
-    h('div', { class: 'tr-tl-labels' }, groups.map((g) => h('span', { class: `tr-tl-lab ph-${g.phase}`, style: { flex: String(g.n) } }, g.n >= 2 || groups.length < 5 ? phaseLabel(g.phase) : phaseLabel(g.phase).slice(0, 1)))),
+    h('div', { class: 'tr-tl-labels' }, groups.map((g) => h('span', { class: `tr-tl-lab ph-${g.phase}`, style: { flex: String(g.n) } }, g.n >= 2 ? phaseLabel(g.phase) : phaseLabel(g.phase).slice(0, 1)))),
     h('div', { class: 'tr-tl-bar' },
       weeks.map((w, i) => h('a', {
         class: `tr-tl-seg ph-${w.phase}${i < cur ? ' past' : ''}${i === wi ? ' view' : ''}${w.deload ? ' deload' : ''}`,
@@ -214,7 +214,7 @@ function dayCard(d, st, s, today) {
             blockSummary(w) ? h('div', { class: 'small dim tr-dc-blocks' }, blockSummary(w)) : null),
           done ? h('span', { class: 'tr-donecheck', 'aria-label': 'Completed' }, icon('check', 18)) : h('span', { class: 'muted' }, icon('chevR', 18)))),
       d.date === today && !done ? h('div', { class: 'row gap tr-dc-actions' },
-        h('a', { class: 'btn primary sm grow', href: '#/workout/' + encodeURIComponent(w.id) }, icon('play', 16), s.activeWorkout?.workoutId === w.id ? 'Resume' : 'Start'),
+        h('button', { type: 'button', class: 'btn primary sm grow', on: { click: () => startWorkout(w.id, wouldScale(w)) } }, icon('play', 16), s.activeWorkout?.workoutId === w.id ? 'Resume' : 'Start'),
         h('a', { class: 'btn ghost sm', href: '#/session/' + encodeURIComponent(w.id) }, 'Details')) : null));
 }
 
@@ -231,12 +231,12 @@ function quickActions(s) {
   return h('div', null,
     h('div', { class: 'section-head' }, h('h2', null, 'Quick actions')),
     h('div', { class: 'tr-qagrid' },
-      tile('timer', 'Timers', 'EMOM · AMRAP · Tabata', null, '#/timer'),
+      tile('timer', 'Timers', 'Interval timers', null, '#/timer'),
       tile('book', 'Library', 'Technique & cues', null, '#/library'),
       tile('flag', 'HYROX', 'Stations & pacing', null, '#/hyrox'),
       tile('run', 'Log cardio', 'Run, row, ski, bike', () => logCardioSheet()),
       tile('edit', 'Log workout', 'Something you did', () => logPastSheet()),
-      tile('list', 'History', `${s.sessions.length} logged`, null, '#/history')));
+      tile('list', 'History', `${s.sessions.length} logged`, null, '#/history?from=train')));
 }
 
 const TEMPLATE_GROUPS = [

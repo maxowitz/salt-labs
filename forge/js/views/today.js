@@ -26,9 +26,9 @@ const READINESS_Q = [
 
 export function readinessBand(score) {
   if (!Number.isFinite(score)) return null;
-  if (score < 40) return { key: 'red', color: 'var(--danger)', title: 'Recover today', text: 'Low readiness — today becomes a recovery session. Mobility, easy movement, sleep early.' };
-  if (score <= 60) return { key: 'amber', color: 'var(--warn)', title: 'Train smart', text: 'Moderate readiness — volume trimmed about 25 % and hard intervals swapped for Zone 2.' };
-  return { key: 'green', color: 'var(--go)', title: 'Green light', text: 'Good to go — train as planned and own the session.' };
+  if (score < 40) return { key: 'red', color: 'var(--danger)', title: 'Recover today', short: 'Today becomes a recovery session.', text: 'Low readiness — today becomes a recovery session. Mobility, easy movement, sleep early.' };
+  if (score <= 60) return { key: 'amber', color: 'var(--warn)', title: 'Train smart', short: 'Volume trimmed ~25 %, intervals → Zone 2.', text: 'Moderate readiness — volume trimmed about 25 % and hard intervals swapped for Zone 2.' };
+  return { key: 'green', color: 'var(--go)', title: 'Green light', short: 'Train as planned.', text: 'Good to go — train as planned and own the session.' };
 }
 
 export const TIPS = [
@@ -108,7 +108,7 @@ export function saveWeight(kg, date = todayISO()) {
     const latest = st.bodyweight.at(-1);
     if (latest) st.profile.weightKg = latest.kg;
     if (st.targets.auto) {
-      const t = safe(() => nutrition.computeTargets({ ...st.profile, weightKg: latest?.kg ?? kg }));
+      const t = safe(() => nutrition.computeTargets({ ...st.profile, weightKg: latest?.kg ?? kg }, { plan: st.plan }));
       if (t) st.targets = { ...st.targets, ...t, auto: true };
     }
   });
@@ -156,7 +156,8 @@ function addWater(ml) {
   store.update((st) => { st.water[today] = Math.max(0, (st.water[today] || 0) + ml); });
   haptic();
   const now = store.get().water[today] || 0;
-  toast(`+${ml} ml water · ${num(now / 1000, 2)} L today`, {
+  const metric = store.get().profile.units === 'metric';
+  toast(metric ? `+${ml} ml water · ${num(now / 1000, 2)} L today` : `+${num(ml / 29.5735)} oz water · ${num(now / 29.5735)} oz today`, {
     action: { label: 'Undo', fn: () => store.update((st) => { st.water[today] = Math.max(0, (st.water[today] || 0) - ml); }) },
   });
 }
@@ -184,41 +185,51 @@ function headerBlock(s, today) {
 function readinessCard(s, today, ui, repaint) {
   const saved = s.readiness[today];
   const score = saved?.score;
+  // Answered → one summary line.
   if (saved && Number.isFinite(score) && !ui.editing) {
     const band = readinessBand(score);
     return h('section', { class: `card readiness done ${band.key}`, 'aria-label': 'Readiness' },
       h('div', { class: 'row gap' },
-        ring({ value: score, max: 100, size: 76, stroke: 8, color: band.color, label: String(Math.round(score)), sub: 'ready' }),
-        h('div', { class: 'grow' },
-          h('div', { class: 'eyebrow' }, 'Readiness'),
-          h('div', { class: 'card-title', style: { color: band.color } }, band.title),
-          h('p', { class: 'small dim' }, band.text)),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Edit readiness check-in', on: { click: () => { ui.editing = true; ui.picks = { ...saved }; repaint(); } } }, icon('edit', 18))));
+        ring({ value: score, max: 100, size: 44, stroke: 5, color: band.color, label: String(Math.round(score)) }),
+        h('div', { class: 'grow rd-line' },
+          h('div', { class: 'rd-title' }, `Readiness ${Math.round(score)} · ${band.title}`),
+          h('div', { class: 'xs muted' }, band.short)),
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Edit readiness check-in', on: { click: () => { ui.editing = true; ui.open = true; ui.picks = { ...saved }; repaint(); } } }, icon('edit', 18))));
+  }
+  // Collapsed → a single row that expands in place.
+  if (!ui.open) {
+    return h('button', { type: 'button', class: 'card readiness rd-collapsed', 'aria-expanded': 'false', on: { click: () => { ui.open = true; repaint(); } } },
+      h('span', { class: 'rd-ico', 'aria-hidden': 'true' }, icon('heart', 18)),
+      h('span', { class: 'grow rd-line' }, h('span', { class: 'rd-title' }, 'How ready are you?'), h('span', { class: 'xs muted' }, 'Check in (10 s) — today’s session adapts')),
+      icon('chevR', 18));
   }
   const picks = ui.picks || (ui.picks = {});
-  const complete = READINESS_Q.every((q) => picks[q.key]);
-  const saveBtn = h('button', { type: 'button', class: 'btn primary block', disabled: !complete, on: { click: () => {
+  const answered = READINESS_Q.filter((q) => picks[q.key]).length;
+  const save = () => {
     const checkin = { sleep: picks.sleep, soreness: picks.soreness, energy: picks.energy, stress: picks.stress };
-    const sc = safe(() => hyrox.readinessScore(checkin), null);
-    const val = Number.isFinite(sc) ? Math.round(sc) : Math.round(((checkin.sleep + checkin.energy + (6 - checkin.soreness) + (6 - checkin.stress)) - 4) / 16 * 100);
+    const val = Math.round(hyrox.readinessScore(checkin));
     store.update((st) => { st.readiness[today] = { ...checkin, score: val }; });
-    ui.editing = false; ui.picks = null;
+    ui.editing = false; ui.open = false; ui.picks = null;
     haptic(20);
-  } } }, complete ? 'Save check-in' : `Answer ${READINESS_Q.filter((q) => !picks[q.key]).length} more`);
-  return h('section', { class: 'card readiness', 'aria-label': 'Readiness check-in' },
+  };
+  return h('section', { class: 'card readiness rd-open', 'aria-label': 'Readiness check-in' },
     h('div', { class: 'row between' },
-      h('div', null, h('div', { class: 'eyebrow' }, 'Morning check-in'), h('div', { class: 'card-title' }, 'How ready are you?')),
-      ui.editing ? h('button', { type: 'button', class: 'link-btn', on: { click: () => { ui.editing = false; ui.picks = null; repaint(); } } }, 'Cancel') : h('span', { class: 'muted xs' }, '10 sec')),
+      h('div', { class: 'rd-title' }, 'How ready are you?'),
+      h('div', { class: 'row' },
+        h('span', { class: 'xs muted num', 'aria-live': 'polite' }, `${answered} of 4`),
+        h('button', { type: 'button', class: 'link-btn', on: { click: () => { ui.editing = false; ui.open = false; ui.picks = null; repaint(); } } }, ui.editing ? 'Cancel' : 'Later'))),
     h('div', { class: 'rq-list' },
       READINESS_Q.map((q) => h('div', { class: 'rq' },
-        h('div', { class: 'rq-head' }, h('span', { class: 'rq-label' }, q.label), h('span', { class: 'rq-ends' }, `1 ${q.lo} · 5 ${q.hi}`)),
-        h('div', { class: 'rq-picks', role: 'radiogroup', 'aria-label': q.label },
+        h('div', { class: 'rq-head' }, h('span', { class: 'rq-label' }, q.label), h('span', { class: 'rq-ends' }, `${q.lo} → ${q.hi}`)),
+        h('div', { class: 'rq-picks', role: 'radiogroup', 'aria-label': `${q.label}, 1 ${q.lo} to 5 ${q.hi}` },
           [1, 2, 3, 4, 5].map((n) => h('button', {
             type: 'button', role: 'radio', 'aria-checked': String(picks[q.key] === n), 'aria-label': `${q.label} ${n}${n === 1 ? ' ' + q.lo : n === 5 ? ' ' + q.hi : ''}`,
             class: 'rq-pick' + (picks[q.key] === n ? ' on' : ''),
-            on: { click: () => { picks[q.key] = n; haptic(); repaint(); } },
-          }, String(n))))))),
-    saveBtn);
+            on: { click: () => {
+              picks[q.key] = n; haptic();
+              if (READINESS_Q.every((x) => picks[x.key])) save(); else repaint();
+            } },
+          }, String(n))))))));
 }
 
 function blockKindLabel(k) {
@@ -292,7 +303,8 @@ function sessionCard(s, today) {
 
   // Planned session with readiness scaling preview
   const score = s.readiness[today]?.score;
-  const scaled = Number.isFinite(score) ? safe(() => coach.scaleWorkout(workout, score), null) : null;
+  const locked = !!(workout.fixed || workout.benchmark);
+  const scaled = Number.isFinite(score) && !locked ? safe(() => coach.scaleWorkout(workout, score), null) : null;
   const w = scaled?.workout || workout;
   const changes = scaled?.changes || [];
   const tm = TYPE_META[w.type] || TYPE_META.strength;
@@ -309,7 +321,7 @@ function sessionCard(s, today) {
     (w.equipment || []).length ? h('p', { class: 'xs muted mt' }, w.equipment.slice(0, 4).join(' · ') + (w.equipment.length > 4 ? ` +${w.equipment.length - 4}` : '')) : null,
     changes.length ? h('div', { class: 'callout scaled mt' },
       h('div', { class: 'row' }, icon('zap', 16), h('strong', null, `Auto-scaled for readiness ${Math.round(score)}`)),
-      h('ul', null, changes.map((c) => h('li', null, c)))) : !Number.isFinite(score) ? h('p', { class: 'xs muted mt' }, 'Do your check-in above and FORGE will scale this session to how you feel.') : null,
+      h('ul', null, changes.map((c) => h('li', null, c)))) : locked ? h('p', { class: 'xs muted mt' }, workout.fixed ? 'Fixed session — run it as written, whatever the readiness score.' : 'Benchmark — do it fresh. If you feel off, move it to another day rather than scaling it.') : !Number.isFinite(score) ? h('p', { class: 'xs muted mt' }, 'Check in above and FORGE scales this session to how you feel.') : null,
     h('div', { class: 'stack sm mt' },
       resumeBtn || h('a', { class: 'btn primary xl block start-btn', href: `#/workout/${encodeURIComponent(w.id)}` }, icon('play', 20), 'Start session'),
       h('a', { class: 'link-btn center', href: `#/session/${encodeURIComponent(w.id)}` }, 'Session details')));
@@ -319,7 +331,7 @@ function ringsRow(s, today) {
   const units = s.profile.units;
   const wfd = s.plan ? safe(() => program.workoutForDate(s.plan, today), null) : null;
   const isTraining = !!wfd?.workout;
-  const t = safe(() => nutrition.dayTargets(s.targets, isTraining), null) || s.targets;
+  const t = safe(() => (nutrition.dayTargetsFor ? nutrition.dayTargetsFor(s, today) : nutrition.dayTargets(s.targets, isTraining)), null) || s.targets;
   const tot = sel.totalsFor(s, today);
   const water = sel.waterFor(s, today);
   const done = sel.sessionsOn(s, today).length > 0;
@@ -341,11 +353,11 @@ function ringsRow(s, today) {
         h('div', { class: 'ring-name' }, it.k)))));
 }
 
-function quickActions() {
+function quickActions(units) {
   const qa = (ic, label, on, cls = '') => h('button', { type: 'button', class: 'qa ' + cls, on: { click: on } }, h('span', { class: 'qa-ico' }, icon(ic, 22)), h('span', null, label));
   return h('section', { class: 'qa-row', 'aria-label': 'Quick actions' },
     qa('fuel', 'Log food', () => navigate('#/fuel?add=auto'), 'qa-food'),
-    qa('drop', '+250 ml', () => addWater(250), 'qa-water'),
+    qa('drop', units === 'metric' ? '+250 ml' : '+8 oz', () => addWater(units === 'metric' ? 250 : 237), 'qa-water'),
     qa('scale', 'Weight', () => openWeightSheet(), 'qa-weight'),
     qa('timer', 'Timer', () => navigate('#/timer'), 'qa-timer'));
 }
@@ -373,7 +385,7 @@ function weekStrip(s, today) {
       'aria-label': `${fmtDate(d.date)}: ${w?.title || 'Rest'} — ${status}`,
     },
     h('span', { class: 'wk-dow' }, label),
-    h('span', { class: 'wk-dot' }, done ? icon('check', 14) : status === 'missed' ? icon('x', 12) : tm ? tm.short : '·'));
+    h('span', { class: 'wk-dot', title: w?.title || 'Rest day' }, done ? icon('check', 14) : status === 'missed' ? icon('x', 12) : tm ? h('span', { 'aria-hidden': 'true' }, icon(tm.icon, 15)) : ''));
   });
   const st = safe(() => coach.streak(s.sessions, s.plan, today), null) || {};
   return h('section', { class: 'card week-card', 'aria-label': 'This week' },
@@ -382,8 +394,7 @@ function weekStrip(s, today) {
         h('div', { class: 'week-count num' }, String(doneCount), h('small', null, ` / ${planned || '–'} sessions`))),
       h('div', { class: 'streak', 'aria-label': `Streak ${st.days || 0} days` },
         h('span', { class: 'streak-flame' + ((st.days || 0) > 0 ? ' lit' : '') }, icon('flame', 22)),
-        h('div', null, h('div', { class: 'streak-n num' }, String(st.days || 0)), h('div', { class: 'xs muted' }, (st.days || 0) === 1 ? 'day streak' : 'day streak')),
-        st.weeksOnPlan ? h('div', { class: 'streak-wk' }, h('div', { class: 'streak-n num' }, String(st.weeksOnPlan)), h('div', { class: 'xs muted' }, 'wks on plan')) : null)),
+        h('div', null, h('div', { class: 'streak-n num' }, String(st.days || 0)), h('div', { class: 'xs muted' }, (st.days || 0) === 1 ? 'day streak' : 'day streak')))),
     h('div', { class: 'bar go thin mt', 'aria-hidden': 'true' }, h('i', { style: { width: `${planned ? Math.min(100, (doneCount / planned) * 100) : 0}%` } })),
     h('div', { class: 'wk-strip mt' }, cells));
 }
@@ -440,7 +451,7 @@ function tipCard(today) {
 }
 
 export function render(root) {
-  const ui = { editing: false, picks: null };
+  const ui = { editing: false, open: false, picks: null };
   const paint = () => {
     const s = store.get();
     const today = todayISO();
@@ -450,7 +461,7 @@ export function render(root) {
       readinessCard(s, today, ui, paint),
       sessionCard(s, today),
       ringsRow(s, today),
-      quickActions(),
+      quickActions(s.profile.units),
       weekStrip(s, today),
       upNext(s, today),
       backupNudge(s),

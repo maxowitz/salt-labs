@@ -247,6 +247,9 @@ export class IntervalTimer {
 let ctx = null;
 function audio() {
   if (ctx) return ctx;
+  // Creating a context before any user gesture only produces a suspended context and a console warning.
+  const ua = globalThis.navigator?.userActivation;
+  if (ua && !ua.hasBeenActive) return null;
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AC) return null;
   try { ctx = new AC(); } catch { ctx = null; }

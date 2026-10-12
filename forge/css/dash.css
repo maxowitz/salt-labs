@@ -11,7 +11,7 @@
    Onboarding
    ========================================================= */
 .ob { min-height: calc(100dvh - 40px); display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; }
-.ob-top { display: grid; grid-template-columns: 44px 1fr 56px; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 5;
+.ob-top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 5;
   background: var(--bg);
   margin: calc(-14px - var(--safe-t)) -16px 0; padding: calc(10px + var(--safe-t)) 16px 10px; }
 .ob-dots { display: flex; gap: 5px; justify-content: center; }
@@ -108,9 +108,6 @@
   color: var(--text-2); font-variant-numeric: tabular-nums; transition: background .12s, color .12s, transform .1s; }
 .rq-pick:active { transform: scale(.94); }
 .rq-pick.on { background: var(--text); border-color: var(--text); color: var(--bg); }
-.readiness.done { border-left: 4px solid var(--go); }
-.readiness.done.amber { border-left-color: var(--warn); }
-.readiness.done.red { border-left-color: var(--danger); }
 .readiness.done .card-title { margin: 1px 0 3px; }
 
 .session-card { padding: 18px; }
@@ -306,3 +303,25 @@ body.locked #app, body.locked .tabbar, body.locked #toast-root { visibility: hid
 .lk-key:active { background: var(--surface-3); }
 .lk-key.fn { background: transparent; border-color: transparent; color: var(--text-2); }
 .lk-sheet { align-items: center; padding: 8px 0 12px; outline: none; }
+
+/* ---- r1: compact readiness, unified selection, misc ---- */
+.readiness.done, .readiness.rd-collapsed { padding: 10px 12px 10px 14px; }
+.rd-collapsed { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; color: var(--text); min-height: 60px; }
+.rd-ico { width: 36px; height: 36px; border-radius: var(--radius-sm); display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); flex: none; }
+.rd-line { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rd-title { font-weight: 600; font-size: 15px; }
+.readiness.done .ring-label .v { font-size: 13px !important; }
+.rd-open .rq-list { gap: 8px; margin: 10px 0 2px; }
+.rd-open .rq { display: grid; grid-template-columns: minmax(84px, 0.9fr) 2fr; align-items: center; gap: 10px; }
+.rd-open .rq-head { flex-direction: column; align-items: flex-start; gap: 0; margin: 0; }
+.rd-open .rq-ends { font-size: 10.5px; }
+.rd-open .rq-picks { gap: 4px; }
+.rd-open .rq-pick { min-height: 44px; font-size: 15px; }
+.ob-choice.on, .bell-tile.on, .equip-tile.on, .day-tile.on, .bell-tile.pair { border-color: var(--text); background: var(--surface-2); color: var(--text); }
+.day-tile.on .day-n, .bell-tile.pair .bell-count, .bell-tile.on .bell-count { color: var(--text); }
+.ob-choice.on .ob-radio { background: var(--text); border-color: var(--text); color: var(--bg); }
+.equip-tile.on small { color: var(--text-2); }
+.equip-tile { min-height: 72px; }
+.wk-dot .ico { width: 15px; height: 15px; }
+.stat .k .swatch { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+.btn.primary:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }

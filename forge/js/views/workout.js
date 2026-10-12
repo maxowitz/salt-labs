@@ -92,7 +92,7 @@ function setVolume(st) {
 }
 
 // ---------------------------------------------------------------- view
-export async function render(root, { args = [] } = {}) {
+export async function render(root, { args = [], query = {} } = {}) {
   // The router's fade-in leaves a transform on the view root, which would turn our position:fixed
   // header/footer/rest dock into children of the view box. The player manages its own transitions.
   root.classList.remove('fade-in');
@@ -120,6 +120,14 @@ export async function render(root, { args = [] } = {}) {
   }
   const w = id === 'free' ? freeWorkout() : getPlanned(id);
   if (!w) { notFound(root, id); return cleanup; }
+  if (query.go === '1' || query.go === 'true') {
+    // Session detail already showed the whole session — start straight away (honours ?scaled=1|0).
+    const { scaled, score } = scaledVersion(w);
+    const useScaled = !!scaled && query.scaled !== '0';
+    history.replaceState(null, '', location.pathname + location.search + '#/workout/' + encodeURIComponent(id));
+    startWorkout(ctx, w, useScaled ? scaled : null, score);
+    return cleanup;
+  }
   preStart(ctx, w);
   return cleanup;
 }
@@ -160,13 +168,39 @@ function elapsedOf(aw) {
 }
 
 // ---------------------------------------------------------------- pre-start
-function preStart(ctx, original) {
+const isLocked = (w) => !!(w?.fixed || w?.benchmark);
+
+/** Readiness-scaled copy of a workout, or null when nothing would change. Fixed (race) and benchmark
+ *  sessions are never scaled — scaleWorkout only returns advice for them. */
+function scaledVersion(original) {
   const score = !(original.blocks || []).length ? null : readinessToday();
-  let scaled = null;
+  let scaled = null, advice = [];
   if (score != null) {
     const r = safe(() => coach.scaleWorkout?.(original, score), null);
-    if (r && r.workout && Array.isArray(r.changes) && r.changes.length) scaled = r;
+    if (r && Array.isArray(r.changes) && r.changes.length) {
+      if (isLocked(original)) advice = r.changes;
+      else if (r.workout) scaled = r;
+    }
   }
+  return { score, scaled, advice };
+}
+
+function startWorkout(ctx, original, scaled, score) {
+  unlockAudio();
+  const isFree = original.id === 'free' || !(original.blocks || []).length;
+  const w = scaled ? scaled.workout : original;
+  const aw = {
+    workoutId: original.id, startedAt: new Date().toISOString(), blockIndex: 0, stepIndex: 0, log: [],
+    paused: false, elapsed: 0, runningSince: Date.now(),
+    workout: structuredClone(w), scaled: !!scaled, changes: scaled ? scaled.changes : [],
+    readiness: score, blocks: {}, rest: null, finishing: false, free: isFree,
+  };
+  store.update((d) => { d.activeWorkout = aw; });
+  player(ctx, structuredClone(aw), { fresh: true });
+}
+
+function preStart(ctx, original) {
+  const { score, scaled, advice } = scaledVersion(original);
   let useScaled = !!scaled;
   const isFree = original.id === 'free' || !(original.blocks || []).length;
   const root = clear(ctx.root);
@@ -195,6 +229,7 @@ function preStart(ctx, original) {
     if (score == null) {
       return h('a', { class: 'callout wo-ready-hint', href: '#/today' }, h('strong', null, 'No readiness check-in today. '), 'Check in on Today and FORGE will scale this session to how you feel.');
     }
+    if (advice.length) return h('div', { class: 'callout' }, h('strong', null, `Readiness ${Math.round(score)}. `), advice.join(' '));
     if (!scaled) return h('div', { class: 'callout go' }, h('strong', null, `Readiness ${Math.round(score)} — `), 'good to go as planned.');
     return h('div', { class: 'card wo-ready' },
       h('div', { class: 'row between' },
@@ -210,18 +245,7 @@ function preStart(ctx, original) {
 
   const start = h('button', {
     class: 'btn primary xl block wo-start', on: {
-      click: () => {
-        unlockAudio();
-        const w = useScaled ? scaled.workout : original;
-        const aw = {
-          workoutId: original.id, startedAt: new Date().toISOString(), blockIndex: 0, stepIndex: 0, log: [],
-          paused: false, elapsed: 0, runningSince: Date.now(),
-          workout: structuredClone(w), scaled: !!(useScaled && scaled), changes: useScaled && scaled ? scaled.changes : [],
-          readiness: score, blocks: {}, rest: null, finishing: false, free: isFree,
-        };
-        store.update((d) => { d.activeWorkout = aw; });
-        player(ctx, structuredClone(aw), { fresh: true });
-      },
+      click: () => startWorkout(ctx, original, useScaled ? scaled : null, score),
     },
   }, icon('play'), isFree ? 'Start free session' : 'Start workout');
 
@@ -270,14 +294,24 @@ function player(ctx, aw, { fresh = false } = {}) {
     const copy = structuredClone(aw);
     store.update((d) => { d.activeWorkout = copy; });
   };
-  const save = () => { if (!saveTimer) saveTimer = setTimeout(flush, SAVE_MS); };
+  let footKey = null;
+  const save = () => {
+    if (!saveTimer) saveTimer = setTimeout(flush, SAVE_MS);
+    // keep the footer's primary action in sync with block completion
+    const k = `${aw.blockIndex}|${W.blocks.length}|${blockComplete(aw.blockIndex)}`;
+    if (footKey !== null && k !== footKey) drawFoot();
+  };
   const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
   document.addEventListener('visibilitychange', onHide);
   window.addEventListener('pagehide', flush);
   const releaseWake = wakeLock();
+  // iOS only lets WebAudio/speech start inside a user gesture — after a refresh, unlock on the first touch.
+  const onFirstTouch = () => unlockAudio();
+  ctx.root.addEventListener('pointerdown', onFirstTouch, { once: true, capture: true });
   ctx.disposers.push(() => {
     flush(); alive = false;
     document.removeEventListener('visibilitychange', onHide);
+    ctx.root.removeEventListener('pointerdown', onFirstTouch, { capture: true });
     window.removeEventListener('pagehide', flush);
     releaseWake();
     for (const t of blockTimers.values()) t.stop();
@@ -386,12 +420,23 @@ function player(ctx, aw, { fresh = false } = {}) {
   }
   function drawFoot() {
     const n = W.blocks.length, i = aw.blockIndex, last = i >= n - 1;
+    footKey = `${i}|${n}|${blockComplete(i)}`;
     put(clear(foot), 
       h('button', { class: 'btn ghost wo-nav', disabled: i <= 0, 'aria-label': 'Previous block', on: { click: () => goBlock(i - 1) } }, icon('chevL')),
       isFree ? h('button', { class: 'btn subtle wo-nav-add', on: { click: () => addExerciseSheet() } }, icon('plus'), 'Exercise') : null,
       last || !n
-        ? h('button', { class: 'btn primary grow wo-next', on: { click: () => finish() } }, icon('flag'), 'Finish')
+        ? h('button', { class: 'btn grow wo-next' + (blockComplete(i) || !n ? ' primary' : ''), on: { click: () => finish() } }, icon('flag'), 'Finish')
         : h('button', { class: 'btn grow wo-next', on: { click: () => { markDone(i); goBlock(i + 1); } } }, 'Next block', icon('chevR')));
+  }
+  // Is everything in block i logged/checked? (Decides whether the footer's Finish is the primary action.)
+  function blockComplete(i) {
+    const b = W.blocks[i], bs = aw.blocks[i] || {};
+    if (!b) return true;
+    if (bs.done || blockDone(i)) return true;
+    if (TIMED.has(b.kind)) return !!bs.logged;
+    if (CARDIO.has(b.kind)) return (b.items || []).every((_, ii) => aw.log.some((l) => l.block === i && l.item === ii));
+    if (LIST.has(b.kind)) return (b.items || []).every((_, ii) => bs.checked?.[ii]);
+    return false;
   }
   function markDone(i) { aw.blocks[i] = { ...(aw.blocks[i] || {}), done: true }; }
 
@@ -442,12 +487,21 @@ function player(ctx, aw, { fresh = false } = {}) {
     if (!bs.draft[ii]) {
       const it = W.blocks[bi].items[ii];
       const last = safe(() => coach.lastPerformance?.(it.exId, priorSessions), null);
-      let kg = it.kg ?? safe(() => coach.suggestWeight?.(it.exId, profile, priorSessions), null) ?? last?.kg ?? null;
-      if (kg == null && isKbEx(it.exId) && bells.length) kg = bells[0];
+      const e = ex(it.exId);
+      let kg, reason = '', tooHeavy = false;
+      if (isKbEx(it.exId) && coach.liveItemAdvice) {
+        const adv = safe(() => coach.liveItemAdvice(it, profile, priorSessions), null) || {};
+        kg = adv.kg ?? null; reason = adv.reason || '';
+        // suggestWeight → null for a loaded KB lift means every owned bell is too heavy
+        if (kg == null && e.loadRatio && bells.length) tooHeavy = true;
+      } else {
+        kg = it.kg ?? safe(() => coach.suggestWeight?.(it.exId, profile, priorSessions), null) ?? last?.kg ?? null;
+      }
+      if (kg == null && !tooHeavy && isKbEx(it.exId) && bells.length) kg = bells[0];
       const track = ex(it.exId).track || 'reps';
       const hasT = it.reps != null || it.timeSec != null || it.distanceM != null;
       bs.draft[ii] = {
-        kg: kg ?? null,
+        kg: kg ?? null, reason, tooHeavy,
         reps: it.reps ?? (!hasT && track === 'reps' ? last?.reps ?? 5 : null),
         timeSec: it.reps == null ? it.timeSec ?? (!hasT && track === 'time' ? last?.timeSec ?? 30 : null) : null,
         distanceM: it.reps == null && it.timeSec == null ? it.distanceM ?? (!hasT && track === 'distance' ? last?.distanceM ?? 40 : null) : null,
@@ -483,7 +537,12 @@ function player(ctx, aw, { fresh = false } = {}) {
     const n = setCount(bi, ii);
     const rest = it.restSec ?? b.restSec ?? 90;
 
-    const bellRow = showBells ? bellPicker(d.kg, (kg) => { d.kg = kg; save(); redraw(); }) : null;
+    const bellRow = showBells ? bellPicker(d.kg, (kg) => { d.kg = kg; d.tooHeavy = false; save(); redraw(); }) : null;
+    const hint = [d.kg ? `${fmtBell(d.kg)} = ${bellLb(d.kg)}` : null, d.reason || null].filter(Boolean).join(' · ');
+    const regress = d.tooHeavy && d.kg == null ? h('div', { class: 'callout wo-regress' },
+      h('div', null, 'Your lightest bell is too heavy for this lift today.'),
+      e.regression ? h('button', { class: 'btn sm mt', on: { click: () => { it.exId = e.regression; delete aw.blocks[bi].draft[ii]; save(); redraw(); } } }, `Swap to ${exName(e.regression)}`) : null,
+      h('div', { class: 'small muted mt' }, e.regression ? 'Or pick a bell below if you feel ready.' : 'Pick a bell below if you feel ready, or skip these sets.')) : null;
     const rows = [];
     for (let si = 0; si < n; si++) {
       const lg = logged.find((l) => l.item === ii && l.set === si);
@@ -496,9 +555,11 @@ function player(ctx, aw, { fresh = false } = {}) {
           h('h3', { class: 'wo-ex-name' }, e.name),
           h('div', { class: 'wo-ex-target' },
             [it.sets ? `${it.sets} × ${it.reps ?? (it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? it.distanceM + ' m' : '')}${it.perSide ? ' / side' : ''}` : itemTarget(it, b), `rest ${fmtDur(rest)}`, it.note].filter(Boolean).join(' · ')),
-          last ? h('div', { class: 'wo-ghost' }, `Last: ${last.kg ? fmtBell(last.kg) + ' × ' : ''}${last.reps ?? (last.timeSec ? fmtDur(last.timeSec) : '')}${last.date ? ' · ' + last.date.slice(5) : ''}`) : null),
+          last ? h('div', { class: 'wo-ghost' }, `Last: ${last.kg ? fmtBell(last.kg) + ' × ' : ''}${last.reps ?? (last.timeSec ? fmtDur(last.timeSec) : '')}${last.rpe ? ' @ RPE ' + last.rpe : ''}${last.date ? ' · ' + last.date.slice(5) : ''}`) : null),
         infoBtn(it.exId)),
+      regress,
       bellRow,
+      hint ? h('div', { class: 'wo-hint' + (d.reason && /^Earned/.test(d.reason) ? ' earned' : '') }, hint) : null,
       h('div', { class: 'wo-sets', role: 'list' }, rows),
       h('button', { class: 'link-btn wo-addset', on: { click: () => { const bs = aw.blocks[bi]; bs.extra = bs.extra || {}; bs.extra[ii] = (bs.extra[ii] || 0) + 1; save(); redraw(); } } }, '+ Add set'));
   }
@@ -509,7 +570,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     const reps = done ? lg.reps : d.reps;
     const timeSec = done ? lg.timeSec : d.timeSec;
     const dist = done ? lg.distanceM : d.distanceM;
-    const amount = reps != null ? String(reps) + (it.perSide ? '/s' : '') : timeSec != null ? fmtDur(timeSec) : dist != null ? `${Math.round(dist)} m` : '—';
+    const amount = reps != null ? String(reps) + (it.perSide ? ' / side' : '') : timeSec != null ? fmtDur(timeSec) : dist != null ? `${Math.round(dist)} m` : '—';
     let edit = null;
     if (isCur && !done) {
       if (reps != null) edit = stepper(reps, { min: 0, max: 300, label: 'reps', onChange: (v) => { d.reps = v; save(); } });
@@ -517,9 +578,9 @@ function player(ctx, aw, { fresh = false } = {}) {
       else if (dist != null) edit = stepper(dist, { min: 5, max: 5000, step: 5, label: 'metres', fmt: (v) => `${v} m`, onChange: (v) => { d.distanceM = v; save(); } });
     }
     const val = h('div', { class: 'wo-set-val' },
-      h('span', { class: 'wo-set-kg num' }, kg ? fmtBell(kg) : 'BW', kg ? h('small', null, bellLb(kg)) : null),
+      h('span', { class: 'wo-set-kg num' }, kg ? fmtBell(kg) : 'BW'),
       h('span', { class: 'wo-x' }, '×'),
-      edit || h('span', { class: 'wo-set-reps num' }, amount));
+      edit || h('span', { class: 'wo-set-reps num' }, reps != null ? String(reps) : amount, reps != null && it.perSide ? h('small', { class: 'wo-side' }, ' / side') : null));
     const check = h('button', {
       class: 'wo-check' + (done ? ' done' : '') + (isCur ? ' cur' : ''), type: 'button',
       'aria-label': done ? `Undo set ${si + 1}` : `Log set ${si + 1}: ${kg ? fmtBell(kg) : 'bodyweight'} × ${amount}`,
@@ -532,7 +593,9 @@ function player(ctx, aw, { fresh = false } = {}) {
             aw.log.push({
               type: 'set', block: bi, item: ii, set: si, exId: it.exId, kg: kg ?? null, reps: reps ?? null, timeSec: reps == null ? timeSec ?? null : null,
               distanceM: reps == null && timeSec == null ? dist ?? null : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(),
+              ...(it.benchmark ? { benchmark: true } : {}),
             });
+            rpeOpen = aw.log[aw.log.length - 1].at;
             haptic(25);
             const more = aw.log.filter((l) => l.block === bi && l.type === 'set').length < W.blocks[bi].items.reduce((a, _, k) => a + setCount(bi, k), 0);
             if (more && rest > 0) startRest(rest, nextLabel(bi)); else if (!more) { endRest(); beep('done'); markDone(bi); drawProgress(); }
@@ -541,8 +604,26 @@ function player(ctx, aw, { fresh = false } = {}) {
         },
       },
     }, icon('check', 26));
-    return h('div', { class: 'wo-set' + (done ? ' done' : '') + (isCur ? ' cur' : ''), role: 'listitem' },
-      h('span', { class: 'wo-set-n num' }, String(si + 1)), val, check);
+    const rpeBtn = done ? h('button', {
+      class: 'wo-rpe-tag' + (lg.rpe ? ' set' : ''), type: 'button', 'aria-label': lg.rpe ? `RPE ${lg.rpe}, change` : 'Rate effort (RPE)',
+      on: { click: () => { rpeOpen = rpeOpen === lg.at ? null : lg.at; redraw(); } },
+    }, lg.rpe ? `@${lg.rpe}` : 'RPE') : null;
+    const row = h('div', { class: 'wo-set' + (done ? ' done' : '') + (isCur ? ' cur' : ''), role: 'listitem' },
+      h('span', { class: 'wo-set-n num' }, String(si + 1)), val, rpeBtn, check);
+    if (!done || rpeOpen !== lg.at) return row;
+    return [row, rpePicker(lg, redraw)];
+  }
+
+  // Optional per-set effort rating (liveItemAdvice uses RPE to decide whether a bell was earned).
+  let rpeOpen = null;
+  function rpePicker(lg, redraw) {
+    return h('div', { class: 'wo-rpe-pick', role: 'radiogroup', 'aria-label': 'How hard was that set? RPE' },
+      h('span', { class: 'wo-rpe-q' }, 'How hard?'),
+      [6, 7, 8, 9, 10].map((v) => h('button', {
+        type: 'button', role: 'radio', 'aria-checked': String(lg.rpe === v), class: 'wo-rpe-opt' + (lg.rpe === v ? ' on' : ''),
+        title: v === 10 ? 'Max effort' : `${10 - v} rep${10 - v > 1 ? 's' : ''} in reserve`,
+        on: { click: () => { lg.rpe = lg.rpe === v ? null : v; rpeOpen = null; haptic(); save(); redraw(); } },
+      }, String(v))));
   }
 
   function nextLabel(bi) {
@@ -566,7 +647,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       opts.map((kg) => h('button', {
         type: 'button', class: 'chip wo-bell' + (kg === value ? ' on' : ''), role: 'radio', 'aria-checked': String(kg === value),
         on: { click: () => { haptic(); onPick(kg); } },
-      }, h('span', { class: 'num' }, fmtBell(kg)), h('small', null, bellLb(kg)))));
+      }, h('span', { class: 'num' }, fmtBell(kg)))));
   }
 
   function infoBtn(exId) {
@@ -580,6 +661,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     restTicker = null;
     clear(restDock);
     restDock.classList.toggle('on', !!restTimer);
+    main.classList.toggle('has-rest', !!restTimer);
     if (!restTimer) return;
     const face = h('div', { class: 'wo-rest-time num' }, '');
     const bar = h('i');
@@ -664,7 +746,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     function itemLine(it, ii, big) {
       const kg = bs.kg[ii];
       return h('div', { class: 'wo-item' + (big ? ' big' : '') },
-        h('span', { class: 'wo-item-reps num' }, it.reps ? `${it.reps}${it.perSide ? '/s' : ''}` : it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? fmtTarget(it.distanceM) : '—'),
+        h('span', { class: 'wo-item-reps num' }, it.reps ? `${it.reps}${it.perSide ? ' / side' : ''}` : it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? fmtTarget(it.distanceM) : '—'),
         h('span', { class: 'wo-item-name' }, exName(it.exId)),
         kg ? h('span', { class: 'wo-item-kg num' }, fmtBell(kg)) : null,
         infoBtn(it.exId));
@@ -715,7 +797,7 @@ function player(ctx, aw, { fresh = false } = {}) {
             stepper(extra.v, { min: 0, max: 999, label: 'extra reps', onChange: (v) => { bs.extraReps = v; save(); } })) : null),
         splits.length ? h('div', { class: 'wo-splits' }, h('div', { class: 'eyebrow' }, 'Splits'),
           h('div', { class: 'chips' }, splits.map((l, k) => h('span', { class: 'chip num' }, `${k + 1}: ${fmtDur(l.sec)}`)))) : null,
-        h('button', { class: 'btn go xl block', on: { click: () => logTimed() } }, icon('check'), bs.logged ? 'Update & continue' : 'Log & continue'));
+        h('button', { class: 'btn primary xl block', on: { click: () => logTimed() } }, icon('check'), bs.logged ? 'Update & continue' : 'Log & continue'));
     }
 
     function logTimed() {
@@ -750,9 +832,9 @@ function player(ctx, aw, { fresh = false } = {}) {
 
     function pushItem(it, ii, reps, rounds, timeSec) {
       if (isCardioEx(it.exId)) {
-        aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: (it.distanceM || 0) * (rounds || 1) || null, timeSec: timeSec ?? null, avgHr: null, at: Date.now() });
+        aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: (it.distanceM || 0) * (rounds || 1) || null, timeSec: timeSec ?? null, avgHr: null, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       } else {
-        aw.log.push({ type: 'set', block: bi, item: ii, set: null, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now() });
+        aw.log.push({ type: 'set', block: bi, item: ii, set: null, exId: it.exId, kg: bs.kg[ii] ?? null, reps: reps || null, timeSec: reps ? null : timeSec ?? null, distanceM: it.distanceM ? it.distanceM * (rounds || 1) : null, rpe: null, double: isDouble(it.exId), perSide: !!it.perSide, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
       }
     }
 
@@ -871,14 +953,14 @@ function player(ctx, aw, { fresh = false } = {}) {
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, cardio ? 'Avg HR' : 'Avg HR (opt.)'), hrIn)),
           paceEl,
           h('button', {
-            class: 'btn go xl block', on: {
+            class: 'btn primary xl block', on: {
               click: () => {
                 if (t?.started && !t.state.done) { t.skip(); }
                 const m = toM(is.dist), sec = is.timeSec || (t?.state.totalElapsed ? Math.round(t.state.totalElapsed) : null);
                 if (!m && !sec) { toast('Enter a time or distance first'); return; }
                 const hr = +is.hr > 0 ? Math.round(+is.hr) : null;
-                if (cardio) aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: m ? Math.round(m) : null, timeSec: sec ? Math.round(sec) : null, avgHr: hr, at: Date.now() });
-                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now() });
+                if (cardio) aw.log.push({ type: 'cardio', block: bi, item: ii, exId: it.exId, mode: cardioMode(it.exId), distanceM: m ? Math.round(m) : null, timeSec: sec ? Math.round(sec) : null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
+                else aw.log.push({ type: 'set', block: bi, item: ii, set: 0, exId: it.exId, kg: it.kg ?? null, reps: it.reps ?? null, timeSec: sec ? Math.round(sec) : null, distanceM: m ? Math.round(m) : null, rpe: null, avgHr: hr, at: Date.now(), ...(it.benchmark ? { benchmark: true } : {}) });
                 t?.stop(); blockTimers.delete(key); is.timer = t ? t.snapshot() : null; t = null;
                 haptic(30); beep('done');
                 save(); redrawAll();
@@ -1031,7 +1113,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       title: 'End workout?',
       content: ({ close }) => h('div', { class: 'stack' },
         h('p', { class: 'muted' }, `${fmtDur(elapsed())} elapsed · ${entries} ${entries === 1 ? 'entry' : 'entries'} logged.`),
-        h('button', { class: 'btn go xl block', on: { click: () => { close(); finish(); } } }, icon('flag'), 'Finish & review'),
+        h('button', { class: 'btn primary xl block', on: { click: () => { close(); finish(); } } }, icon('flag'), 'Finish & review'),
         h('button', { class: 'btn ghost block', on: { click: () => { close(); flush(); navigate('#/today'); } } }, 'Leave — keep it in progress'),
         h('button', {
           class: 'btn ghost block danger-text', on: {
@@ -1067,9 +1149,9 @@ function player(ctx, aw, { fresh = false } = {}) {
     const sets = aw.log.filter((l) => l.type === 'set').map((l) => ({
       exId: l.exId, kg: l.kg ?? null, reps: l.reps ?? null, timeSec: l.timeSec ?? null, distanceM: l.distanceM ?? null, rpe: l.rpe ?? null,
       block: W.blocks[l.block]?.title || KIND_LABEL[W.blocks[l.block]?.kind] || String(l.block),
-      ...(l.double ? { double: true } : {}), ...(l.perSide ? { perSide: true } : {}),
+      ...(l.double ? { double: true } : {}), ...(l.perSide ? { perSide: true } : {}), ...(l.benchmark ? { benchmark: true } : {}),
     }));
-    const cardio = aw.log.filter((l) => l.type === 'cardio').map((l) => ({ mode: l.mode, distanceM: l.distanceM ?? null, timeSec: l.timeSec ?? null, avgHr: l.avgHr ?? null, exId: l.exId }));
+    const cardio = aw.log.filter((l) => l.type === 'cardio').map((l) => ({ mode: l.mode, distanceM: l.distanceM ?? null, timeSec: l.timeSec ?? null, avgHr: l.avgHr ?? null, exId: l.exId, ...(l.benchmark ? { benchmark: true } : {}) }));
     const results = aw.log.filter((l) => l.type === 'block').map((l) => ({ title: l.title, kind: l.kind, rounds: l.rounds, extraReps: l.extraReps }));
     let type = W.type;
     if (isFree) type = cardio.length && sets.length ? 'hybrid' : cardio.length ? 'run' : 'strength';

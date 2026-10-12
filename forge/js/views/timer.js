@@ -1,6 +1,7 @@
 // FORGE free timers — #/timer : EMOM · AMRAP · Tabata · Intervals · Stopwatch
 import { h, clear, icon, seg, stepper, fmtDur, haptic } from '../ui.js';
 import { IntervalTimer, buildSegments, segmentsDuration, wakeLock, unlockAudio, speak } from '../engine/timer.js';
+import { backBar } from './session.js';
 import { timerFace, timerControls, roundCounter, phaseOf, faceTime, fmtClock } from './_timerui.js';
 
 /** append that skips null/false and flattens arrays (native append would stringify them) */
@@ -97,8 +98,8 @@ export async function render(root) {
       updTotal();
     };
     put(root, 
-      h('div', { class: 'page-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Train'), h('h1', null, 'Timers')),
-        h('a', { class: 'icon-btn filled', href: '#/train', 'aria-label': 'Back to Train' }, icon('x'))),
+      backBar('#/train', 'Train'),
+      h('div', { class: 'page-head' }, h('h1', null, 'Timers')),
       h('div', { class: 'tm-modes' }, seg(MODES, cfg.mode, (v) => { cfg.mode = v; drawBody(); }, { label: 'Timer type' })),
       body,
       h('button', { class: 'btn primary xl block tm-start', on: { click: () => { unlockAudio(); run(); } } }, icon('play'), 'Start'));

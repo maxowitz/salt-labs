@@ -4,7 +4,7 @@ import {
   h, icon, toast, sheet, confirmDialog, fmtBell, bellLb, fmtDist, fmtDur, fmtDate, navigate, field, emptyState, clear,
 } from '../ui.js';
 import { getWorkout, PHASES } from '../engine/program.js';
-import { scaleWorkout, suggestWeight, detectPRs } from '../engine/coach.js';
+import { scaleWorkout, suggestWeight, liveItemAdvice, tooHeavy, detectPRs } from '../engine/coach.js';
 import { getExercise } from '../data/exercises.js';
 import { exerciseSheet } from './library.js';
 
@@ -110,11 +110,24 @@ export function describeItem(item, block, profile, sessions) {
   if ((item.reps || item.distanceM) && item.timeSec) extra.push(item.distanceM && !item.reps ? `in ~${fmtSec(item.timeSec)}` : fmtSec(item.timeSec));
   if (item.restSec) extra.push(`rest ${fmtSec(item.restSec)}`);
   let kg = Number.isFinite(+item.kg) && +item.kg > 0 ? +item.kg : null;
-  let suggested = false;
-  if (kg == null && ex.category === 'kb') {
-    try { const s = suggestWeight(item.exId, profile, sessions); if (s) { kg = s; suggested = true; } } catch {}
+  let suggested = false, reason = '', earned = false, regress = null;
+  if (ex.category === 'kb') {
+    try {
+      const adv = liveItemAdvice(item, profile, sessions) || {};
+      if (Number.isFinite(+adv.kg) && +adv.kg > 0) {
+        suggested = kg == null; kg = +adv.kg;
+      } else if (kg == null) {
+        const sw = suggestWeight(item.exId, profile, sessions);
+        if (sw) { kg = sw; suggested = true; }
+      }
+      reason = adv.reason || ''; earned = !!adv.earned;
+      if (kg == null && tooHeavy(item.exId, profile)) {
+        const reg = ex.regression ? safeEx(ex.regression) : null;
+        regress = reg ? { id: reg.id, name: reg.name } : { id: null, name: null };
+      }
+    } catch (e) { console.warn('bell advice', e); }
   }
-  return { ex, dose, kg, suggested, double: !!ex.double, extra };
+  return { ex, dose, kg, suggested, double: !!ex.double, extra, reason, earned, regress };
 }
 
 export function bellTag(kg, { double = false, suggested = false } = {}) {
@@ -132,6 +145,11 @@ export function itemRow(item, block, profile, sessions) {
       h('button', { type: 'button', class: 'tr-exname', on: { click: () => exerciseSheet(item.exId) }, 'aria-label': `${d.ex.name} — technique` }, d.ex.name, icon('info', 14)),
       bellTag(d.kg, d)),
     d.dose || d.extra.length ? h('div', { class: 'tr-item-dose' }, d.dose ? h('b', null, d.dose) : null, d.extra.length ? h('span', { class: 'muted' }, (d.dose ? ' · ' : '') + d.extra.join(' · ')) : null) : null,
+    d.reason ? h('div', { class: 'tr-item-why' + (d.earned ? ' earned' : '') }, d.earned ? icon('check', 13) : icon('info', 13), d.reason) : null,
+    d.regress ? h('div', { class: 'tr-item-why warn' }, icon('info', 13),
+      d.regress.id ? h('span', null, 'Your lightest bell is too heavy for this lift yet — do ',
+        h('a', { href: '#/library/' + encodeURIComponent(d.regress.id) }, d.regress.name), ' instead and build up.')
+        : 'Your lightest bell is too heavy for this lift yet — use a lighter variation or bodyweight.') : null,
     item.note ? h('div', { class: 'tr-item-note' }, item.note) : null);
 }
 
@@ -229,6 +247,26 @@ export function markDoneSheet(workout, defaultDate) {
   });
 }
 
+/** Would today's readiness change this workout? (fixed race/primer and benchmark sessions never scale) */
+export function wouldScale(workout, s = store.get()) {
+  const score = s.readiness?.[todayISO()]?.score;
+  if (!workout || workout.fixed || workout.benchmark || !Number.isFinite(+score)) return false;
+  try { return (scaleWorkout(workout, +score)?.changes || []).length > 0; } catch { return false; }
+}
+
+/** Open the player straight into the workout; asks before replacing a different in-progress workout. */
+export async function startWorkout(id, scaled) {
+  const cur = store.get().activeWorkout;
+  if (cur && cur.workoutId && cur.workoutId !== id) {
+    const other = safeGetWorkout(store.get().plan, cur.workoutId);
+    const ok = await confirmDialog(`“${other?.title || 'Another workout'}” is still in progress. Discard it and start this one?`, { ok: 'Discard & start', danger: true });
+    if (!ok) return;
+    store.update((d) => { d.activeWorkout = null; });
+  }
+  const resuming = cur && cur.workoutId === id;
+  navigate('#/workout/' + encodeURIComponent(id) + (resuming ? '' : `?go=1&scaled=${scaled ? 1 : 0}`));
+}
+
 // ---------------------------------------------------------------- view
 let viewMode = null; // 'planned' | 'scaled' — kept across re-renders of the same workout
 let viewModeFor = null;
@@ -254,12 +292,13 @@ export function render(root, { args }) {
 
     // readiness scaling preview
     let shown = workout, changes = [];
+    const locked = !!(workout.fixed || workout.benchmark);
     const scaleRelevant = Number.isFinite(+readinessScore) && (!planned || planned.day.date === today || planned.day.date > today);
     if (scaleRelevant) {
       try {
         const r = scaleWorkout(workout, +readinessScore);
         changes = r?.changes || [];
-        if (changes.length) {
+        if (changes.length && !locked) {
           if (!viewMode) viewMode = planned?.day.date === today ? 'scaled' : 'planned';
           if (viewMode === 'scaled') shown = r.workout;
         }
@@ -276,7 +315,7 @@ export function render(root, { args }) {
         phasePill(phase),
         weekNo ? h('span', { class: 'pill' }, `Week ${weekNo}`) : h('span', { class: 'pill' }, 'Extra session'),
         planned?.week?.deload ? h('span', { class: 'pill recovery' }, 'Deload') : null,
-        planned ? h('span', { class: 'pill' + (planned.day.date === today ? ' accent' : '') }, planned.day.date === today ? 'Today' : fmtDate(planned.day.date)) : null),
+        planned ? h('span', { class: 'pill' }, planned.day.date === today ? 'Today' : fmtDate(planned.day.date)) : null),
       h('div', { class: 'row gap mt top' }, typeBadge(workout.type, 48),
         h('div', { class: 'grow' }, h('h1', { class: 'tr-stitle' }, workout.title), h('div', { class: 'small muted' }, meta.label))),
       h('div', { class: 'tr-sstats' },
@@ -294,7 +333,11 @@ export function render(root, { args }) {
       root.append(h('div', { class: 'callout danger small' }, `Planned for ${fmtDate(planned.day.date)} and not logged. Train it now, mark it done, or swap it to another day.`));
     }
 
-    if (changes.length) {
+    if (changes.length && locked) {
+      root.append(h('div', { class: 'callout info small tr-ready' },
+        h('div', { class: 'eyebrow' }, `Readiness today · ${Math.round(readinessScore)}/100`),
+        h('ul', { class: 'tr-changes' }, changes.map((c) => h('li', null, c)))));
+    } else if (changes.length) {
       root.append(h('div', { class: 'card tr-ready' },
         h('div', { class: 'row between' },
           h('div', null, h('div', { class: 'eyebrow' }, 'Readiness today'), h('div', { class: 'big num' }, String(Math.round(readinessScore)), h('small', { class: 'muted small' }, ' / 100'))),
@@ -324,16 +367,7 @@ export function render(root, { args }) {
     root.append(h('div', { class: 'tr-sticky' },
       h('button', {
         class: 'btn primary xl block tr-start', on: {
-          click: async () => {
-            const cur = store.get().activeWorkout;
-            if (cur && cur.workoutId !== id) {
-              const other = safeGetWorkout(store.get().plan, cur.workoutId);
-              const ok = await confirmDialog(`“${other?.title || 'Another workout'}” is still in progress. Discard it and start this one?`, { ok: 'Discard & start', danger: true });
-              if (!ok) return;
-              store.update((d) => { d.activeWorkout = null; });
-            }
-            navigate('#/workout/' + encodeURIComponent(id));
-          },
+          click: () => startWorkout(id, viewMode === 'scaled' && changes.length > 0 && !locked),
         },
       }, icon('play', 20), resuming ? 'Resume workout' : done.length ? 'Start again' : 'Start workout')));
   };

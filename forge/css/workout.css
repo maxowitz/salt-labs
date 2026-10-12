@@ -77,10 +77,10 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .wo-info { margin: -6px -8px 0 0; color: var(--muted); }
 
 .wo-bells { margin-top: -2px; }
-.wo-bell { min-height: 44px; padding: 6px 14px; flex-direction: column; gap: 0; line-height: 1.05; justify-content: center; }
+.wo-bell { min-height: 44px; padding: 0 14px; flex-direction: row; align-items: center; white-space: nowrap; }
 .wo-bell .num { font-weight: 700; font-size: 15px; color: var(--text); }
-.wo-bell.on .num { color: var(--accent); }
-.wo-bell small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
+.wo-bell.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.wo-bell.on .num { color: var(--bg); }
 .wo-bells-step { max-width: 240px; }
 
 .wo-sets { display: flex; flex-direction: column; gap: 8px; }
@@ -278,3 +278,24 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .view-workout a.btn, .view-timer a.btn { text-decoration: none; }
 /* keep toasts above the player footer */
 body.wo-running #toast-root { bottom: calc(150px + var(--safe-b)); }
+
+/* round-1 functional additions (styling to be refined in Phase B) */
+.wo-hint { font-size: 12.5px; color: var(--muted); margin-top: -4px; font-variant-numeric: tabular-nums; }
+.wo-hint.earned { color: var(--go); }
+.wo-regress { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.wo-side { font-size: 13px; font-weight: 600; color: var(--muted); }
+.wo-rpe-tag { flex: none; min-width: 44px; height: 44px; padding: 0 6px; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wo-rpe-tag.set { color: var(--text); }
+.wo-rpe-pick { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 28px; }
+.wo-rpe-q { font-size: 13px; color: var(--muted); margin-right: 2px; }
+.wo-rpe-opt { flex: 1; min-height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; font-variant-numeric: tabular-nums; }
+.wo-rpe-opt.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.wo-main.has-rest { padding-bottom: 150px; }
+@media (max-height: 760px) {
+  .tf { width: min(62vw, 220px); }
+  .tc-main { width: 64px; height: 64px; }
+  .tc-side { width: 52px; height: 52px; }
+}
+@media (max-width: 380px) {
+  .tm-modes .seg button { font-size: 11px; padding: 0 3px; }
+}

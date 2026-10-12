@@ -16,7 +16,11 @@ const mondayOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); const 
 const volumeOf = (s) => (s.sets || []).reduce((a, x) => a + (+x.kg || 0) * (+x.reps || 0), 0);
 const distOf = (s) => (s.cardio || []).reduce((a, c) => a + (+c.distanceM || 0), 0) + (s.sets || []).reduce((a, x) => a + (/run|row|ski|bike/.test(String(x.exId)) ? +x.distanceM || 0 : 0), 0);
 
-export function render(root, { args }) {
+let from = '';
+const q = () => (from ? '?from=' + from : '');
+
+export function render(root, { args, query }) {
+  from = query?.from === 'train' ? 'train' : '';
   const draw = () => { clear(root); args[0] ? renderDetail(root, args[0]) : renderList(root); };
   draw();
   return store.subscribe(draw);
@@ -24,7 +28,7 @@ export function render(root, { args }) {
 
 function renderList(root) {
   const s = store.get(), units = s.profile.units;
-  root.append(backBar('#/progress', 'Progress', h('a', { class: 'link-btn', href: '#/train' }, 'Train →')));
+  root.append(from === 'train' ? backBar('#/train', 'Train') : backBar('#/progress', 'Progress'));
   root.append(h('div', { class: 'page-head' }, h('div', null, h('div', { class: 'eyebrow' }, `${s.sessions.length} session${s.sessions.length === 1 ? '' : 's'} logged`), h('h1', null, 'History'))));
   const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter' }, FILTERS.map(([id, label]) =>
     h('button', { type: 'button', class: 'chip', 'aria-pressed': String(ui.filter === id), on: { click: () => { ui.filter = id; clear(root); renderList(root); } } }, label)));
@@ -54,7 +58,7 @@ function renderList(root) {
     root.append(h('div', { class: 'card flush' }, h('div', { class: 'list' }, g.items.map((x) => {
       const vol = volumeOf(x), dist = distOf(x);
       const sub = [fmtDate(x.date), x.durationSec ? fmtDur(x.durationSec, { long: true }) : null, vol ? `${fmtWeight(vol, units)} vol` : null, dist ? fmtDist(dist, units) : null].filter(Boolean).join(' · ');
-      return h('a', { class: 'li', href: '#/history/' + encodeURIComponent(x.id) },
+      return h('a', { class: 'li', href: '#/history/' + encodeURIComponent(x.id) + q() },
         typeBadge(x.type, 36),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, x.title || typeMeta(x.type).label), h('div', { class: 'li-sub' }, sub)),
         (x.prs || []).length ? h('span', { class: 'pill go', title: x.prs.join('\n') }, icon('trophy', 12), String(x.prs.length)) : null,
@@ -66,9 +70,9 @@ function renderList(root) {
 function renderDetail(root, id) {
   const s = store.get(), units = s.profile.units;
   const x = s.sessions.find((y) => y.id === id);
-  root.append(backBar('#/history', 'History'));
+  root.append(backBar('#/history' + q(), 'History'));
   if (!x) {
-    root.append(emptyState('list', 'Session not found', 'It may have been deleted.', h('a', { class: 'btn primary', href: '#/history' }, 'Back to history')));
+    root.append(emptyState('list', 'Session not found', 'It may have been deleted.', h('a', { class: 'btn primary', href: '#/history' + q() }, 'Back to history')));
     return;
   }
   const w = x.workoutId ? safeGetWorkout(s.plan, x.workoutId) : null;
@@ -99,7 +103,11 @@ function renderDetail(root, id) {
     const byEx = new Map();
     for (const st of sets) { if (!byEx.has(st.exId)) byEx.set(st.exId, []); byEx.get(st.exId).push(st); }
     root.append(h('div', { class: 'section-head' }, h('h2', null, 'Sets'), h('span', { class: 'xs muted' }, `${sets.length} sets · ${byEx.size} exercise${byEx.size === 1 ? '' : 's'}`)));
-    root.append(h('div', { class: 'stack' }, [...byEx.entries()].map(([exId, list]) => {
+    const workStr = (st) => [st.reps ? `${st.reps} reps` : null, st.distanceM ? fmtDist(st.distanceM, units) : null, st.timeSec ? fmtDur(st.timeSec) : null].filter(Boolean).join(' · ') || '–';
+    const entries = [...byEx.entries()];
+    const tabled = entries.filter(([, list]) => list.length > 1 || list.some((st) => +st.kg > 0));
+    const simple = entries.filter((e) => !tabled.includes(e));
+    root.append(h('div', { class: 'stack' }, tabled.map(([exId, list]) => {
       const e = safeEx(exId);
       return h('div', { class: 'card tight' },
         h('button', { type: 'button', class: 'tr-exname tr-exh', on: { click: () => exerciseSheet(exId) } }, e.name, icon('info', 14)),
@@ -108,9 +116,12 @@ function renderDetail(root, id) {
           h('tbody', null, list.map((st, i) => h('tr', null,
             h('td', { class: 'muted num' }, String(i + 1)),
             h('td', null, +st.kg > 0 ? h('span', null, h('b', { class: 'num' }, fmtBell(+st.kg)), ' ', h('small', { class: 'muted' }, bellLb(+st.kg))) : h('span', { class: 'muted' }, 'BW')),
-            h('td', { class: 'right num' }, [st.reps ? `${st.reps} reps` : null, st.distanceM ? fmtDist(st.distanceM, units) : null, st.timeSec ? fmtDur(st.timeSec) : null].filter(Boolean).join(' · ') || '–'),
+            h('td', { class: 'right num' }, workStr(st)),
             h('td', { class: 'right num muted' }, st.rpe ? String(st.rpe) : '–'))))));
-    })));
+    }),
+    simple.length ? h('div', { class: 'card flush' }, h('div', { class: 'list' }, simple.map(([exId, list]) => h('button', { type: 'button', class: 'li', on: { click: () => exerciseSheet(exId) } },
+      h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, safeEx(exId).name)),
+      h('span', { class: 'li-end num small muted' }, workStr(list[0])))))) : null));
   }
 
   if ((x.cardio || []).length) {
@@ -130,7 +141,7 @@ function renderDetail(root, id) {
     root.append(h('div', { class: 'callout info small mt' }, x.untracked ? 'Logged without set-by-set tracking.' : 'No sets or cardio recorded in this session.'));
   }
 
-  root.append(h('div', { class: 'section-head' }, h('h2', null, 'Notes'), h('button', { class: 'link-btn', on: { click: () => editSheet(x) } }, 'Edit')));
+  root.append(h('div', { class: 'section-head' }, h('h2', null, 'Notes')));
   root.append(h('div', { class: 'card' }, x.notes ? h('p', { class: 'tr-notes' }, x.notes) : h('p', { class: 'muted small' }, 'No notes. Tap Edit to add how it felt.'),
     h('div', { class: 'xs muted mt' }, `Session RPE: ${x.rpe || '–'}`)));
 
@@ -142,7 +153,7 @@ function renderDetail(root, id) {
           const ok = await confirmDialog(`Delete “${x.title || 'this session'}” from ${fmtDate(x.date)}? This can't be undone.`, { ok: 'Delete', danger: true });
           if (!ok) return;
           const copy = structuredClone(x);
-          navigate('#/history');
+          navigate('#/history' + q());
           store.update((d) => { d.sessions = d.sessions.filter((y) => y.id !== x.id); });
           toast('Session deleted', { action: { label: 'Undo', fn: () => store.update((d) => { d.sessions.push(copy); d.sessions.sort((a, b) => String(a.date).localeCompare(String(b.date))); }) } });
         },

@@ -39,11 +39,10 @@ export const GOALS = [
 ];
 
 export const ACTIVITY = [
-  { value: 'sedentary', label: 'Sedentary', desc: 'Desk job, under 5k steps outside training' },
-  { value: 'light', label: 'Lightly active', desc: '5–8k steps, some walking' },
-  { value: 'moderate', label: 'Moderately active', desc: '8–12k steps or on your feet a lot' },
-  { value: 'very', label: 'Very active', desc: 'Physical job or 12k+ steps' },
-  { value: 'athlete', label: 'Extremely active', desc: 'Manual labour plus hard training' },
+  { value: 'sedentary', label: 'Desk job', desc: 'Mostly sitting — office, driving, studying' },
+  { value: 'light', label: 'On my feet some of the day', desc: 'Some walking, errands, a bit of standing' },
+  { value: 'moderate', label: 'On my feet all day', desc: 'Teacher, nurse, retail, hospitality' },
+  { value: 'very', label: 'Physical job', desc: 'Lifting and carrying — trades, labour, farming' },
 ];
 
 export const DAYS_INFO = {
@@ -74,8 +73,8 @@ const r1 = (v) => Math.round(v * 10) / 10;
 export function buildPlan(profile, today = todayISO()) {
   return program.generatePlan(profile, today);
 }
-export function computeAutoTargets(profile) {
-  return { auto: true, ...nutrition.computeTargets(profile) };
+export function computeAutoTargets(profile, plan) {
+  return { auto: true, ...nutrition.computeTargets(profile, plan ? { plan } : {}) };
 }
 export function cleanProfile(d) {
   const out = {};
@@ -144,7 +143,7 @@ export function bodyEditor(d, ctx) {
 }
 
 export function experienceEditor(d, ctx) {
-  return choiceCards(EXPERIENCE, d.experience, (v) => { d.experience = v; ctx.refresh(); }, { name: 'Experience' });
+  return choiceCards(EXPERIENCE, d.experience, (v) => { d.experience = v; if (!d._daysTouched && !d.onboarded) d.daysPerWeek = recommendedDays(v); ctx.refresh(); }, { name: 'Experience' });
 }
 
 export function bellGrid(d, ctx) {
@@ -197,11 +196,11 @@ export function equipmentEditor(d, ctx, { showFiveK = true } = {}) {
   showPaces();
   return h('div', { class: 'stack lg' },
     h('div', { class: 'equip-grid' },
-      h('div', { class: 'equip-tile on locked', 'aria-label': 'Running: always included' }, icon('run', 22), h('span', null, 'Running'), h('small', null, 'Always on')),
+      h('div', { class: 'equip-tile on locked', 'aria-label': 'Running: always included' }, h('span', null, 'Running'), h('small', null, 'Always included')),
       EQUIPMENT.map((e) => h('button', {
         type: 'button', class: 'equip-tile' + (eq[e.key] ? ' on' : ''), 'aria-pressed': String(!!eq[e.key]),
         on: { click: () => { haptic(); eq[e.key] = !eq[e.key]; ctx.refresh(); } },
-      }, icon(e.icon, 22), h('span', null, e.label), h('small', null, eq[e.key] ? 'Have it' : 'Substitute')))),
+      }, h('span', null, e.label), h('small', null, eq[e.key] ? 'Have it' : 'Not owned · we’ll sub')))),
     showFiveK ? h('div', { class: 'stack sm' },
       field('Recent 5 km time (optional)', h('input', {
         type: 'text', inputmode: 'numeric', placeholder: 'mm:ss  e.g. 26:30', value: fiveKStr, 'aria-label': 'Recent 5 km time, minutes and seconds',
@@ -216,7 +215,7 @@ export function daysEditor(d, ctx) {
     h('div', { class: 'days-grid', role: 'radiogroup', 'aria-label': 'Training days per week' },
       [3, 4, 5, 6].map((n) => h('button', {
         type: 'button', role: 'radio', 'aria-checked': String(d.daysPerWeek === n), class: 'day-tile' + (d.daysPerWeek === n ? ' on' : ''),
-        on: { click: () => { haptic(); d.daysPerWeek = n; ctx.refresh(); } },
+        on: { click: () => { haptic(); d.daysPerWeek = n; d._daysTouched = true; ctx.refresh(); } },
       }, h('span', { class: 'day-n' }, String(n)), h('span', { class: 'day-k' }, 'days'), n === rec ? h('span', { class: 'pill go' }, 'Recommended') : null))),
     h('div', { class: 'callout info' }, DAYS_INFO[d.daysPerWeek] || ''));
 }
@@ -245,7 +244,8 @@ export function nutritionEditor(d, ctx) {
   return h('div', { class: 'stack lg' },
     h('div', { class: 'stack sm' }, h('span', { class: 'field-label' }, 'Goal'),
       choiceCards(GOALS, d.goal, (v) => { d.goal = v; ctx.refresh(); }, { name: 'Nutrition goal' })),
-    h('div', { class: 'stack sm' }, h('span', { class: 'field-label' }, 'Daily activity outside training'),
+    h('div', { class: 'stack sm' }, h('span', { class: 'field-label' }, 'Outside of training, how active is your day?'),
+      h('p', { class: 'field-hint' }, 'Don’t count workouts — FORGE adds your training on top.'),
       choiceCards(ACTIVITY, d.activity, (v) => { d.activity = v; ctx.refresh(); }, { name: 'Activity level' })));
 }
 
@@ -312,7 +312,7 @@ function summary(d) {
   const profile = cleanProfile(p);
   let plan = null, targets = null, err = null;
   try { plan = buildPlan(profile); } catch (e) { err = e; console.error(e); }
-  try { targets = nutrition.computeTargets(profile); } catch (e) { err = err || e; console.error(e); }
+  try { targets = nutrition.computeTargets(profile, plan ? { plan } : {}); } catch (e) { err = err || e; console.error(e); }
   const weeks = plan?.weeks || [];
   const phases = [];
   for (const w of weeks) {
@@ -360,7 +360,8 @@ export function render(root) {
   const s = store.get();
   if (!draft) {
     draft = structuredClone(s.profile);
-    if (!draft.daysPerWeek) draft.daysPerWeek = recommendedDays(draft.experience);
+    if (!draft.onboarded) draft.daysPerWeek = recommendedDays(draft.experience);
+    if (!ACTIVITY.some((a) => a.value === draft.activity)) draft.activity = 'light';
     stepIdx = 0;
   }
   let error = null;
@@ -373,8 +374,8 @@ export function render(root) {
       const profile = cleanProfile(commitDraft(draft));
       profile.onboarded = true;
       profile.hrMax = profile.hrMax || hyrox.defaultHrMax(profile.age);
-      const targets = computeAutoTargets(profile);
       const plan = buildPlan(profile, today);
+      const targets = computeAutoTargets(profile, plan);
       store.update((st) => {
         st.profile = profile;
         st.targets = targets;

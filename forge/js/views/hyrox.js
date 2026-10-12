@@ -8,6 +8,7 @@ import { EXERCISES } from '../data/exercises.js';
 import { saveSession, safeEx, typeBadge } from './session.js';
 import { exerciseSheet } from './library.js';
 
+const hx = { allSplits: false, open: new Set() };
 const DIVS = [['open', 'Open'], ['pro', 'Pro'], ['doubles', 'Doubles']];
 const stations = () => (Array.isArray(STATIONS) ? STATIONS : []);
 
@@ -28,7 +29,7 @@ function specFor(st, profile) {
 }
 function workFor(st, units) {
   if (st.reps) return `${st.reps} reps`;
-  if (st.distanceM) return fmtDist(st.distanceM, /ski|row/i.test(st.id + st.name) ? 'metric' : units);
+  if (st.distanceM) return /ski|row/i.test(st.id) ? `${st.distanceM} m` : fmtDist(st.distanceM, units);
   return '';
 }
 
@@ -95,7 +96,8 @@ export function render(root) {
           h('div', { class: 'tr-legend xs' },
             legend('var(--base)', 'Running', pred.runSec), legend('var(--accent)', 'Stations', pred.stationSec), legend('var(--taper)', 'Roxzone', pred.roxzoneSec))),
         stackBar([{ value: pred.runSec, color: 'var(--base)', label: 'Running' }, { value: pred.stationSec, color: 'var(--accent)', label: 'Stations' }, { value: pred.roxzoneSec, color: 'var(--taper)', label: 'Roxzone' }], { height: 12 }),
-        (pred.basis || []).length ? h('ul', { class: 'tr-basis xs muted' }, pred.basis.map((b) => h('li', null, b))) : null));
+        (pred.basis || []).length ? h('div', { class: 'stack sm' }, h('h4', null, 'Based on'), h('ul', { class: 'tr-basis small dim' }, pred.basis.map((b) => h('li', null, b)))) : null,
+        pred.confidence !== 'high' ? h('p', { class: 'xs muted' }, 'Sharpen it: run the ', h('a', { href: '#/session/t-1k-tt' }, '1 km time trial'), ' and log station times below. Training runs inside intervals and sims don’t count.') : null));
 
       // pacing plan
       const runAvg = runSplits.length ? runSplits.reduce((a, x) => a + x.sec, 0) / runSplits.length : pred.runSec / 8;
@@ -109,13 +111,16 @@ export function render(root) {
           h('tbody', null, splits.map((x, i) => {
             clock += +x.sec || 0;
             const isRun = /run/i.test(x.name), isRox = /rox/i.test(x.name);
+            if (!hx.allSplits && !isRun) return null;
             return h('tr', { class: isRun ? 'run' : isRox ? 'rox' : 'st' },
               h('td', { class: 'muted' }, String(i + 1)),
               h('td', null, h('span', { class: `dot ${isRun ? 'd-run' : isRox ? 'd-rox' : 'd-st'}` }), ' ', x.name),
               h('td', { class: 'right num' }, fmtDur(x.sec)),
               h('td', { class: 'right num muted' }, fmtDur(clock)));
           })),
-          h('tfoot', null, h('tr', null, h('td', null), h('td', null, 'Finish'), h('td', null), h('td', { class: 'right num' }, fmtDur(pred.totalSec)))))));
+          h('tfoot', null, h('tr', null, h('td', null), h('td', null, 'Finish'), h('td', null), h('td', { class: 'right num' }, fmtDur(pred.totalSec))))),
+        h('button', { type: 'button', class: 'btn ghost sm block mt', 'aria-expanded': String(hx.allSplits), on: { click: () => { hx.allSplits = !hx.allSplits; draw(); } } },
+          hx.allSplits ? 'Runs only' : `Show all ${splits.length} splits`)));
     }
 
     // ---- readiness
@@ -171,27 +176,29 @@ function legend(color, label, sec) {
 
 function stationCard(st, i, s) {
   const p = s.profile;
-  const spec = specFor(st, p);
+  const spec = st.kg ? specFor(st, p) : null;
   const best = bestStationTimes(s.sessions, st);
   const subs = (st.subs || []).map((id) => safeEx(id));
   const stEx = stationExId(st);
-  return h('div', { class: 'card tr-station' },
-    h('div', { class: 'row gap top' },
+  const work = workFor(st, p.units);
+  const det = h('details', { class: 'card tr-station', open: hx.open.has(st.id) },
+    h('summary', { class: 'row gap' },
       h('span', { class: 'tr-stnum num' }, String(i + 1)),
       h('div', { class: 'grow' },
-        h('div', { class: 'eyebrow' }, `1 km run → station ${i + 1}`),
         h('h3', null, st.name),
-        h('div', { class: 'row wrap mt', style: { gap: '6px' } },
-          workFor(st, p.units) ? h('span', { class: 'pill' }, workFor(st, p.units)) : null,
-          spec ? h('span', { class: 'pill' }, spec) : null,
-          best ? h('a', { class: 'pill go', href: '#/history/' + encodeURIComponent(best.id) }, icon('trophy', 12), fmtDur(best.timeSec)) : null))),
+        h('div', { class: 'xs muted num' }, [work, spec].filter(Boolean).join(' · '))),
+      best ? h('span', { class: 'pill go' }, icon('trophy', 12), fmtDur(best.timeSec)) : null,
+      h('span', { class: 'tr-chev muted' }, icon('chevR', 16))),
     (st.tips || []).length ? h('ul', { class: 'tr-cues small mt' }, st.tips.map((t) => h('li', null, String(t)))) : null,
     subs.length ? h('div', { class: 'mt' },
       h('div', { class: 'xs muted tr-subh' }, 'At home — kettlebell substitutes'),
-      h('div', { class: 'chips' }, subs.map((e) => h('button', { type: 'button', class: 'chip', on: { click: () => exerciseSheet(e.id) } }, icon('bell', 14), e.name)))) : null,
+      h('div', { class: 'chips' }, subs.map((e) => h('button', { type: 'button', class: 'chip', on: { click: () => exerciseSheet(e.id) } }, e.name)))) : null,
+    best ? h('a', { class: 'xs muted tr-best', href: '#/history/' + encodeURIComponent(best.id) }, `Best ${fmtDur(best.timeSec)} · ${fmtDate(best.date)} →`) : null,
     h('div', { class: 'row gap mt' },
       h('a', { class: 'btn ghost sm grow', href: '#/library/' + encodeURIComponent(stEx) }, icon('book', 16), 'Technique'),
       h('button', { class: 'btn subtle sm grow', on: { click: () => benchmarkSheet(st.id) } }, icon('timer', 16), 'Log time')));
+  det.addEventListener('toggle', () => { if (det.open) hx.open.add(st.id); else hx.open.delete(st.id); });
+  return det;
 }
 
 function regenPlan() {
@@ -235,7 +242,7 @@ export function benchmarkSheet(presetId) {
             let sess;
             const base = { id: uid('s'), date: d, workoutId: null, startedAt: new Date(d + 'T12:00:00').toISOString(), durationSec: t, rpe: null, notes: notes.value.trim(), readiness: null, prs: [] };
             if (sel.value === 'run1k') {
-              sess = { ...base, title: '1 km benchmark', type: 'run', sets: [], cardio: [{ mode: 'run', distanceM: 1000, timeSec: t, avgHr: null }] };
+              sess = { ...base, title: '1 km benchmark', type: 'run', benchmark: true, sets: [], cardio: [{ mode: 'run', distanceM: 1000, timeSec: t, avgHr: null, benchmark: true }] };
             } else {
               const st = stations().find((x) => x.id === sel.value);
               const mode = /ski/i.test(st.id) ? 'ski' : /row/i.test(st.id) ? 'row' : null;

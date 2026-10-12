@@ -44,9 +44,13 @@ async function applyProfile(next, before) {
   if (!next.hrMax || Math.round(next.hrMax) === oldDefault) next.hrMax = safe(() => hyrox.defaultHrMax(next.age), next.hrMax);
   store.update((st) => {
     st.profile = { ...st.profile, ...next, onboarded: true };
+    if (Number.isFinite(next.weightKg) && next.weightKg !== before.weightKg) {
+      const d = todayISO();
+      st.bodyweight = st.bodyweight.filter((b) => b.date !== d).concat({ date: d, kg: next.weightKg }).sort((a, b) => a.date.localeCompare(b.date));
+    }
     if (st.targets.auto) {
-      const t = safe(() => computeAutoTargets(st.profile));
-      if (t) st.targets = t;
+      const t = safe(() => computeAutoTargets(st.profile, st.plan));
+      if (t) st.targets = { ...st.targets, ...t, auto: true };
     }
   });
   toast('Saved', { kind: 'go', ms: 1400 });
@@ -60,7 +64,10 @@ async function applyProfile(next, before) {
 function regenerate() {
   try {
     const plan = buildPlan(store.get().profile, todayISO());
-    store.update((st) => { st.plan = plan; });
+    store.update((st) => {
+      st.plan = plan;
+      if (st.targets.auto) { const t = safe(() => computeAutoTargets(st.profile, plan)); if (t) st.targets = { ...st.targets, ...t, auto: true }; }
+    });
     toast(`New ${plan.weeks.length}-week plan forged`, { kind: 'go' });
   } catch (e) {
     console.error(e);
@@ -94,14 +101,15 @@ function toggleRow(label, sub, checked, onChange) {
     h('span', { class: 'toggle' }, h('input', { type: 'checkbox', id, role: 'switch', checked, on: { change: (e) => onChange(e.target.checked) } }), h('span', { 'aria-hidden': 'true' })));
 }
 
-function profileSection(p) {
+function profileSection(p, s) {
+  const bw = [...(s?.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
   const units = p.units;
   const exp = EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience);
   return h('section', null, sectionHead('Profile'),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       row('Name', p.name || '—', () => openEditor('Name', nameEditor, [validate.name]), 'user'),
       row('Sex & age', `${p.sex === 'f' ? 'Female' : 'Male'} · ${p.age} yrs`, () => openEditor('Sex & age', sexAgeEditor, [validate.sexAge]), 'heart'),
-      row('Height & weight', `${fmtHeight(p.heightCm, units)} · ${fmtWeight(p.weightKg, units, 1)}`, () => openEditor('Height & weight', bodyEditor, [validate.body]), 'scale'),
+      row('Height & weight', `${fmtHeight(p.heightCm, units)} · ${fmtWeight(bw?.kg ?? p.weightKg, units, 1)}${bw ? ` · weighed ${fmtDate(bw.date, { month: 'short', day: 'numeric' })}` : ''}`, () => openEditor('Height & weight', bodyEditor, [validate.body]), 'scale'),
       row('Goal weight', p.goalWeightKg ? fmtWeight(p.goalWeightKg, units, 1) : 'Not set', () => openEditor('Goal weight', goalWeightEditor, [checkGoal]), 'target'),
       row('Experience', exp, () => openEditor('Kettlebell experience', experienceEditor, [validate.experience]), 'bell'),
       row('Heart rate max', p.hrMax ? `${Math.round(p.hrMax)} bpm` : 'Auto', () => openHrSheet(), 'heart'))));
@@ -176,11 +184,11 @@ function targetsSection(s, repaint) {
     h('div', { class: 'card' },
       h('div', { class: 'target-strip' },
         [['kcal', t.kcal, '', 'var(--accent)'], ['Protein', t.protein, 'g', 'var(--protein)'], ['Carbs', t.carbs, 'g', 'var(--carbs)'], ['Fat', t.fat, 'g', 'var(--fat)'], ['Water', t.waterMl / 1000, 'L', 'var(--water)']]
-          .map(([k, v, u, c]) => h('div', { class: 'stat' }, h('span', { class: 'v', style: { color: c } }, num(v, u === 'L' ? 1 : 0), h('small', null, u)), h('span', { class: 'k' }, k)))),
+          .map(([k, v, u, c]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, num(v, u === 'L' ? 1 : 0), h('small', null, u)), h('span', { class: 'k' }, h('i', { class: 'swatch', style: { background: c } }), k)))),
       h('div', { class: 'list mt' },
         toggleRow('Automatic targets', t.auto ? 'Computed from your profile, goal and weight' : 'Manual — edit below', !!t.auto, (on) => {
           store.update((st) => {
-            if (on) { const c = safe(() => computeAutoTargets(st.profile)); st.targets = c || { ...st.targets, auto: true }; } else st.targets.auto = false;
+            if (on) { const c = safe(() => computeAutoTargets(st.profile, st.plan)); st.targets = { ...st.targets, ...(c || {}), auto: true }; } else st.targets.auto = false;
           });
         }),
         row('Goal & activity', `${goal} · ${act}`, () => openEditor('Nutrition goal', nutritionEditor, [validate.nutrition]), 'flame')),
@@ -209,7 +217,7 @@ function planSection(s) {
         h('button', { type: 'button', class: 'li me-row', on: { click: async () => {
           const ok = await confirmDialog('Rebuild your plan from today using your current profile, bells and race date? Your logged sessions, PRs and food log are kept.' + (s.activeWorkout ? ' The workout in progress will keep running.' : ''), { ok: 'Regenerate' });
           if (ok) regenerate();
-        } } }, h('span', { class: 'badge' }, icon('repeat', 18)), h('span', { class: 'li-main' }, h('div', { class: 'li-title accent' }, 'Regenerate plan'), h('div', { class: 'li-sub' }, 'Keeps your history')), icon('chevR', 18)))));
+        } } }, h('span', { class: 'badge' }, icon('repeat', 18)), h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Regenerate plan'), h('div', { class: 'li-sub' }, 'Keeps your history')), icon('chevR', 18)))));
 }
 
 function settingsSection(s) {
@@ -522,7 +530,7 @@ export function render(root, params = {}) {
             h('span', { class: 'pill accent' }, `HYROX ${cap(p.division)}`),
             h('span', { class: 'pill' }, EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience)),
             h('span', { class: 'pill' }, `${p.daysPerWeek}×/wk`)))),
-      profileSection(p),
+      profileSection(p, s),
       equipmentSection(p),
       targetsSection(s, paint),
       planSection(s),

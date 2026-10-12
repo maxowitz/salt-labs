@@ -22,6 +22,7 @@ export function ema(points, span = 7) {
   return points.map((p) => { prev = prev == null ? p.y : prev + a * (p.y - prev); return { x: p.x, y: prev }; });
 }
 
+const signed = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + num(Math.abs(v), d);
 const isRunMode = (m) => /run|jog|tread/i.test(m || 'run');
 
 function localWeekSummary(sessions, start) {
@@ -79,7 +80,7 @@ function weightSection(s, today, startISO, days) {
   const head = sectionHead('Body weight', h('button', { type: 'button', class: 'btn sm subtle', on: { click: openWeightSheet } }, icon('plus', 16), 'Log'));
   if (!all.length) {
     return h('section', null, head, h('div', { class: 'card' }, emptyState('scale', 'No weigh-ins yet', 'Log your weight a few mornings a week to see your true trend.',
-      h('button', { type: 'button', class: 'btn primary', on: { click: openWeightSheet } }, 'Log weight'))));
+      h('button', { type: 'button', class: 'btn ghost sm', on: { click: openWeightSheet } }, 'Log weight'))));
   }
   const toY = (kg) => toDisplayWeight(kg, units);
   const pts = all.map((b) => ({ x: daysBetween(startISO, b.date), y: toY(b.kg), date: b.date }));
@@ -93,7 +94,9 @@ function weightSection(s, today, startISO, days) {
   const span = Math.max(1, (trend.at(-1)?.x ?? 0) - (trend[0]?.x ?? 0));
   const perWeek = trend.length > 1 ? (delta / span) * 7 : null;
   const u = units === 'metric' ? 'kg' : 'lb';
-  const chart = raw.length
+  const chart = all.length < 3
+    ? h('div', { class: 'chart-empty center' }, h('p', { class: 'small' }, `Log ${3 - all.length} more weigh-in${3 - all.length === 1 ? '' : 's'} to see your trend.`), h('p', { class: 'xs muted' }, 'Weigh in a few mornings a week, after the bathroom, before food.'))
+    : raw.length
     ? lineChart({
       series: [{ points: raw, color: 'var(--muted)', width: 0.001, dots: true, dotOpacity: 0.55 }, { points: trend, color: 'var(--accent)', width: 2.6 }],
       xLabels: xLabelsFor(startISO, days), yFmt: (v) => num(v, 0), goal: goalKg ? toY(goalKg) : undefined, height: 170,
@@ -104,8 +107,8 @@ function weightSection(s, today, startISO, days) {
     h('div', { class: 'card' },
       h('div', { class: 'grid3' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(latestTrend, 1), h('small', null, u)), h('span', { class: 'k' }, 'Trend weight')),
-        h('div', { class: 'stat' }, h('span', { class: 'v ' + (delta < 0 ? 'go' : delta > 0 ? 'accent' : '') }, (delta > 0 ? '+' : '') + num(delta, 1), h('small', null, u)), h('span', { class: 'k' }, 'This range')),
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, perWeek == null ? '–' : (perWeek > 0 ? '+' : '') + num(perWeek, 2)), h('span', { class: 'k' }, `${u} / week`))),
+        h('div', { class: 'stat' }, h('span', { class: 'v ' + (delta < 0 ? 'go' : delta > 0 ? 'accent' : '') }, signed(delta, 1), h('small', null, u)), h('span', { class: 'k' }, 'This range')),
+        h('div', { class: 'stat' }, h('span', { class: 'v' }, perWeek == null ? '–' : signed(perWeek, 2)), h('span', { class: 'k' }, `${u} / week`))),
       h('div', { class: 'chart-wrap mt' }, chart),
       h('div', { class: 'legend' },
         h('span', null, h('i', { class: 'lg-dot', style: { background: 'var(--muted)' } }), 'Daily'),
@@ -123,7 +126,7 @@ function trainingSection(s, today, startISO, days, repaint) {
   const head = sectionHead('Training', h('a', { class: 'link-btn', href: '#/history' }, 'History'));
   if (!s.sessions.length) {
     return h('section', null, head, h('div', { class: 'card' }, emptyState('bell', 'No sessions logged yet', 'Finish your first workout and your weekly volume, minutes and run distance show up here.',
-      h('a', { class: 'btn primary', href: '#/today' }, 'Go to today’s session'))));
+      h('a', { class: 'btn ghost sm', href: '#/today' }, 'Go to today’s session'))));
   }
   const METRICS = {
     count: { label: 'Sessions', get: (x) => x.count || 0, fmt: (v) => num(v), color: 'var(--accent)' },
@@ -135,7 +138,7 @@ function trainingSection(s, today, startISO, days, repaint) {
   const every = nWeeks > 13 ? 4 : nWeeks > 6 ? 2 : 1;
   const bars = summaries.map((x, i) => ({
     label: (nWeeks - 1 - i) % every === 0 ? (i === nWeeks - 1 ? 'Now' : fmtDate(weeks[i], { month: 'numeric', day: 'numeric' })) : '',
-    value: m.get(x), color: m.color, dim: i === nWeeks - 1,
+    value: m.get(x), color: i === nWeeks - 1 ? 'var(--accent)' : 'var(--text-2)',
   }));
   const planned = s.profile.daysPerWeek;
   return h('section', null, head,
@@ -147,7 +150,7 @@ function trainingSection(s, today, startISO, days, repaint) {
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(METRICS.run.get({ runM: totals.run }), 1)), h('span', { class: 'k' }, `${METRICS.run.unit} run`))),
       h('div', { class: 'mt' }, seg(Object.entries(METRICS).map(([k, v]) => [k, v.label]), metricKey, (v) => { metricKey = v; repaint(); }, { label: 'Training metric' })),
       h('div', { class: 'chart-wrap mt' }, barChart({ bars, height: 150, yFmt: m.fmt, target: metricKey === 'count' ? planned : undefined, ariaLabel: `${m.label} per week` })),
-      h('p', { class: 'xs muted' }, `${m.label}${m.unit ? ` (${m.unit})` : ''} per week, Monday start.${metricKey === 'count' ? ` Dashed line = plan (${planned}/wk).` : ''} Current week faded.`)));
+      h('p', { class: 'xs muted' }, `${m.label}${m.unit ? ` (${m.unit})` : ''} per week, Monday start.${metricKey === 'count' ? ` Dashed line = plan (${planned}/wk).` : ''} Current week highlighted.`)));
 }
 
 function loadSection(s, today) {
@@ -165,7 +168,7 @@ function loadSection(s, today) {
     h('div', { class: 'eyebrow' }, 'Training load · ACWR'),
     h('div', { class: 'row gap load-row' },
       h('div', { class: 'gauge-wrap' }, gauge({ value: Math.min(2, ratio), max: 2, size: 168, label: s.sessions.length ? num(ratio, 2) : '–', sub: 'acute : chronic',
-        zones: [{ to: 0.8, color: 'var(--info)' }, { to: 1.3, color: 'var(--go)' }, { to: 1.5, color: 'var(--warn)' }, { to: 2, color: 'var(--danger)' }] })),
+      })),
       h('div', { class: 'grow' },
         h('div', { class: 'card-title', style: { color: (tl.chronic > 0 && colors[tl.status]) || 'var(--text)' } }, desc[0]),
         h('p', { class: 'small dim' }, desc[1]),
@@ -255,14 +258,14 @@ function adherenceSection(s, today, repaint) {
   const head = sectionHead('Nutrition adherence', seg([[7, '7 days'], [30, '30 days']], adhDays, (v) => { adhDays = v; repaint(); }, { label: 'Adherence range' }));
   if (!logged) {
     return h('section', null, head, h('div', { class: 'card' }, emptyState('fuel', 'Nothing logged yet', `No food logged in the last ${adhDays} days. Log meals in Fuel to see how close you’re tracking to target.`,
-      h('a', { class: 'btn primary', href: '#/fuel?add=auto' }, 'Log food'))));
+      h('a', { class: 'btn ghost sm', href: '#/fuel?add=auto' }, 'Log food'))));
   }
   const avgK = kcal / logged, avgP = prot / logged, tgK = tk / logged, tgP = tp / logged;
   const row = (label, v, t, unit, color) => {
     const pct = t ? (v / t) * 100 : 0;
     return h('div', { class: 'adh-row' },
       h('div', { class: 'row between' }, h('span', { class: 'small' }, label), h('span', { class: 'num small' }, h('strong', null, num(v)), ` / ${num(t)} ${unit}`, h('span', { class: 'muted' }, ` · ${num(pct)}%`))),
-      h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, pct)}%`, background: color } })));
+      h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, pct)}%`, background: 'var(--text-2)' } })));
   };
   return h('section', null, head,
     h('div', { class: 'card stack' },
