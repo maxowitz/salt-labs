@@ -348,8 +348,7 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent);
 .callout.danger { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .chart { width: 100%; height: auto; overflow: visible; }
 .chart text { fill: var(--muted); font-size: 10px; font-family: var(--font); }
-.skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 8px; }
-@keyframes shimmer { to { background-position: -200% 0; } }
+.skeleton { background: var(--surface-2); animation: pulse 1.2s ease-in-out infinite; border-radius: 8px; }
 .fade-in { animation: fadeIn .28s var(--ease) both; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
 
