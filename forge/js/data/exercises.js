@@ -179,7 +179,7 @@ export const EXERCISES = [
     faults: ['Standing tall and pulling with the low back', 'Long, unstable steps'],
   }),
   E('kb-halo', 'Halo', 'kb', 'mobility', {
-    muscles: ['shoulders', 'upper back', 'core'], lr: [0.08, 0.12, 0.16], prog: 'kb-around-world',
+    muscles: ['shoulders', 'upper back', 'core'], lr: [0.12, 0.2, 0.26], prog: 'kb-around-world',
     cues: ['Hold the bell upside down by the horns', 'Circle close around the head, ribs stay down', 'Switch direction each rep'],
     faults: ['Arching the back to make room', 'Big wide circles far from the head'],
   }),

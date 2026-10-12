@@ -6,7 +6,7 @@
 // run↔station work. The quality run sits on day 1 (fresh after the rest day), never the day after heavy hinging.
 // Bells come from coach.suggestWeight (owned bells only, too-heavy lifts regress to safer variants);
 // progression is reps/sets/density week to week and one bell size up from Build when the athlete owns it.
-// Weekly run volume is capped at +12% over the previous loading week; deloads run ≤ 70% of it.
+// Weekly run volume is capped at +15% over the previous loading week; deloads run ≤ 70% of it.
 //
 // Item extras beyond §6.2: paceSec (target sec/km), step (plan bell step, for coach.liveItemWeight),
 // hold (do not auto-progress: warm-ups, spec-weight station work, deload/taper weeks).
@@ -470,7 +470,7 @@ function strengthSession(ctx, wk, focus, extra) {
     ], { minutes: min, alternate: true, notes: 'Alternate minutes. Finish each minute with ≥ 20 s rest.' }));
     title += ' + Finisher';
   }
-  if (extra === 'z') blocks.push(z2Tail(ctx, Math.round(clamp(15 + 2 * wk.L, 15, 25) * (wk.vol < 1 ? 0.75 : 1))));
+  if (extra === 'z') blocks.push(z2Tail(ctx, Math.round(clamp(20 + 2 * wk.L, 20, 30) * (wk.vol < 1 ? 0.75 : 1))));
   blocks.push(coolKB());
   return { title: deload ? `Deload · ${title}` : title, type: 'strength', summary, blocks };
 }
@@ -857,45 +857,49 @@ function runKmOf(ctx, raws) {
   return m / 1000;
 }
 
-// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 15 min), hybrid rounds (floor 2),
-// quality-interval rounds (floor 3), and only then long runs (floor 30 min) — the long run is protected longest.
+// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 15 min), long quality reps (≥ 60%),
+// quality rounds (floor 3), long run (to 85%), hybrid rounds (floor 3), long run (floor 30 min), hybrid rounds (floor 2).
+// Race-specific compromised running is protected longest.
 function capRunVolume(ctx, raws, targetKm) {
   const over = () => runKmOf(ctx, raws) > targetKm + 0.05;
   const blocks = raws.flatMap((w) => w.blocks);
-  const shrink = (ids, floorSec) => {
+  const shrink = (ids, floorOf) => {
     const adj = [];
-    for (const b of blocks) if (b.kind === 'cardio') for (const it of b.items) if (ids.includes(it.exId) && it.timeSec > floorSec) adj.push({ b, it });
+    for (const b of blocks) if (b.kind === 'cardio') for (const it of b.items) if (ids.includes(it.exId) && it.timeSec > floorOf(it)) adj.push({ b, it });
     const adjKm = adj.reduce((a, { it }) => a + it.timeSec / (it.paceSec || ctx.pc.easy[0]), 0);
     if (adjKm < 0.2) return;
     const f = clamp((targetKm - (runKmOf(ctx, raws) - adjKm)) / adjKm, 0, 1);
     for (const { b, it } of adj) {
-      it.timeSec = Math.max(floorSec, Math.round((it.timeSec * f) / 300) * 300);
+      it.timeSec = Math.max(floorOf(it), Math.round((it.timeSec * f) / 300) * 300);
       b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
     }
   };
-  if (over()) shrink(['run-easy'], 900);
-  for (let i = 0; i < 3 && over(); i++) {
-    const hyb = blocks.find((b) => b.kind === 'circuit' && b.rounds > 2 && b.items.some((it) => it.exId === 'run-1k'));
-    if (!hyb) break;
-    hyb.rounds -= 1;
-    hyb.title = hyb.title.replace(/^\d+ rounds/, `${hyb.rounds} rounds`);
-  }
-  for (let i = 0; i < 3 && over(); i++) {
-    const q = blocks.find((b) => b.kind === 'intervals' && b.rounds > 3 && b.items.some((it) => getExercise(it.exId).category === 'run' && it.paceSec));
-    if (!q) break;
-    q.rounds -= 1;
-    q.title = q.title.replace(/^\d+ ×/, `${q.rounds} ×`);
-  }
-  // Long time-based reps (cruise/tempo): shorten each rep, never below 60%.
+  const cutRounds = (pred, floor) => {
+    for (let i = 0; i < 3 && over(); i++) {
+      const b = blocks.find((x) => pred(x) && x.rounds > floor);
+      if (!b) break;
+      b.rounds -= 1;
+      b.title = b.title.replace(/^\d+ rounds/, `${b.rounds} rounds`).replace(/^\d+ ×/, `${b.rounds} ×`);
+    }
+  };
+  const isHybrid = (b) => b.kind === 'circuit' && b.items.some((it) => it.exId === 'run-1k');
+  const isQuality = (b) => b.kind === 'intervals' && b.items.some((it) => getExercise(it.exId).category === 'run' && it.paceSec);
+
+  if (over()) shrink(['run-easy'], () => 900);
   for (const q of blocks) {
     if (!over()) break;
-    const it = q.items?.find((x) => getExercise(x.exId).category === 'run' && x.paceSec && x.timeSec >= 480);
-    if (!it || !['intervals', 'cardio'].includes(q.kind)) continue;
+    if (!['intervals', 'cardio'].includes(q.kind)) continue;
+    const it = q.items?.find((x) => ['run-tempo', 'run-threshold', 'run-intervals'].includes(x.exId) && x.timeSec >= 480);
+    if (!it) continue;
     const t = Math.max(Math.round((it.timeSec * 0.6) / 60) * 60, Math.round((it.timeSec * 0.8) / 60) * 60);
     q.title = q.title.replace(`${Math.round(it.timeSec / 60)} min`, `${Math.round(t / 60)} min`);
     it.timeSec = t; if (q.kind === 'intervals') q.workSec = t;
   }
-  if (over()) shrink(['run-long'], 1800);
+  cutRounds(isQuality, 3);
+  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round((orig.get(it) || it.timeSec) * 0.85 / 300) * 300)); }
+  cutRounds(isHybrid, 3);
+  if (over()) shrink(['run-long'], () => 1800);
+  cutRounds(isHybrid, 2);
 }
 
 export function generatePlan(profile, startISO) {
@@ -967,11 +971,11 @@ export function generatePlan(profile, startISO) {
 
     const raws = codes.map((code) => (code ? buildSession(ctx, code, wk) : null));
     const list = raws.filter(Boolean);
-    // Ramp guard: ≤ +12% run km over the last loading week; deloads ≤ 70% of it. Sim, taper and race weeks exempt.
+    // Ramp guard: ≤ +15% run km over the last loading week; deloads ≤ 70% of it. Sim, taper and race weeks exempt.
     // Simulation weeks may reach +25% (the sim itself is race-specific running); they don't reset the baseline.
     const hasSim = codes.some((c) => c === 'X');
     const guarded = !taper && !isRaceWeek && !lay.post;
-    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : 1.12));
+    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : 1.15));
     if (guarded && !deload && !hasSim) prevKm = runKmOf(ctx, list);
 
     const days = [];

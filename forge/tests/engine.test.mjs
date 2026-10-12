@@ -485,7 +485,7 @@ function weekRunKm(plan, wk) {
   return m / 1000;
 }
 
-test('P1-2: weekly run volume ramps ≤ 12% (simulation weeks exempt) and deloads run less', () => {
+test('P1-2: weekly run volume ramps ≤ 15% (simulation weeks exempt) and deloads run less', () => {
   for (const profile of [PROFILE, { ...PROFILE, daysPerWeek: 6, experience: 'advanced', raceDate: addDays(START, 20 * 7 - 1) }, { ...MINIMAL, daysPerWeek: 3 }, { ...PROFILE, daysPerWeek: 4, raceDate: addDays(START, 30 * 7 - 1) }]) {
     const plan = generatePlan(profile, START);
     let prev = null;
@@ -495,7 +495,7 @@ test('P1-2: weekly run volume ramps ≤ 12% (simulation weeks exempt) and deload
       const sim = wk.days.some((d) => d.workoutId && plan.workouts[d.workoutId].type === 'hyrox');
       if (prev != null) {
         if (wk.deload) assert.ok(km < prev, `week ${wk.index + 1} deload ${km.toFixed(1)} vs ${prev.toFixed(1)}`);
-        else if (!sim) assert.ok(km <= prev * 1.12 + 0.3, `week ${wk.index + 1}: ${km.toFixed(1)} km vs ${prev.toFixed(1)}`);
+        else if (!sim) assert.ok(km <= prev * 1.15 + 0.3, `week ${wk.index + 1}: ${km.toFixed(1)} km vs ${prev.toFixed(1)}`);
       }
       if (!wk.deload && !sim) prev = km;
     }

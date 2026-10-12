@@ -62,7 +62,7 @@ export function lastPerformance(exId, sessions) {
 }
 
 // ---------- Bell targets & safety ----------
-const STRICT = new Set(['kb-tgu', 'kb-snatch', 'kb-overhead-carry', 'kb-windmill', 'kb-thruster', 'kb-double-thruster', 'kb-goblet-thruster', 'kb-halo', 'kb-armbar']);
+const STRICT = new Set(['kb-tgu', 'kb-snatch', 'kb-overhead-carry', 'kb-windmill', 'kb-thruster', 'kb-double-thruster', 'kb-goblet-thruster', 'kb-armbar']);
 const NEAREST_PATTERNS = new Set(['squat', 'hinge', 'pull', 'carry']);
 
 const expOf = (profile) => (EXP.includes(profile?.experience) ? profile.experience : 'intermediate');
