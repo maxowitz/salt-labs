@@ -220,3 +220,11 @@ details.tr-station[open] { padding-bottom: 14px; }
   .tr-dnum { font-size: 19px; }
   .tr-mark { font-size: 8.5px; }
 }
+
+/* ---- r2 ---- */
+.tr-pills { margin: -8px 0 16px; }
+.tr-pills .stamp, .tr-sline .stamp { vertical-align: 1px; }
+.tr-dtr { color: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.tr-sline { margin-bottom: 4px; }
+.tr-cuecard { border-top: 0; padding-top: 0; }
+.tr-cuecard .section-head { margin-top: 18px; }
