@@ -14,7 +14,7 @@
 
 import { addDays, daysBetween, todayISO } from '../store.js';
 import { getExercise } from '../data/exercises.js';
-import { suggestWeight, ownedBells, pairedBells, tooHeavy } from './coach.js';
+import { suggestWeight, ownedBells, pairedBells, tooHeavy, estimateMin } from './coach.js';
 import { paces, hrZones, defaultHrMax, estimateFiveK, STATIONS, specKey, predictRace } from './hyrox.js';
 
 export const PHASES = {
@@ -115,6 +115,7 @@ function makeCtx(profile) {
         delete it.kg; delete it.step; delete it.hold;
         if (!ex.unilateral && it.perSide) { delete it.perSide; if (it.reps) it.reps *= 2; }
         if (it.reps && ['squat', 'press', 'lunge'].includes(ex.pattern)) it.reps = Math.max(it.reps, 6);
+        if (it.sets && id === 'bw-air-squat') { it.reps = Math.max(it.reps || 0, 12); it.note = 'Bell too heavy for now — tempo 3-1-1 (3 s down, 1 s pause), full depth'; return it; }
         it.note = BW_NOTES[id] || `Bell too heavy for now — ${ex.name.toLowerCase()} instead`;
         return it;
       }
@@ -316,38 +317,6 @@ function stationItems(ctx, id, frac = 1, mode = false) {
 }
 
 // ---------- Estimation & equipment ----------
-const SEC_PER_M = { 'hx-bbj': 3.4, 'bw-bbj': 3.4, 'hx-sled-push': 4, 'hx-sled-pull': 5, 'hx-sandbag-lunge': 2.8, 'kb-rack-walking-lunge': 2.8, 'kb-goblet-walking-lunge': 2.8, 'kb-bear-crawl-drag': 3, 'kb-towel-drag': 4, 'bw-bear-crawl': 2, 'bw-a-skip': 0.6, 'bw-lunge': 2.5 };
-
-function itemSec(ctx, it) {
-  const ex = getExercise(it.exId);
-  const sides = it.perSide ? 2 : 1;
-  const sets = ex.category === 'run' && it.sets ? it.sets : 1;
-  if (it.timeSec) return it.timeSec * sides * sets;
-  if (it.distanceM) {
-    if (ex.category === 'run') return (it.distanceM / 1000) * (it.paceSec || ctx.pc.easy[0]);
-    if (['erg-ski', 'erg-row', 'hx-ski', 'hx-row'].includes(it.exId)) return (it.distanceM / 1000) * 280;
-    if (it.exId === 'erg-bike') return (it.distanceM / 1000) * 120;
-    return it.distanceM * (SEC_PER_M[it.exId] || 0.9) * sides;
-  }
-  if (it.reps) return it.reps * sides * (ex.pattern === 'mobility' ? 4 : ex.pattern === 'ballistic' ? 2.5 : ex.id === 'kb-tgu' ? 40 : 4) + (ex.category === 'kb' ? 8 : 0);
-  return 30;
-}
-
-function blockSec(ctx, b, type) {
-  const items = b.items || [];
-  const sum = items.reduce((a, it) => a + itemSec(ctx, it), 0);
-  const raceLike = type === 'hyrox' && (b.kind === 'cardio' || b.kind === 'station');
-  const setup = b.kind === 'warmup' || b.kind === 'cooldown' || raceLike ? 0 : 60; // transitions, chalk, bells
-  switch (b.kind) {
-    case 'strength': return setup + items.reduce((a, it) => a + (it.sets || 1) * (itemSec(ctx, it) + 15 + (it.restSec ?? b.restSec ?? 90)), 0);
-    case 'emom': return setup + (b.minutes || 10) * 60;
-    case 'amrap': return setup + (b.durationSec || 600);
-    case 'intervals': return setup + (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
-    case 'circuit': return setup + (b.rounds || 1) * sum + Math.max(0, (b.rounds || 1) - 1) * (b.restSec || 0);
-    default: return setup + sum + (b.restSec || 0);
-  }
-}
-
 function equipmentOf(ctx, w) {
   const out = new Set();
   const bells = new Map();
@@ -367,10 +336,19 @@ function equipmentOf(ctx, w) {
   return [...list, ...out];
 }
 
-const estMinOf = (ctx, w) => Math.max(10, Math.round(w.blocks.reduce((a, b) => a + blockSec(ctx, b, w.type), 0) / 60 / 5) * 5);
+const estMinOf = (ctx, w) => estimateMin(w, { easyPace: ctx.pc.easy[0] });
 
 function finalize(ctx, w, meta) {
-  if (meta.hold) for (const b of w.blocks) for (const it of b.items || []) if (getExercise(it.exId).category === 'kb' && it.kg != null) it.hold = true;
+  for (const b of w.blocks) for (const it of b.items || []) {
+    if (getExercise(it.exId).category !== 'kb') continue;
+    it.blockKind = b.kind; // lets coach.liveItemAdvice progress like-for-like only
+    if (meta.hold && it.kg != null) it.hold = true;
+  }
+  // A regression can land on an exercise already in the block (e.g. two push-up stations) → drop the duplicate.
+  for (const b of w.blocks) {
+    const seen = new Set();
+    b.items = (b.items || []).filter((it) => { const dup = seen.has(it.exId) && /too heavy/i.test(it.note || ''); seen.add(it.exId); return !dup; });
+  }
   const out = {
     id: meta.id, title: w.title, type: w.type, phase: meta.phase || null, week: meta.week || null,
     estMin: w.estMin || estMinOf(ctx, w), summary: w.summary || '',
@@ -549,7 +527,12 @@ function qualityRun(ctx, wk, extra) {
   const sc = (n, lo, hi) => clamp(Math.round(n * qf), lo, hi);
   const blocks = [warmRun(ctx, 10)];
   let title, summary;
-  if (taper || wk.kind === 'openers') {
+  if (wk.kind === 'taperq') {
+    const min = Math.max(6, Math.round((ctx.exp === 'beginner' ? 10 : 15) * 0.6));
+    title = 'Taper Cruise';
+    summary = 'Short threshold reps at reduced volume: keep the engine sharp without adding fatigue.';
+    blocks.push(B('intervals', `2 × ${min} min threshold`, [ctx.run('run-threshold', { timeSec: min * 60 }, 'threshold')], { rounds: 2, workSec: min * 60, restSec: 120 }));
+  } else if (taper || wk.kind === 'openers') {
     const reps = ctx.exp === 'beginner' ? 2 : 3;
     title = 'Race Openers';
     summary = 'Short race-pace reps to stay sharp without adding fatigue.';
@@ -831,7 +814,7 @@ function buildSession(ctx, code, wk) {
   switch (k) {
     case 'S': return strengthSession(ctx, wk, sub === 'maint' || sub === 'taper' ? 'maint' : sub, extra);
     case 'C': return conditioningSession(ctx, wk, extra);
-    case 'Q': return sub === 'openers' ? qualityRun(ctx, { ...wk, kind: 'openers' }, extra) : qualityRun(ctx, wk, extra);
+    case 'Q': return sub ? qualityRun(ctx, { ...wk, kind: sub }, extra) : qualityRun(ctx, wk, extra);
     case 'Z': return zoneRun(ctx, wk, sub || 'easy');
     case 'H': return hybridSession(ctx, wk, extra);
     case 'X': return wk.fullSim ? simulation(ctx, true, { race: true }) : simulation(ctx, false);
@@ -857,12 +840,19 @@ function runKmOf(ctx, raws) {
   return m / 1000;
 }
 
-// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 15 min), long quality reps (≥ 60%),
-// quality rounds (floor 3), long run (to 85%), hybrid rounds (floor 3), long run (floor 30 min), hybrid rounds (floor 2).
-// Race-specific compromised running is protected longest.
+// Minimum quality dose per experience when trimming for the ramp guard.
+const QFLOOR = {
+  beginner: { k1: 3, vo2: 3, repMin: 6, tempoMin: 15 },
+  intermediate: { k1: 4, vo2: 4, repMin: 8, tempoMin: 20 },
+  advanced: { k1: 5, vo2: 5, repMin: 10, tempoMin: 25 },
+};
+
+// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 20 min), long run
+// (floor max(30 min, 85%)), hybrid rounds (floor 3), then quality — never below the experience floor (QFLOOR).
 function capRunVolume(ctx, raws, targetKm) {
   const over = () => runKmOf(ctx, raws) > targetKm + 0.05;
   const blocks = raws.flatMap((w) => w.blocks);
+  const fl = QFLOOR[ctx.exp];
   const shrink = (ids, floorOf) => {
     const adj = [];
     for (const b of blocks) if (b.kind === 'cardio') for (const it of b.items) if (ids.includes(it.exId) && it.timeSec > floorOf(it)) adj.push({ b, it });
@@ -874,32 +864,34 @@ function capRunVolume(ctx, raws, targetKm) {
       b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
     }
   };
-  const cutRounds = (pred, floor) => {
-    for (let i = 0; i < 3 && over(); i++) {
-      const b = blocks.find((x) => pred(x) && x.rounds > floor);
+  const cutRounds = (pred, floorOf) => {
+    for (let i = 0; i < 4 && over(); i++) {
+      const b = blocks.find((x) => pred(x) && x.rounds > floorOf(x));
       if (!b) break;
       b.rounds -= 1;
       b.title = b.title.replace(/^\d+ rounds/, `${b.rounds} rounds`).replace(/^\d+ ×/, `${b.rounds} ×`);
     }
   };
+  const runItem = (b) => b.items?.find((it) => getExercise(it.exId).category === 'run' && it.paceSec);
   const isHybrid = (b) => b.kind === 'circuit' && b.items.some((it) => it.exId === 'run-1k');
-  const isQuality = (b) => b.kind === 'intervals' && b.items.some((it) => getExercise(it.exId).category === 'run' && it.paceSec);
+  const isQuality = (b) => b.kind === 'intervals' && !!runItem(b);
 
-  if (over()) shrink(['run-easy'], () => 900);
+  if (over()) shrink(['run-easy'], () => 1200);
+  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round((orig.get(it) * 0.85) / 300) * 300)); }
+  cutRounds(isHybrid, () => 3);
+  // Quality: fewer reps (1 km / VO2) or shorter reps (cruise/tempo), never below the floor.
+  cutRounds(isQuality, (b) => (runItem(b).exId === 'run-1k' ? fl.k1 : runItem(b).exId === 'run-intervals' ? fl.vo2 : 99));
   for (const q of blocks) {
     if (!over()) break;
     if (!['intervals', 'cardio'].includes(q.kind)) continue;
-    const it = q.items?.find((x) => ['run-tempo', 'run-threshold', 'run-intervals'].includes(x.exId) && x.timeSec >= 480);
+    const it = q.items?.find((x) => ['run-tempo', 'run-threshold'].includes(x.exId) && x.timeSec);
     if (!it) continue;
-    const t = Math.max(Math.round((it.timeSec * 0.6) / 60) * 60, Math.round((it.timeSec * 0.8) / 60) * 60);
+    const floor = (it.exId === 'run-tempo' && q.kind === 'cardio' ? fl.tempoMin : fl.repMin) * 60;
+    if (it.timeSec <= floor) continue;
+    const t = Math.max(floor, Math.round((it.timeSec * 0.8) / 60) * 60);
     q.title = q.title.replace(`${Math.round(it.timeSec / 60)} min`, `${Math.round(t / 60)} min`);
     it.timeSec = t; if (q.kind === 'intervals') q.workSec = t;
   }
-  cutRounds(isQuality, 3);
-  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round((orig.get(it) || it.timeSec) * 0.85 / 300) * 300)); }
-  cutRounds(isHybrid, 3);
-  if (over()) shrink(['run-long'], () => 1800);
-  cutRounds(isHybrid, 2);
 }
 
 export function generatePlan(profile, startISO) {
@@ -966,7 +958,12 @@ export function generatePlan(profile, startISO) {
     } else {
       const t = WEEK[p.daysPerWeek][phase === 'taper' ? 'peak' : phase];
       slots.forEach((d, j) => { codes[d] = t[j]; });
-      if (phase === 'taper') for (let d = 0; d < 7; d++) if (codes[d] === 'X') codes[d] = 'Q:openers';
+      // Early taper (race early next week): one opener, one reduced cruise, no KB conditioning.
+      if (phase === 'taper') for (let d = 0; d < 7; d++) {
+        if (codes[d] === 'X') codes[d] = 'Q:openers';
+        else if (codes[d]?.startsWith('Q')) codes[d] = 'Q:taperq';
+        else if (codes[d]?.startsWith('C')) codes[d] = 'Z:easy';
+      }
     }
 
     const raws = codes.map((code) => (code ? buildSession(ctx, code, wk) : null));
@@ -975,7 +972,9 @@ export function generatePlan(profile, startISO) {
     // Simulation weeks may reach +25% (the sim itself is race-specific running); they don't reset the baseline.
     const hasSim = codes.some((c) => c === 'X');
     const guarded = !taper && !isRaceWeek && !lay.post;
-    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : 1.15));
+    // The first Build week may reach +20% (new block, new session types); otherwise +15%.
+    const firstBuild = phase === 'build' && pl === 0 && !deload;
+    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15));
     if (guarded && !deload && !hasSim) prevKm = runKmOf(ctx, list);
 
     const days = [];

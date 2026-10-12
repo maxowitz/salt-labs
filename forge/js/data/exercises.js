@@ -427,42 +427,42 @@ export const EXERCISES = [
   }),
 
   // ---------------- HYROX stations (race spec in engine/hyrox.js STATIONS) ----------------
-  E('hx-ski', 'SkiErg 1000 m', 'hyrox', 'cardio', {
+  E('hx-ski', 'SkiErg (race station)', 'hyrox', 'cardio', {
     track: 'distance', equip: 'SkiErg', hyrox: 'skierg', muscles: ['lats', 'triceps', 'core', 'hips'], reg: 'erg-ski',
     cues: ['Settle into a long, strong stroke; do not blow up in the first 200 m', 'Hinge with the pull, hands to the thighs', 'Aim for a pace ~ 3–5 s/500 m slower than your 1 km test'],
     faults: ['Arm-dominant stroke that fries the triceps for the sleds'],
   }),
-  E('hx-sled-push', 'Sled Push 50 m', 'hyrox', 'carry', {
+  E('hx-sled-push', 'Sled Push (race station)', 'hyrox', 'carry', {
     track: 'distance', equip: 'Sled', hyrox: 'sled-push', muscles: ['quads', 'glutes', 'calves', 'core'], reg: 'kb-rack-carry',
     cues: ['Arms long or bent, body at 45°, drive through the balls of the feet', 'Short powerful steps — never stop the sled moving', 'Turn efficiently at each 12.5 m length'],
     faults: ['Standing too upright', 'Stop-start pushing (restarting is the hardest part)'],
   }),
-  E('hx-sled-pull', 'Sled Pull 50 m', 'hyrox', 'pull', {
+  E('hx-sled-pull', 'Sled Pull (race station)', 'hyrox', 'pull', {
     track: 'distance', equip: 'Sled + rope', hyrox: 'sled-pull', muscles: ['lats', 'biceps', 'grip', 'quads'], reg: 'kb-towel-drag',
     cues: ['Athletic stance, sit back, long hand-over-hand pulls', 'Use the legs: step back between pulls', 'Keep the rope tidy in the box'],
     faults: ['Pulling only with the arms', 'Standing tall — no leverage'],
   }),
-  E('hx-bbj', 'Burpee Broad Jumps 80 m', 'hyrox', 'ballistic', {
+  E('hx-bbj', 'Burpee Broad Jumps (race station)', 'hyrox', 'ballistic', {
     track: 'distance', hyrox: 'bbj', muscles: ['quads', 'glutes', 'chest', 'heart & lungs'], reg: 'bw-bbj',
     cues: ['Rhythm over distance: step-up burpee, moderate jump', 'Hands within a foot of your toes', 'Breathe on every rep'],
     faults: ['Big jumps early that crush the legs for the run'],
   }),
-  E('hx-row', 'Row 1000 m', 'hyrox', 'cardio', {
+  E('hx-row', 'Row (race station)', 'hyrox', 'cardio', {
     track: 'distance', equip: 'Rower', hyrox: 'row', muscles: ['legs', 'back', 'arms'], reg: 'erg-row',
     cues: ['Damper 5–6, 26–30 spm', 'Leg drive first — save the arms for later stations', 'Steady split ~ 5–8 s/500 m slower than your 1 km test'],
     faults: ['Sprinting the start', 'Arm-pulling'],
   }),
-  E('hx-farmers', 'Farmers Carry 200 m', 'hyrox', 'carry', {
+  E('hx-farmers', 'Farmers Carry (race station)', 'hyrox', 'carry', {
     track: 'distance', hyrox: 'farmers', muscles: ['grip', 'traps', 'core'], reg: 'kb-farmers-carry',
     cues: ['Fast short steps — almost a power walk', 'Set the bells down once, deliberately, if you must', 'Chalk / dry hands before you pick up'],
     faults: ['Shrugged shoulders', 'Multiple unplanned drops'],
   }),
-  E('hx-sandbag-lunge', 'Sandbag Lunges 100 m', 'hyrox', 'lunge', {
+  E('hx-sandbag-lunge', 'Sandbag Lunges (race station)', 'hyrox', 'lunge', {
     track: 'distance', equip: 'Sandbag', hyrox: 'sandbag-lunges', muscles: ['quads', 'glutes', 'core'], reg: 'kb-goblet-walking-lunge',
     cues: ['Bag high on the upper back/shoulders', 'Back knee touches every rep, stand fully each step', 'Steady, unbroken rhythm beats fast-and-stop'],
     faults: ['No-rep knee touches', 'Bag sliding down the back'],
   }),
-  E('hx-wall-balls', 'Wall Balls', 'hyrox', 'squat', {
+  E('hx-wall-balls', 'Wall Balls (race station)', 'hyrox', 'squat', {
     hyrox: 'wall-balls', equip: 'Wall ball', muscles: ['quads', 'glutes', 'shoulders'], reg: 'kb-goblet-thruster',
     cues: ['Full squat below parallel, ball at the chin', 'Drive with the legs; the arms just guide it', 'Pre-planned sets (e.g. 25-25-20-15-15) with short breaks'],
     faults: ['Missing the target line', 'Shallow squats as you fatigue'],

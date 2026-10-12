@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   bmr, tdee, computeTargets, dayTargets, dayTargetsFor, weeklyTargets, adaptiveTdee, scaleFood, searchFoods, macrosForKcal,
   weightTrend, robustTrend, trainingKcal, sessionIntensity, assumedDailyTraining, kcalFloor, fiberTarget, referenceWeight, goalKcal,
-  ACTIVITY_FACTORS, TRAINING_RATE, validateQuickAdd, validateCustomFood, validateWaterMl, amountError, parseNum, LIMITS,
+  ACTIVITY_FACTORS, TRAINING_RATE, maxGoalRate, defaultDeficit, fatFreeMass, energyAvailability, fuelingNote, sodiumSummary, validateQuickAdd, validateCustomFood, validateWaterMl, amountError, parseNum, LIMITS,
 } from '../js/engine/nutrition.js';
 import { FOODS } from '../js/data/foods.js';
 
@@ -75,7 +75,10 @@ test('computeTargets: goal, protein, fat floor, carbs remainder, maintenance', (
   assert.equal(m.fat, Math.round(Math.max(64, (0.2 * m.kcal) / 9)));
   assert.ok(Math.abs(m.protein * 4 + m.carbs * 4 + m.fat * 9 - m.kcal) <= 8);
   const lose = computeTargets({ ...male, goal: 'lose' });
-  assert.equal(lose.kcal, Math.max(Math.round((lose.maintenance * 0.8) / 10) * 10, Math.round(kcalFloor(male) / 10) * 10));
+  const defDef = Math.min(0.15 * lose.maintenance, (0.005 * 80 * 7700) / 7); // 5×/wk athlete: gentler of −15 % / 0.5 % BW
+  assert.equal(lose.kcal, Math.max(Math.round((lose.maintenance - defDef) / 10) * 10, Math.round(kcalFloor(male) / 10) * 10));
+  const casual = computeTargets({ ...male, goal: 'lose', daysPerWeek: 2 });
+  assert.equal(casual.kcal, Math.max(Math.round((casual.maintenance * 0.8) / 10) * 10, Math.round(kcalFloor(male) / 10) * 10), 'non-athlete keeps −20 %');
   const gain = computeTargets({ ...male, goal: 'gain' });
   assert.equal(gain.kcal, Math.round((gain.maintenance * 1.1) / 10) * 10);
   for (const t of [m, gain]) assert.ok(t.carbs > 0);
@@ -343,7 +346,7 @@ test('search: matching rules', () => {
   assert.ok(ids('rxbar').includes('whole-food-bar'), 'tags searchable');
   assert.deepEqual(ids(''), []);
   assert.equal(ids('zzzqqq').length, 0);
-  assert.ok(ids('salmon cooked').every((id) => id.includes('salmon')));
+  assert.ok(ids('tuna oil').every((id) => id.includes('tuna')), 'non-filler words must all match');
   assert.equal(ids('chick', { recent: ['chickpeas'] })[0], 'chickpeas', 'recents boost');
   const custom = [{ id: 'c1', name: 'Protein Bar', brand: 'Acme', serving: { label: '1 bar', grams: 60 }, per100: { kcal: 350, p: 33, c: 35, f: 10, fiber: 10 }, tags: [] }];
   assert.equal(searchFoods('acme', custom)[0].id, 'c1');
@@ -422,4 +425,118 @@ test('QA water ≤ 5 L per add; amounts must be > 0 and ≤ 5 kg', () => {
   assert.match(amountError(6000), /5 kg/);
   assert.equal(amountError(80), null);
   assert.equal(amountError(80, '?'), 'Enter a number');
+});
+
+// ---------------------------------------------------------------- R2
+test('R2 P1-1 every day ≥ kcal floor, and the plan week still averages to target', () => {
+  // small female cutting athlete: base target sits at the floor, rest days used to drop to ~1.04 × BMR
+  const f55 = { sex: 'f', age: 30, heightCm: 160, weightKg: 55, activity: 'sedentary', goal: 'lose', daysPerWeek: 5 };
+  const plan = makePlan('2026-10-12');
+  const targets = computeTargets(f55, { plan });
+  const s = { profile: f55, targets, sessions: [], plan };
+  const wk = weeklyTargets(s, '2026-10-12');
+  const fl = kcalFloor(f55);
+  for (const d of wk.days) assert.ok(d.kcal >= fl - 1, `${d.date} ${d.kcal} ≥ ${fl}`);
+  assert.ok(wk.days.some((d) => d.notes.includes('kcal-floor-day')), 'rest days were raised');
+  near(wk.avgKcal, targets.kcal, 2, 're-balanced from training days');
+  // a big athlete with plenty of headroom is unaffected
+  const big = computeTargets(male, { plan });
+  const wk2 = weeklyTargets({ profile: male, targets: big, sessions: [], plan }, '2026-10-12');
+  assert.ok(wk2.days.every((d) => !d.notes.includes('kcal-floor-day')));
+  // no plan, logged short session: floor still applies
+  const s3 = { profile: f55, targets: { ...targets, kcal: kcalFloor(f55) }, sessions: [{ date: '2026-10-13', type: 'recovery', durationSec: 600 }], plan: null };
+  assert.ok(dayTargetsFor(s3, '2026-10-13').kcal >= fl);
+});
+
+test('R2 P1-2 default cut for ≥ 4×/wk athletes is the gentler of −15 % / 0.5 % BW per week; EA is reported', () => {
+  const ath = { sex: 'm', age: 32, heightCm: 180, weightKg: 82, activity: 'moderate', goal: 'lose', daysPerWeek: 5 };
+  const M = 2800;
+  near(defaultDeficit(ath, M), Math.min(420, (0.005 * 82 * 7700) / 7), 0.5);
+  near(goalKcal(M, ath), Math.round((M - defaultDeficit(ath, M)) / 10) * 10, 1);
+  near(defaultDeficit({ ...ath, daysPerWeek: 3 }, M), 560, 0.5, 'non-athletes keep −20 %');
+  // FFM from BMI (Deurenberg): 82 kg / 180 cm / 32 y male ≈ 19 % fat
+  const ffm = fatFreeMass(ath);
+  assert.ok(ffm > 62 && ffm < 70, `ffm ${ffm}`);
+  assert.ok(fatFreeMass({ ...ath, sex: 'f' }) < ffm, 'women: lower FFM at the same BMI');
+  const plan = makePlan('2026-10-12');
+  const s = { profile: ath, targets: computeTargets(ath, { plan }), sessions: [], plan };
+  const ea = energyAvailability(s, '2026-10-12');
+  near(ea.ea, (dayTargetsFor(s, '2026-10-12').kcal - ea.exerciseKcal) / ea.ffm, 0.11);
+  assert.equal(ea.low, ea.ea < 30);
+  assert.equal(energyAvailability(s, '2026-10-12', 1200).low, true, 'eating 1200 on a hard day is low EA');
+  // an aggressive explicit rate surfaces low-ea in the targets
+  assert.ok(computeTargets({ ...ath, goalRateKgWk: -0.8 }, { plan }).notes.includes('low-ea'));
+});
+
+test('R2 P1-3 sodium summary reports coverage; Open Food Facts sodium is parsed', () => {
+  const full = sodiumSummary([{ kcal: 300, na: 400 }, { kcal: 200, na: 100 }]);
+  assert.deepEqual(full, { mg: 500, known: 2, total: 2, kcalShare: 1, complete: true });
+  const part = sodiumSummary([{ kcal: 600 }, { kcal: 200, na: 300 }, { kcal: 100 }]);
+  assert.equal(part.complete, false);
+  assert.equal(part.known, 1);
+  assert.equal(part.total, 3);
+  near(part.kcalShare, 0.22, 0.01);
+  assert.equal(sodiumSummary([]).complete, false);
+  // staples now carry USDA sodium
+  const withNa = FOODS.filter((f) => f.per100.na != null).length;
+  assert.ok(withNa >= FOODS.length * 0.8, `${withNa}/${FOODS.length} foods have sodium`);
+});
+
+test('R2 P1-4 goal rates are capped at what the target can deliver', () => {
+  const ath = { sex: 'm', age: 32, heightCm: 180, weightKg: 82, activity: 'moderate', goal: 'lose', daysPerWeek: 5 };
+  const M = 2780;
+  const cap = maxGoalRate(ath, M);
+  near(cap, Math.min((Math.min(0.25 * M, M - kcalFloor(ath)) * 7) / 7700, 0.82), 0.001);
+  // 1.5 lb and 2 lb used to give the same target: now any rate beyond the cap is the cap
+  const at = (r) => goalKcal(M, { ...ath, goalRateKgWk: r });
+  assert.equal(at(-0.68), at(-0.907));
+  assert.equal(at(-cap), at(-0.907));
+  assert.ok(at(-0.25) > at(-0.5), 'deliverable rates still differ');
+  near(at(-cap), Math.max(Math.round((M - (cap * 7700) / 7) / 10) * 10, kcalFloor(ath)), 10);
+  const gainCap = maxGoalRate({ ...ath, goal: 'gain' }, M);
+  near(gainCap, Math.min((0.15 * M * 7) / 7700, 0.41), 0.001);
+});
+
+test('R2 P2 search phrasing: fillet / pan-seared / plurals / cooking methods', () => {
+  const top = (q) => searchFoods(q, FOODS, { limit: 1 })[0]?.id;
+  assert.equal(top('salmon fillet'), 'salmon-cooked');
+  assert.equal(top('pan-seared salmon'), 'salmon-cooked');
+  assert.equal(top('potatoes'), 'potato-baked');
+  assert.equal(top('roasted potatoes'), 'roasted-potatoes');
+  assert.equal(top('mashed potatoes'), 'mashed-potatoes');
+  assert.equal(top('grilled chicken'), 'chicken-breast-cooked');
+  assert.equal(top('fried egg'), 'egg-fried');
+  assert.ok(searchFoods('grilled', FOODS).length > 0, 'a lone cooking word still searches');
+});
+
+test('R2 P2 fuelingNote: pre-session carbs, long-session advice, carb-short warning', () => {
+  const plan = makePlan('2026-10-12');
+  const s = { profile: male, targets: computeTargets(male, { plan }), sessions: [], plan };
+  const n = fuelingNote(s, '2026-10-12'); // hyrox 60 min
+  assert.ok(n);
+  assert.equal(n.intensity, 'hard');
+  assert.deepEqual(n.carbsG, [80, 120]);
+  assert.match(n.pre, /1–1\.5 g\/kg/);
+  assert.equal(n.during, null);
+  assert.equal(fuelingNote(s, '2026-10-14'), null, 'rest day');
+  const long = { ...s, sessions: [{ date: '2026-10-14', type: 'run', title: 'Long run', durationSec: 95 * 60 }] };
+  assert.match(fuelingNote(long, '2026-10-14').during, /30–60 g/);
+  const lowCarb = { ...s, targets: { kcal: 1700, protein: 200, carbs: 120, fat: 60, waterMl: 3000, trainKcalAvg: 300 } };
+  assert.match(fuelingNote(lowCarb, '2026-10-12').warn || '', /below the 5 g\/kg/);
+});
+
+test('R2 P2 adaptive: a late step change is excluded and lowers confidence', () => {
+  const r = adaptiveTdee(synthState({ spike: 1.5 }), '2026-10-12');
+  near(r.tdee, 2550, 60, 'spike');
+  assert.equal(r.stepGuard, true);
+  assert.notEqual(r.confidence, 'high');
+  assert.equal(adaptiveTdee(synthState(), '2026-10-12').stepGuard, false);
+});
+
+test('R2 P2 fat ≥ 25 % when gaining; water from reference weight', () => {
+  const g = computeTargets({ ...male, goal: 'gain', activity: 'athlete', daysPerWeek: 6, weightKg: 95, heightCm: 185 });
+  assert.ok(g.fat * 9 >= g.kcal * 0.25 - 9);
+  const big = { sex: 'm', age: 40, heightCm: 178, weightKg: 120, activity: 'light', goal: 'lose', daysPerWeek: 4 };
+  const t = computeTargets(big, { trainingHours: 0 });
+  assert.equal(t.waterMl, Math.round((35 * referenceWeight(big)) / 50) * 50);
 });

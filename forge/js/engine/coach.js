@@ -3,7 +3,7 @@
 
 import { addDays, daysBetween } from '../store.js';
 import { getExercise } from '../data/exercises.js';
-import { benchmarkRuns, plausibleCardio, plausibleSet } from './hyrox.js';
+import { benchmarkRuns, plausibleCardio, plausibleSet, STATIONS, specKey } from './hyrox.js';
 
 const EXP = ['beginner', 'intermediate', 'advanced'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -72,7 +72,7 @@ const bwOf = (profile) => (+profile?.weightKg > 30 ? +profile.weightKg : (profil
 export function targetKg(exId, profile) {
   const ex = getExercise(exId);
   if (ex.category !== 'kb' || !ex.loadRatio) return null;
-  return ex.loadRatio[expOf(profile)] * bwOf(profile) * (profile?.sex === 'f' ? 0.75 : 1);
+  return ex.loadRatio[expOf(profile)] * bwOf(profile) * (profile?.sex === 'f' ? 0.85 : 1);
 }
 
 // How far above target a bell may be before it is unsafe for a first exposure.
@@ -99,13 +99,23 @@ function baselineKg(ex, profile) {
   return atOrBelow(pool, target * 1.08);
 }
 
+// Canonical first bells (StrongFirst-style): always acceptable for any KB lift at this level.
+export const START_BELL = { m: { beginner: 16, intermediate: 20, advanced: 24 }, f: { beginner: 12, intermediate: 12, advanced: 16 } };
+export const startBell = (profile) => START_BELL[profile?.sex === 'f' ? 'f' : 'm'][expOf(profile)];
+
 // True when the lightest suitable owned bell (or `kg` if given) is unsafe for this athlete on this lift.
+// Never true at or below the standard starting bell; carries are fine up to race farmers spec (or 2 × start bell).
 export function tooHeavy(exId, profile, kg) {
   const ex = getExercise(exId);
   if (ex.category !== 'kb' || !ex.loadRatio) return false;
   const pool = poolFor(ex, profile);
   if (!pool.length) return false;
   const bell = kg != null ? kg : baselineKg(ex, profile);
+  if (bell <= startBell(profile)) return false;
+  if (ex.pattern === 'carry') {
+    const spec = STATIONS.find((q) => q.id === 'farmers')?.kg?.[specKey(profile)] || 24;
+    if (bell <= Math.max(spec, 2 * startBell(profile))) return false;
+  }
   return bell > targetKg(exId, profile) * heavyLimit(ex);
 }
 
@@ -131,39 +141,148 @@ export function suggestWeight(exId, profile, sessions = [], opts = {}) {
   return kg;
 }
 
-// Live recommendation for a planned KB item (plan bells are frozen at generation; this applies logged progress).
-// Returns { kg, reason, earned }:
-//  - non-KB item, or no bells owned → item.kg ?? null, reason ''.
-//  - item.hold (warm-ups, deload/taper, spec-weight station work) → item.kg unchanged.
-//  - no history with this lift → item.kg (or the baseline suggestion when the item has none).
-//  - last session at bell B: all sets reached item.reps (or the default top of range) at RPE ≤ 8 → next owned bell
-//    above B ("earned"); RPE ≥ 9 or missed reps → B ("repeat"); otherwise B.
-//  - result is max(planned kg, history kg) except after a "repeat" verdict on the planned bell; always an owned bell.
-export function liveItemAdvice(item, profile, sessions = []) {
-  const planned = item?.kg != null ? +item.kg : null;
-  const ex = getExercise(item?.exId);
-  if (!item || ex.category !== 'kb' || !ex.loadRatio) return { kg: planned, reason: '', earned: false };
-  const pool = poolFor(ex, profile);
-  if (!pool.length) return { kg: planned, reason: '', earned: false };
-  if (item.hold) return { kg: planned, reason: '', earned: false };
-  const last = lastPerformance(item.exId, sessions);
-  if (!last || !last.kg) return { kg: planned ?? suggestWeight(item.exId, profile, []), reason: '', earned: false };
-  const base = atOrBelow(pool, last.kg);
-  const top = +item.reps > 0 ? +item.reps : topReps(ex);
-  const hitTop = ex.pattern === 'carry' ? (last.distanceM || 0) >= (+item.distanceM || 40) : last.minReps >= top;
-  if (last.rpe != null && last.rpe >= 9 || (!hitTop && ex.pattern !== 'carry' && last.minReps < top && planned != null && base >= planned)) {
-    return { kg: planned != null ? Math.min(planned, base) : base, reason: 'Repeat this bell — own all reps first', earned: false };
-  }
-  if (hitTop && (last.rpe == null || last.rpe <= 8)) {
-    const up = nextUp(pool, base);
-    const kg = Math.max(up, planned ?? 0);
-    if (up > base && up >= (planned ?? 0)) return { kg, reason: 'Earned: you hit the top of the rep range last time', earned: true };
-    return { kg, reason: up === base ? 'Top owned bell — progress with reps, sets or less rest' : '', earned: false };
-  }
-  return { kg: Math.max(base, planned ?? 0), reason: '', earned: false };
+// ---------- Live double progression for planned items ----------
+// Lifts where bell jumps are big relative to the load: max +30% per jump and two easy sessions at target first.
+const CAREFUL = new Set(['kb-tgu', 'kb-windmill', 'kb-overhead-carry', 'kb-bottoms-up-press', 'kb-armbar', 'kb-sl-rdl', 'kb-snatch']);
+const isCareful = (ex) => CAREFUL.has(ex.id) || ex.pattern === 'press';
+// Block-kind families: progress only from like-for-like work. AMRAP totals never drive progression.
+const familyOf = (kind) => (kind === 'strength' ? 'strength' : ['emom', 'circuit', 'intervals', 'station', 'cardio'].includes(kind) ? 'conditioning' : kind || null);
+
+// Target reps the athlete was asked for on a logged set: set.targetReps → set.target → that session's planned item.
+function setTarget(x, s, plan) {
+  if (+x.targetReps > 0) return +x.targetReps;
+  if (+x.target > 0) return +x.target;
+  const w = plan?.workouts?.[s.workoutId];
+  if (!w) return null;
+  for (const b of w.blocks || []) for (const it of b.items || []) if (it.exId === x.exId && +it.reps > 0 && (!x.blockKind || x.blockKind === b.kind)) return +it.reps;
+  return null;
 }
 
-export const liveItemWeight = (item, profile, sessions) => liveItemAdvice(item, profile, sessions).kg;
+// Live recommendation for a planned KB item (plan bells are frozen at generation; this applies logged progress).
+// Signature: liveItemAdvice(item, profile, sessions, opts?) with opts { blockKind, plan, todayISO }.
+// The item's block kind comes from item.blockKind (stamped by the plan) or opts.blockKind.
+// History used: sets of the same exercise in the same family (strength vs conditioning); sets with
+// set.blockKind === 'amrap' are ignored; legacy sets without blockKind count only for strength items and only if reps ≤ 30.
+// Returns { kg, reason, earned }:
+//  - non-KB item, no bells, item.hold, AMRAP/warm-up/cool-down item, or no matching history → planned kg (no message).
+//  - last matching session at bell B (top bell that session):
+//    · a set below its target (set.targetReps, else that session's planned reps) → B, "Repeat this bell — own all reps first".
+//    · RPE ≥ 9 → B, "Last time was a grind — repeat this bell".
+//    · EARNED when every set at B reached the TOP OF THE RANGE (max(item.reps, default top: 15 swings/snatch/high pull,
+//      8 squat/press, 10 hinge/pull/lunge; TGU = ≥ 5 singles) with ≥ item.sets sets, at RPE ≤ 8 (≤ 7 for careful lifts),
+//      AND no bell increase for this lift in the last 14 days, AND (careful lifts: TGU, windmill, overhead carry,
+//      bottoms-up, armbar, SL-RDL, snatch, presses) the previous matching session also qualified, AND the next owned
+//      bell is ≤ 30% heavier for careful lifts / ≤ 50% otherwise → next owned bell, "Earned: …".
+//    · otherwise B, with an explanatory reason when relevant ("Same bell, more reps…", "Next bell is a big jump…").
+//  - result = max(that, planned) unless a repeat verdict applies; conditioning items never exceed planned + one size.
+export function liveItemAdvice(item, profile, sessions = [], opts = {}) {
+  const planned = item?.kg != null ? +item.kg : null;
+  const ex = getExercise(item?.exId);
+  const none = { kg: planned, reason: '', earned: false };
+  if (!item || ex.category !== 'kb' || !ex.loadRatio) return none;
+  const pool = poolFor(ex, profile);
+  if (!pool.length || item.hold) return none;
+  const kind = item.blockKind || opts.blockKind || null;
+  if (kind === 'amrap' || kind === 'warmup' || kind === 'cooldown') return none;
+  const fam = familyOf(kind);
+  const plan = opts.plan || null;
+
+  // Matching history, oldest → newest: [{ s, sets }]
+  const hist = [];
+  for (const s of (Array.isArray(sessions) ? sessions : []).filter((q) => q && Array.isArray(q.sets)).sort(byDate)) {
+    const sets = s.sets.filter((x) => {
+      if (!x || x.exId !== item.exId || !(+x.kg > 0)) return false;
+      if (x.blockKind === 'amrap') return false;
+      if (x.blockKind) return !fam || familyOf(x.blockKind) === fam;
+      return (!fam || fam === 'strength') && (+x.reps || 0) <= 30; // legacy sets: strength context only
+    });
+    if (sets.length) hist.push({ s, sets });
+  }
+  if (!hist.length) return { kg: planned ?? suggestWeight(item.exId, profile, []), reason: '', earned: false };
+
+  const top = ex.id === 'kb-tgu' ? 5 : Math.max(+item.reps || 0, topReps(ex));
+  const evalSession = ({ s, sets }) => {
+    const B = Math.max(...sets.map((x) => +x.kg));
+    const atB = sets.filter((x) => +x.kg === B);
+    const rpes = atB.map((x) => +x.rpe).filter(Number.isFinite);
+    const rpe = rpes.length ? Math.max(...rpes) : (s.rpe != null && Number.isFinite(+s.rpe) ? +s.rpe : null);
+    const missed = atB.some((x) => { const t = setTarget(x, s, plan); return t != null && (+x.reps || 0) < t; });
+    let hitTop;
+    if (ex.pattern === 'carry') hitTop = Math.max(...atB.map((x) => +x.distanceM || 0)) >= (+item.distanceM || 40);
+    else if (ex.id === 'kb-tgu') hitTop = atB.reduce((a, x) => a + (+x.reps || 0), 0) >= top;
+    else if (/swing/.test(ex.id) && Math.min(...atB.map((x) => +x.reps || 0)) >= 10 && atB.length >= 10) hitTop = true; // 10 × 10 standard
+    else hitTop = atB.length >= (+item.sets || 1) && Math.min(...atB.map((x) => +x.reps || 0)) >= top;
+    const easyCap = isCareful(ex) ? 7 : 8;
+    return { B, rpe, missed, hitTop, easy: hitTop && !missed && (rpe == null || rpe <= easyCap), date: s.date, reps: Math.max(...atB.map((x) => +x.reps || 0)) };
+  };
+  const last = evalSession(hist[hist.length - 1]);
+  const base = atOrBelow(pool, last.B);
+  const capCond = (kg) => (fam === 'conditioning' && planned != null ? Math.min(kg, nextUp(pool, planned)) : kg);
+  const out = (kg, reason = '', earned = false) => ({ kg: capCond(kg), reason, earned });
+
+  if (last.missed) return out(planned != null ? Math.min(planned, base) : base, 'Repeat this bell — own all reps first');
+  if (last.rpe != null && last.rpe >= 9) return out(planned != null ? Math.min(planned, base) : base, 'Last time was a grind — repeat this bell');
+
+  const hold = Math.max(base, planned ?? 0);
+  if (!last.easy) {
+    const more = +item.reps > 0 && last.reps > 0 && +item.reps > last.reps && hold === base;
+    return out(hold, more ? 'Same bell, more reps — that is this week’s progression' : '');
+  }
+  const up = nextUp(pool, base);
+  if (up === base) return out(hold, 'Top owned bell — progress with reps, sets or less rest');
+  if (up > base * (isCareful(ex) ? 1.3 : 1.5)) return out(hold, 'Next bell is a big jump — add reps or a set first');
+  const ref = opts.todayISO || last.date;
+  const recentJump = hist.some(({ s, sets }) => s.date && ref && daysBetween(s.date, ref) < 14 && daysBetween(s.date, ref) >= 0 && sets.some((x) => +x.kg < base));
+  if (recentJump) return out(hold, 'Bell went up recently — consolidate it for two weeks');
+  if (isCareful(ex)) {
+    const prev = hist.length > 1 ? evalSession(hist[hist.length - 2]) : null;
+    if (!prev || !prev.easy || prev.B !== last.B) return out(hold, 'One more easy session at this bell, then size up');
+  }
+  if (planned != null && planned >= up) return out(planned);
+  return out(up, 'Earned: top of the rep range, easy, two weeks at this bell', true);
+}
+
+export const liveItemWeight = (item, profile, sessions, opts) => liveItemAdvice(item, profile, sessions, opts).kg;
+
+// ---------- Time estimates ----------
+const SEC_PER_M = { 'hx-bbj': 3.4, 'bw-bbj': 3.4, 'hx-sled-push': 4, 'hx-sled-pull': 5, 'hx-sandbag-lunge': 2.8, 'kb-rack-walking-lunge': 2.8, 'kb-goblet-walking-lunge': 2.8, 'kb-bear-crawl-drag': 3, 'kb-towel-drag': 4, 'bw-bear-crawl': 2, 'bw-a-skip': 0.6, 'bw-lunge': 2.5 };
+
+function itemSec(it, easyPace) {
+  const ex = getExercise(it.exId);
+  const sides = it.perSide ? 2 : 1;
+  const sets = ex.category === 'run' && it.sets ? it.sets : 1;
+  if (it.timeSec) return it.timeSec * sides * sets;
+  if (it.distanceM) {
+    if (ex.category === 'run') return (it.distanceM / 1000) * (it.paceSec || easyPace);
+    if (['erg-ski', 'erg-row', 'hx-ski', 'hx-row'].includes(it.exId)) return (it.distanceM / 1000) * 280;
+    if (it.exId === 'erg-bike') return (it.distanceM / 1000) * 120;
+    return it.distanceM * (SEC_PER_M[it.exId] || 0.9) * sides;
+  }
+  if (it.reps) return it.reps * sides * (ex.pattern === 'mobility' ? 4 : ex.pattern === 'ballistic' ? 2.5 : ex.id === 'kb-tgu' ? 40 : 4) + (ex.category === 'kb' ? 8 : 0);
+  return 30;
+}
+
+function blockSec(b, type, easyPace) {
+  const items = b.items || [];
+  const sum = items.reduce((a, it) => a + itemSec(it, easyPace), 0);
+  const raceLike = type === 'hyrox' && (b.kind === 'cardio' || b.kind === 'station');
+  const setup = b.kind === 'warmup' || b.kind === 'cooldown' || raceLike ? 0 : 60; // transitions, chalk, bells
+  switch (b.kind) {
+    case 'strength': return setup + items.reduce((a, it) => a + (it.sets || 1) * (itemSec(it, easyPace) + 15 + (it.restSec ?? b.restSec ?? 90)), 0);
+    case 'emom': return setup + (b.minutes || 10) * 60;
+    case 'amrap': return setup + (b.durationSec || 600);
+    case 'intervals': return setup + (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
+    case 'circuit': return setup + (b.rounds || 1) * sum + Math.max(0, (b.rounds || 1) - 1) * (b.restSec || 0);
+    default: return setup + sum + (b.restSec || 0);
+  }
+}
+
+// Estimated minutes for a workout (rounded to 5, min 10). Used by the plan and by scaleWorkout after scaling.
+export function estimateMin(workout, opts = {}) {
+  const easyPace = opts.easyPace || 360;
+  const sec = (workout?.blocks || []).reduce((a, b) => a + blockSec(b, workout.type, easyPace), 0);
+  return Math.max(10, Math.round(sec / 60 / 5) * 5);
+}
 
 // ---------- Readiness scaling ----------
 const QUALITY_RUN = new Set(['run-tempo', 'run-threshold', 'run-intervals', 'run-1k', 'run-hill-sprints', 'run-fartlek']);
@@ -201,7 +320,7 @@ export function scaleWorkout(workout, readinessScore) {
 
   if (score < 40) {
     const out = {
-      ...w, title: `Recovery Flow (was: ${w.title})`, type: 'recovery', estMin: 30, scaled: 'recovery',
+      ...w, title: `Recovery Flow (was: ${w.title})`, type: 'recovery', estMin: estimateMin({ type: 'recovery', blocks: recoveryBlocks(30) }), scaled: 'recovery',
       summary: 'Low readiness — today is about recovery. Easy movement, mobility and breathing; the planned session can wait.',
       equipment: [], blocks: recoveryBlocks(30),
     };
@@ -247,7 +366,9 @@ export function scaleWorkout(workout, readinessScore) {
         b.title = (b.title || '').replace(/^\d+(?= rounds)/, String(n)).replace(/× \d+$/, `× ${n}`);
         b.rounds = n; add('rounds', 'Circuits: ~25% fewer rounds');
       }
-      for (const it of items) if (getExercise(it.exId).category === 'run' && RUN_FAST.test(it.note || '')) { toEasy(it); easyRuns++; }
+      let eased = 0;
+      for (const it of items) if (getExercise(it.exId).category === 'run' && RUN_FAST.test(it.note || '')) { toEasy(it); easyRuns++; eased++; }
+      if (eased) b.notes = 'Easy runs today — rehearse transitions, not pace.';
     } else if (b.kind === 'cardio' || b.kind === 'station') {
       const f = sim ? 0.5 : 0.75;
       for (const it of items) {
@@ -279,7 +400,7 @@ export function scaleWorkout(workout, readinessScore) {
     lines.push('Full sim moved — do it within 3 days when readiness > 60.');
   }
   lines.push(...changes.values());
-  w.estMin = Math.max(15, Math.round(((w.estMin || 45) * (sim ? 0.55 : 0.78)) / 5) * 5);
+  w.estMin = estimateMin(w);
   w.scaled = 'reduced';
   return { workout: w, changes: lines.slice(0, 5) };
 }
