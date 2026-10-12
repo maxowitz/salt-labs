@@ -234,8 +234,8 @@ function fuelNotes(s, date) {
   try { ea = energyAvailability(s, date); } catch (e) { console.error(e); }
   if (fn?.pre) lines.push(h('li', null, h('span', { class: 'lbl' }, 'Before'), h('span', null, fn.pre)));
   if (fn?.during) lines.push(h('li', null, h('span', { class: 'lbl' }, 'During'), h('span', null, fn.during)));
-  if (fn?.warn) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl acc' }, 'Carbs'), h('span', null, fn.warn)));
-  if (ea?.low) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl acc' }, 'Energy'),
+  if (fn?.warn) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl' }, 'Carbs'), h('span', null, fn.warn)));
+  if (ea?.low) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl' }, 'Energy'),
     h('span', null, `Today’s target leaves ≈ ${num(ea.ea, 0)} kcal per kg of fat-free mass after training — under 30 risks low energy availability (RED-S). `,
       s.profile.goal === 'lose' ? 'Consider a slower goal rate below.' : 'Make sure you eat to target today.')));
   if (!lines.length) return null;
@@ -254,7 +254,7 @@ function mealCard(s, ctx, meal, label) {
       h('span', { class: 'ix', 'aria-hidden': 'true' }, String(mi + 1).padStart(2, '0')),
       h('h2', null, label),
       list.length ? h('span', { class: 'fu-meal-kcal lbl' }, `${num(tot.kcal)} kcal`) : null,
-      h('button', { type: 'button', class: 'link-btn fu-add-btn', 'aria-label': `Add food to ${label}`, on: { click: () => openAddSheet(ctx, meal) } }, '+ Add')),
+      h('button', { type: 'button', class: 'link-btn key fu-add-btn', 'aria-label': `Add food to ${label}`, on: { click: () => openAddSheet(ctx, meal) } }, '+ Add')),
     list.length ? h('div', { class: 'data fu-meal-macros' }, macroLine(tot)) : null,
     list.length ? h('div', { class: 'list' }, list.map((e) => h('button', {
       type: 'button', class: 'li fu-entry', 'aria-label': `Edit ${e.name}`, on: { click: () => openEditSheet(ctx, e) },

@@ -426,6 +426,8 @@ function player(ctx, aw, { fresh = false } = {}) {
     if (aw.paused) restTimer.pause();
     drawRest();
     save();
+    // keep the next set visible above the rest plate (one-tap logging, DESIGN §5.10)
+    requestAnimationFrame(() => main.querySelector('.wo-set.cur')?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
   }
   function restoreRest() {
     if (!aw.rest?.snap || aw.rest.block !== aw.blockIndex) { aw.rest = null; return; }
@@ -1292,8 +1294,9 @@ function player(ctx, aw, { fresh = false } = {}) {
 
     const rpeOut = h('output', { class: 'wo-rpe-val num' }, String(sess.rpe));
     const rpeWord = h('span', { class: 'muted small' }, rpeLabel(sess.rpe));
-    const rpe = h('input', { type: 'range', min: '1', max: '10', step: '1', value: String(sess.rpe), 'aria-label': 'Session RPE 1 to 10',
-      on: { input: () => { sess.rpe = +rpe.value; rpeOut.textContent = rpe.value; rpeWord.textContent = rpeLabel(sess.rpe); aw.summary = { rpe: sess.rpe, notes: sess.notes }; save(); } } });
+    const onRpe = (v) => { sess.rpe = +v; rpeOut.textContent = String(v); rpeWord.textContent = rpeLabel(sess.rpe); aw.summary = { rpe: sess.rpe, notes: sess.notes }; save(); };
+    const rpe = typeof sessionApi.rpePicker === 'function' ? sessionApi.rpePicker(sess.rpe, onRpe, 'Session RPE 1 to 10')
+      : h('input', { type: 'range', min: '1', max: '10', step: '1', value: String(sess.rpe), 'aria-label': 'Session RPE 1 to 10', on: { input: (e) => onRpe(e.target.value) } });
     const notes = h('textarea', { placeholder: 'How did it feel? Bell sizes, niggles, wins…', 'aria-label': 'Notes',
       on: { input: () => { sess.notes = notes.value; aw.summary = { rpe: sess.rpe, notes: sess.notes }; save(); } } });
     notes.value = sess.notes;
@@ -1359,7 +1362,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       h('h1', null, 'Session saved'),
       h('p', { class: 'dim' }, [`${fmtDur(sess.durationSec, { long: true })}`, sess.sets.length ? `${sess.sets.length} sets` : null,
         vol ? fmtWeight(vol, units()) + ' moved' : null, sess.prs.length ? `${sess.prs.length} PR${sess.prs.length > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')),
-      sess.prs.length ? h('div', { class: 'chips wo-done-prs' }, sess.prs.slice(0, 4).map((p) => h('span', { class: 'stamp go' }, 'PR · ' + p))) : null,
+      sess.prs.length ? h('div', { class: 'chips wo-done-prs' }, sess.prs.slice(0, 4).map((p) => h('div', { class: 'wo-done-pr' }, h('span', { class: 'stamp go' }, 'PR'), h('span', null, p)))) : null,
       h('div', { class: 'stack wo-done-actions' },
         h('a', { class: 'btn primary xl block', href: '#/today' }, 'Back to Today'),
         h('a', { class: 'btn ghost block', href: '#/history/' + encodeURIComponent(sess.id) }, 'View in history'))));

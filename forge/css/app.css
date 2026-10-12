@@ -383,7 +383,7 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--text); }
 .rb-cell.past { color: var(--text-2); }
 .rb-cell.past::after, .rb-cell.now::after { opacity: 1; }
 .rb-cell.dl { border-style: dashed; }
-.rb-cell.now { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 500; }
+.rb-cell.now { border-color: var(--rule-ink); background: var(--surface-2); color: var(--text); font-weight: 500; }
 .rb-cell.sel { outline: 1px solid var(--text); outline-offset: 1px; }
 button.rb-cell:hover { color: var(--text); }
 .rb-legend { display: grid; gap: 3px; margin-top: 6px; }

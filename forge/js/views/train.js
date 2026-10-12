@@ -102,10 +102,10 @@ function renderPlan(root, s, args) {
   root.append(header(s, h('a', { class: 'link-btn', href: '#/history?from=train', 'aria-label': 'Training history' }, 'History →')));
 
   // status pills
-  root.append(h('div', { class: 'row wrap tr-pills' },
-    phasePill(curPhase),
-    h('span', { class: 'pill' }, `Week ${cur + 1} of ${weeks.length}`),
-    dtr == null ? null : h('a', { class: 'pill', href: '#/hyrox' }, dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} to race` : dtr === 0 ? 'Race day!' : 'Race complete')));
+  root.append(h('p', { class: 'data tr-pills' },
+    [phaseLabel(curPhase), `Wk ${String(cur + 1).padStart(2, '0')}/${String(weeks.length).padStart(2, '0')}`].filter(Boolean).join(' · '),
+    dtr == null ? null : [' · ', h('a', { class: 'tr-dtr', href: '#/hyrox' }, dtr > 0 ? `${dtr} day${dtr === 1 ? '' : 's'} out` : dtr === 0 ? 'Race day' : 'Race complete')],
+    weeks[cur]?.deload ? [' ', h('span', { class: 'stamp' }, 'Deload')] : null));
 
   if (s.activeWorkout) root.append(activeBanner(s));
 

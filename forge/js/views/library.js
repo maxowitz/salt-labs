@@ -6,6 +6,11 @@ import { EXERCISES, getExercise } from '../data/exercises.js';
 import { suggestWeight, lastPerformance, setVolumeKg } from '../engine/coach.js';
 import { STATIONS } from '../engine/hyrox.js';
 
+// numbered section rules (DESIGN §5.2) — counter reset at the start of each page draw
+let IX = 0;
+const ix = () => h('span', { class: 'ix', 'aria-hidden': 'true' }, String(++IX).padStart(2, '0'));
+
+
 export const CATS = [
   { id: 'all', label: 'All', match: () => true },
   { id: 'kb', label: 'Kettlebell', match: (e) => e.category === 'kb' },
@@ -104,9 +109,9 @@ function metaPills(e) {
   ];
 }
 
-function listBlock(title, arr, tag = 'ul', cls = '') {
+function listBlock(title, arr, tag = 'ul', cls = '', numbered = false) {
   if (!Array.isArray(arr) || !arr.length) return null;
-  return h('div', { class: 'stack sm' }, h('h4', null, title), h(tag, { class: 'tr-cues ' + cls }, arr.map((c) => h('li', null, String(c)))));
+  return h('div', { class: 'stack sm' }, numbered ? h('div', { class: 'section-head' }, ix(), h('h2', null, title)) : h('h4', null, title), h(tag, { class: 'tr-cues ' + cls }, arr.map((c) => h('li', null, String(c)))));
 }
 
 // ---------------------------------------------------------------- list view state (kept between visits)
@@ -169,6 +174,7 @@ function renderList(root) {
 
 function renderDetail(root, exId) {
   const draw = () => {
+    IX = 0;
     clear(root);
     const s = store.get();
     const e = ex(exId);
@@ -201,9 +207,9 @@ function renderDetail(root, exId) {
           h('div', { class: 'xs muted' }, best.topKg ? `${bellLb(best.topKg)} · ${fmtDate(best.date)}` : fmtDate(best.date))) : null));
     }
 
-    root.append(h('div', { class: 'card mt stack' },
-      listBlock('Coaching cues', e.cues, 'ol') || h('p', { class: 'muted small' }, 'No cues recorded for this movement yet.'),
-      listBlock('Common faults', e.faults, 'ul', 'tr-faults')));
+    root.append(h('div', { class: 'card mt stack tr-cuecard' },
+      listBlock('Coaching cues', e.cues, 'ol', '', true) || h('p', { class: 'muted small' }, 'No cues recorded for this movement yet.'),
+      listBlock('Common faults', e.faults, 'ul', 'tr-faults', true)));
 
     const reg = e.regression ? ex(e.regression) : null, prog = e.progression ? ex(e.progression) : null;
     if (reg || prog || station) {
@@ -214,7 +220,7 @@ function renderDetail(root, exId) {
     }
 
     // history
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Your history'), hist.length ? h('span', { class: 'xs muted' }, `${hist.length} session${hist.length === 1 ? '' : 's'}`) : null));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Your history'), hist.length ? h('span', { class: 'xs muted' }, `${hist.length} session${hist.length === 1 ? '' : 's'}`) : null));
     if (!hist.length) {
       root.append(h('div', { class: 'card' }, emptyState('chart', 'No sets logged yet', 'Log this movement in a workout and your bests, recent performances and trend appear here.')));
       return;
@@ -224,7 +230,7 @@ function renderDetail(root, exId) {
       const pts = withKg.map((p) => ({ x: dayNum(p.date), y: p.topKg }));
       root.append(h('div', { class: 'card' },
         h('div', { class: 'row between' }, h('div', { class: 'eyebrow' }, 'Top bell per session'), h('span', { class: 'xs muted' }, 'kg')),
-        lineChart({ series: [{ points: pts, color: 'var(--accent)', dots: true, area: true }], height: 150, yFmt: (v) => num(v, 0),
+        lineChart({ series: [{ points: pts, color: 'var(--text)', dots: true }], height: 150, yFmt: (v) => num(v, 0),
           xLabels: [{ x: pts[0].x, label: fmtDate(withKg[0].date, { month: 'short', day: 'numeric' }) }, { x: pts.at(-1).x, label: fmtDate(withKg.at(-1).date, { month: 'short', day: 'numeric' }) }],
           ariaLabel: `Top kettlebell weight over time for ${e.name}` })));
     }

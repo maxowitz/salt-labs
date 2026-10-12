@@ -8,6 +8,11 @@ import { EXERCISES } from '../data/exercises.js';
 import { saveSession, safeEx, typeBadge, once, arr, isoOk } from './session.js';
 import { exerciseSheet } from './library.js';
 
+// numbered section rules (DESIGN §5.2) — counter reset at the start of each page draw
+let IX = 0;
+const ix = () => h('span', { class: 'ix', 'aria-hidden': 'true' }, String(++IX).padStart(2, '0'));
+
+
 const hx = { allSplits: false, open: new Set() };
 const DIVS = [['open', 'Open'], ['pro', 'Pro'], ['doubles', 'Doubles']];
 const stations = () => (Array.isArray(STATIONS) ? STATIONS : []);
@@ -44,6 +49,7 @@ function bestStationTimes(sessions, st) {
 
 export function render(root) {
   const draw = () => {
+    IX = 0;
     const s = store.get();
     clear(root);
     const p = s.profile, today = todayISO();
@@ -82,7 +88,7 @@ export function render(root) {
     // ---- prediction
     let pred = null;
     try { pred = predictRace(s, today); } catch (e) { console.warn('predictRace', e); }
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Predicted finish'), pred ? h('span', { class: `pill ${pred.confidence === 'high' ? 'go' : pred.confidence === 'med' ? 'accent' : ''}` }, `${pred.confidence || 'low'} confidence`) : null));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Predicted finish'), pred ? h('span', { class: `pill ${pred.confidence === 'high' ? 'go' : pred.confidence === 'med' ? 'accent' : ''}` }, `${pred.confidence || 'low'} confidence`) : null));
     if (!pred || !Number.isFinite(+pred.totalSec)) {
       root.append(h('div', { class: 'card' }, emptyState('target', 'Not enough data yet', 'Log a 5 km time in Me or a few station benchmarks below to unlock your prediction.',
         h('button', { class: 'btn primary sm', on: { click: () => benchmarkSheet() } }, 'Log a benchmark'))));
@@ -103,7 +109,7 @@ export function render(root) {
       const runAvg = runSplits.length ? runSplits.reduce((a, x) => a + x.sec, 0) / runSplits.length : pred.runSec / 8;
       let pz = null;
       try { pz = p.fiveKSec ? paces(p.fiveKSec) : null; } catch {}
-      root.append(h('div', { class: 'section-head' }, h('h2', null, 'Pacing plan'), h('span', { class: 'xs muted' }, 'target · race clock')));
+      root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Pacing plan'), h('span', { class: 'xs muted' }, 'target · race clock')));
       root.append(h('div', { class: 'card tight' },
         h('div', { class: 'callout info small mb' }, h('b', null, `Run ${fmtPace(runAvg, p.units)}`), ` (${fmtDur(runAvg)} per 1 km). Go out no faster than this on run 1 — the first km always feels easy.`, pz?.race ? ` Your 5 km-derived race pace: ${fmtPace(Array.isArray(pz.race) ? pz.race[0] : pz.race, p.units)}.` : ''),
         h('table', { class: 'tr-table' },
@@ -127,7 +133,7 @@ export function render(root) {
     // ---- readiness
     let rd = null;
     try { rd = hyroxReadiness(s, today); } catch (e) { console.warn('hyroxReadiness', e); }
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'HYROX readiness')));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'HYROX readiness')));
     if (!rd) root.append(h('div', { class: 'card' }, emptyState('target', 'Readiness unavailable', 'Train and log a few sessions to see how race-ready you are.')));
     else {
       const sc = Math.round(+rd.score || 0);
@@ -146,13 +152,13 @@ export function render(root) {
     }
 
     // ---- station guide
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Station guide'), h('button', { class: 'link-btn', on: { click: () => benchmarkSheet() } }, '+ Log time')));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Station guide'), h('button', { class: 'link-btn', on: { click: () => benchmarkSheet() } }, '+ Log time')));
     if (!stations().length) root.append(h('div', { class: 'card' }, emptyState('flag', 'Stations unavailable', '')));
     root.append(h('div', { class: 'stack' }, stations().map((st, i) => stationCard(st, i, s))));
 
     // ---- benchmarks
     const temps = (Array.isArray(TEMPLATES) ? TEMPLATES : []).filter((t) => /bench|test|sim|trial/i.test(t.id + ' ' + t.title) || t.type === 'hyrox');
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Benchmarks & simulations')));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Benchmarks & simulations')));
     root.append(h('div', { class: 'card flush' }, h('div', { class: 'list' },
       temps.map((t) => h('a', { class: 'li', href: '#/session/' + encodeURIComponent(t.id) }, typeBadge(t.type, 36),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, t.title), h('div', { class: 'li-sub' }, [t.estMin ? `${t.estMin} min` : null, t.summary].filter(Boolean).join(' · '))), icon('chevR', 16))),

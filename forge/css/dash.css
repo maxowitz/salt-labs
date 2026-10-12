@@ -299,3 +299,12 @@ body.locked #app, body.locked .tabbar, body.locked #toast-root { visibility: hid
 .fuel-note { font-size: 13px; color: var(--text-2); margin: 8px 0 0; line-height: 1.4; }
 .fuel-note .lbl { color: var(--muted); margin-right: 4px; }
 .fuel-note.warn .lbl { color: var(--warn); }
+
+/* ---- r2 ---- */
+.rd-short { margin-top: 6px; }
+.rd-short + .rd-data { margin-top: 2px; }
+.fuel-note { margin-top: 14px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); font-size: 13px; color: var(--text-2); }
+.fuel-note.warn { border-left-color: var(--warn); }
+.fuel-note .lbl { margin-right: 4px; }
+.today-hello h1 { font-size: clamp(30px, 8.6vw, 34px); }
+.me-meta { margin-top: 6px; }

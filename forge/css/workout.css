@@ -139,7 +139,9 @@
 .wo-rpe-opt.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .wo-addset { align-self: flex-start; }
 .wo-block-done { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.wo-main.has-rest { padding-bottom: 170px; }
+.wo-main.has-rest { padding-bottom: 190px; }
+/* while resting, keep the next set in view: drop the secondary lines */
+.wo-main.has-rest .wo-ghost, .wo-main.has-rest .wo-hint, .wo-main.has-rest .wo-bnotes { display: none; }
 
 /* ---------- Rest dock: inverted instrument plate ---------- */
 .wo-rest-dock { position: fixed; left: 0; right: 0; bottom: calc(73px + var(--safe-b)); z-index: 29; max-width: 640px; margin: 0 auto; padding: 0 10px; pointer-events: none; }
@@ -264,7 +266,8 @@
 .wo-done-mark { padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--rule-ink); align-self: stretch; }
 .wo-done-mark .go { color: var(--go); }
 .wo-done h1 { font-size: 34px; }
-.wo-done-prs { justify-content: flex-start; }
+.wo-done-prs { flex-direction: column; align-items: flex-start; gap: 8px; }
+.wo-done-pr { display: flex; align-items: baseline; gap: 10px; font-size: 14px; color: var(--text); }
 .wo-done-actions { width: 100%; max-width: 380px; margin-top: 16px; }
 
 /* ---------- Free timers (#/timer) ---------- */
@@ -285,8 +288,21 @@
   .wo-set.cur { margin: 0 -24px; padding: 4px 24px; }
 }
 @media (max-height: 760px) {
-  .tf { width: min(66vw, 240px); }
-  .tc-main, .tc-side { height: 56px; }
+  .tf { width: min(64vw, 240px); }
+  .tf-time { font-size: clamp(64px, 22vw, 84px); }
+  .tf-time.long { font-size: clamp(46px, 15vw, 60px); }
+  .tf.tf-md { width: min(52vw, 190px); }
+  .wo-stage { gap: 6px; padding: 0; }
+  .wo-main { gap: 12px; }
+  .wo-bhead { gap: 4px; padding-top: 0; }
+  .wo-btitle { font-size: 21px; }
+  .wo-bnotes { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+  .tc { padding: 2px 0; }
+  .tc-main, .tc-side { height: 52px; }
+  .rc-plus { min-height: 64px; }
+  .rc-val { font-size: 44px; }
+  .wo-item.big { padding: 4px 0; }
+  .wo-item.big .wo-item-reps { font-size: 32px; }
 }
 @media (max-width: 380px) {
   .wo-set .stepper { max-width: 128px; }

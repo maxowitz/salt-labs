@@ -343,11 +343,9 @@ export function render(root, { args }) {
     // hero
     const meta = typeMeta(workout.type);
     root.append(h('div', { class: 'card hero tr-shero' },
-      h('div', { class: 'row wrap', style: { gap: '6px' } },
-        phasePill(phase),
-        weekNo ? h('span', { class: 'pill' }, `Week ${weekNo}`) : h('span', { class: 'pill' }, 'Extra session'),
-        planned?.week?.deload ? h('span', { class: 'pill recovery' }, 'Deload') : null,
-        planned ? h('span', { class: 'pill' }, planned.day.date === today ? 'Today' : fmtDate(planned.day.date)) : null),
+      h('p', { class: 'data tr-sline' },
+        [phase ? phaseLabel(phase) : null, weekNo ? `Wk ${String(weekNo).padStart(2, '0')}` : 'Extra session', planned ? (planned.day.date === today ? 'Today' : fmtDate(planned.day.date)) : null].filter(Boolean).join(' · '),
+        planned?.week?.deload ? [' ', h('span', { class: 'stamp' }, 'Deload')] : null),
       h('div', { class: 'row gap mt top' }, typeBadge(workout.type, 48),
         h('div', { class: 'grow' }, h('h1', { class: 'tr-stitle' }, workout.title), h('div', { class: 'small muted' }, meta.label))),
       h('div', { class: 'tr-sstats' },
@@ -461,7 +459,7 @@ function swapSheet(workoutId) {
         h('div', { class: 'li-main' },
           h('div', { class: 'li-title' }, isFrom ? 'This session' : w ? w.title : 'Rest day'),
           h('div', { class: 'li-sub' }, fmtDate(d.date, { month: 'short', day: 'numeric' }) + (d.date === todayISO() ? ' · today' : '') + (logged ? ' · logged' : ''))),
-        isFrom ? h('span', { class: 'pill' }, 'Here') : h('span', { class: 'lbl acc' }, 'Swap'));
+        isFrom ? h('span', { class: 'pill' }, 'Here') : h('span', { class: 'lbl' }, 'Swap'));
       })))),
   });
 }

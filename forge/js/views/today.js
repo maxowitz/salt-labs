@@ -3,6 +3,7 @@ import { store, sel, todayISO, addDays, daysBetween } from '../store.js';
 import { h, clear, icon, toast, sheet, navigate, haptic, num, fmtDur, fmtDate, fmtWeight, fmtBell,
   toDisplayWeight, fromDisplayWeight, stepper, sectionHead, fig, masthead } from '../ui.js';
 import { ticks, ribbon } from '../charts.js';
+import { startWorkout } from './session.js';
 import * as program from '../engine/program.js';
 import * as coach from '../engine/coach.js';
 import * as hyrox from '../engine/hyrox.js';
@@ -75,7 +76,7 @@ export function tipForDate(iso) {
 
 export function greeting(d = new Date()) {
   const hr = d.getHours();
-  return hr < 5 ? 'Late night' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  return hr < 5 ? 'Late night' : hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
 }
 
 const safe = (fn, fallback = null) => { try { return fn(); } catch (e) { console.warn('FORGE today:', e); return fallback; } };
@@ -202,7 +203,8 @@ function readinessCard(s, today, ui, repaint) {
           h('div', { class: 'rd-title' }, band.title),
           h('button', { type: 'button', class: 'icon-btn rd-edit', 'aria-label': 'Edit readiness check-in', on: { click: () => { ui.editing = true; ui.open = true; ui.picks = { ...saved }; repaint(); } } }, icon('edit', 18))),
         ticks({ value: score, max: 100, n: 41, color: band.color, label: `Readiness ${Math.round(score)} of 100` }),
-        h('div', { class: 'data rd-data' }, `${band.short} sleep ${saved.sleep} · sore ${saved.soreness} · energy ${saved.energy} · stress ${saved.stress}`)));
+        h('p', { class: 'small dim rd-short' }, band.short),
+        h('div', { class: 'data rd-data' }, `sleep ${saved.sleep} · sore ${saved.soreness} · energy ${saved.energy} · stress ${saved.stress}`)));
   }
   // Collapsed → a single ruled row that expands in place.
   if (!ui.open) {
@@ -344,22 +346,21 @@ function sessionCard(s, today) {
     return sec ? `${Math.round(sec / 60)}′` : '';
   };
   return h('section', { class: `session-card type-${w.type || 'strength'}` },
-    h('div', { class: 'eyebrow' }, [tm.label, w.phase ? (P[w.phase]?.label || w.phase) : null].filter(Boolean).join(' · ')),
+    h('div', { class: 'eyebrow' }, [tm.label, w.phase ? (P[w.phase]?.label || w.phase) : null, ...(w.equipment || []).slice(0, 2)].filter(Boolean).join(' · ')),
     h('h2', { class: 'session-title' }, w.title || 'Today’s session'),
     w.summary ? h('p', { class: 'small dim' }, w.summary) : null,
     blocks.length ? h('ol', { class: 'block-peek ledger' },
       blocks.slice(0, 6).map((b, i) => h('li', { class: 'lrow' },
         h('span', { class: 'ix' }, BLOCK_LETTER(i)),
-        h('span', { class: 'bk' }, blockKindLabel(b.kind)),
+        h('span', { class: 'bk' }, new RegExp(blockKindLabel(b.kind).replace('-', '.?'), 'i').test(b.title || '') ? '' : blockKindLabel(b.kind)),
         h('span', { class: 'bt' }, b.title || ''),
         h('span', { class: 'bm data' }, blockMin(b))))) : null,
-    (w.equipment || []).length ? h('p', { class: 'data mt' }, w.equipment.slice(0, 4).join(' · ') + (w.equipment.length > 4 ? ` +${w.equipment.length - 4}` : '')) : null,
     changes.length ? h('div', { class: 'callout scaled mt' },
       h('strong', null, `Auto-scaled for readiness ${Math.round(score)}`),
       h('ul', null, changes.map((c) => h('li', null, c)))) : locked ? h('p', { class: 'xs muted mt' }, workout.fixed ? 'Fixed session — run it as written, whatever the readiness score.' : 'Benchmark — do it fresh. If you feel off, move it to another day rather than scaling it.') : !Number.isFinite(score) ? h('p', { class: 'xs muted mt' }, 'Check in above and FORGE scales this session to how you feel.') : null,
     h('div', { class: 'session-cta' },
-      resumeBtn || h('a', { class: 'btn primary xl block start-btn', href: `#/workout/${encodeURIComponent(w.id)}` }, h('span', null, 'Start session'), h('span', { class: 'k' }, `~${w.estMin || 45} min →`)),
-      h('a', { class: 'link-btn', href: `#/session/${encodeURIComponent(w.id)}` }, 'Session details')));
+      resumeBtn || h('button', { type: 'button', class: 'btn primary xl block start-btn', on: { click: () => startWorkout(w.id, changes.length > 0 && !locked) } }, h('span', null, 'Start session'), h('span', { class: 'k' }, `~${w.estMin || 45} min →`)),
+      h('a', { class: 'link-btn', href: `#/session/${encodeURIComponent(w.id)}` }, 'Session details →')));
 }
 
 function ringsRow(s, today) {

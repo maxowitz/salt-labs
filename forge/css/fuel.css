@@ -50,7 +50,7 @@
 .fu-meal-macros { margin: -6px 0 6px; }
 .fu-meal .list { border-top: 1px solid var(--line); }
 .fu-entry { cursor: pointer; }
-.fu-entry .li-sub { white-space: normal; }
+.fu-entry .li-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fu-entry .li-end { min-width: 56px; }
 .fu-kcal { font-size: 22px; }
 .fu-meal-actions { display: flex; flex-wrap: wrap; gap: 0 18px; border-top: 1px solid var(--line); }
@@ -258,3 +258,7 @@
 .fu-fuel-notes li.warn { color: var(--text); }
 .fu-rate button:disabled { opacity: .35; text-decoration: line-through; cursor: not-allowed; }
 .fu-item-unit { min-height: 36px; padding: 0 6px; font-family: var(--font-mono); font-size: 12px; color: var(--text-2); }
+.fu-fuel-notes li > span:last-child { font-family: var(--font); }
+.fu-fuel-notes li.warn .lbl { color: var(--warn); }
+.fu-item-unit { min-height: 44px; }
+.fu-item .data, .fu-food .li-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

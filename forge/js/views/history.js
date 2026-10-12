@@ -5,6 +5,11 @@ import { typeBadge, typeMeta, safeEx, safeGetWorkout, rpePicker, backBar, once, 
 import { exerciseSheet } from './library.js';
 import { sessionVolumeKg } from '../engine/coach.js';
 
+// numbered section rules (DESIGN §5.2) — counter reset at the start of each page draw
+let IX = 0;
+const ix = () => h('span', { class: 'ix', 'aria-hidden': 'true' }, String(++IX).padStart(2, '0'));
+
+
 const FILTERS = [
   ['all', 'All', () => true],
   ['kb', 'KB', (s) => s.type === 'strength' || s.type === 'conditioning' || arr(s.sets).some((x) => +x.kg > 0)],
@@ -69,6 +74,7 @@ function renderList(root) {
 }
 
 function renderDetail(root, id) {
+  IX = 0;
   const s = store.get(), units = s.profile.units;
   const x = arr(s.sessions).find((y) => y.id === id);
   root.append(backBar('#/history' + q(), 'History'));
@@ -104,7 +110,7 @@ function renderDetail(root, id) {
   if (sets.length) {
     const byEx = new Map();
     for (const st of sets) { if (!byEx.has(st.exId)) byEx.set(st.exId, []); byEx.get(st.exId).push(st); }
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Sets'), h('span', { class: 'xs muted' }, `${sets.length} sets · ${byEx.size} exercise${byEx.size === 1 ? '' : 's'}`)));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Sets'), h('span', { class: 'xs muted' }, `${sets.length} sets · ${byEx.size} exercise${byEx.size === 1 ? '' : 's'}`)));
     const workStr = (st) => [st.reps ? `${st.reps} reps` : null, st.distanceM ? fmtDist(st.distanceM, units) : null, st.timeSec ? fmtDur(st.timeSec) : null].filter(Boolean).join(' · ') || '–';
     const entries = [...byEx.entries()];
     const tabled = entries.filter(([, list]) => list.length > 1 || list.some((st) => +st.kg > 0));
@@ -127,7 +133,7 @@ function renderDetail(root, id) {
   }
 
   if (cardio.length) {
-    root.append(h('div', { class: 'section-head' }, h('h2', null, 'Cardio')));
+    root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Cardio')));
     root.append(h('div', { class: 'card flush' }, h('div', { class: 'list' }, cardio.map((c) => {
       const pace = c.distanceM > 0 && c.timeSec > 0 ? (c.timeSec / c.distanceM) * 1000 : null;
       const erg = c.mode === 'row' || c.mode === 'ski';
@@ -143,7 +149,7 @@ function renderDetail(root, id) {
     root.append(h('div', { class: 'callout info small mt' }, x.untracked ? 'Logged without set-by-set tracking.' : 'No sets or cardio recorded in this session.'));
   }
 
-  root.append(h('div', { class: 'section-head' }, h('h2', null, 'Notes')));
+  root.append(h('div', { class: 'section-head' }, ix(), h('h2', null, 'Notes')));
   root.append(h('div', { class: 'card' }, x.notes ? h('p', { class: 'tr-notes' }, x.notes) : h('p', { class: 'muted small' }, 'No notes. Tap Edit to add how it felt.'),
     h('div', { class: 'xs muted mt' }, `Session RPE: ${x.rpe || '–'}`)));
 
