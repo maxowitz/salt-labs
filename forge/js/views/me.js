@@ -4,6 +4,7 @@ import { h, clear, icon, seg, sheet, toast, confirmDialog, navigate, num, fmtDur
   toDisplayWeight, fromDisplayWeight, field, sectionHead } from '../ui.js';
 import * as program from '../engine/program.js';
 import * as hyrox from '../engine/hyrox.js';
+import { validLock } from '../lock.js';
 import {
   nameEditor, sexAgeEditor, bodyEditor, experienceEditor, bellGrid, equipmentEditor, daysEditor, raceEditor, nutritionEditor,
   validate, commitDraft, cleanProfile, buildPlan, computeAutoTargets, fmtHeight, EXPERIENCE, GOALS, ACTIVITY, DIVISIONS, NO_RACE_WEEKS,
@@ -466,7 +467,7 @@ function backupSection() {
 
 function lockSection(s) {
   const l = s.settings.lock || {};
-  const on = !!(l.enabled && l.hash);
+  const on = validLock(l);
   return h('section', null, sectionHead('App lock'),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       toggleRow('Passcode lock', on ? `${l.digits || 4}-digit passcode · locks after ${l.timeoutMin === 0 ? 'leaving the app' : `${l.timeoutMin ?? 5} min away`}` : 'Ask for a 4–6 digit code when FORGE opens',

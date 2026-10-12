@@ -1,6 +1,6 @@
 // FORGE onboarding — multi-step first-run flow (docs/PROMPT.md §3.1).
 // The step builders are exported so Me (§3.6) can reuse the exact same editors in sheets.
-import { store, todayISO, addDays, daysBetween } from '../store.js';
+import { store, todayISO, addDays, daysBetween, defaultState } from '../store.js';
 import { h, clear, icon, seg, field, toast, navigate, haptic, num, parseDur, fmtDur, fmtDate, fmtPace,
   toDisplayWeight, fromDisplayWeight, KG_PER_LB, bellLb } from '../ui.js';
 import * as program from '../engine/program.js';
@@ -282,7 +282,7 @@ export const validate = {
 
 /** Apply transient fields (_fiveK) to the draft. */
 export function commitDraft(d) {
-  if (d._fiveK !== undefined) d.fiveKSec = d._fiveK ? parseDur(d._fiveK) : null;
+  if (d._fiveK !== undefined) { const sec = d._fiveK ? parseDur(d._fiveK) : null; d.fiveKSec = sec >= 720 && sec <= 3600 ? sec : null; }
   if (Number.isFinite(d.weightKg)) d.weightKg = r1(d.weightKg);
   d.name = String(d.name ?? '').trim();
   return d;
@@ -301,6 +301,15 @@ const STEPS = [
   { id: 'nutrition', eyebrow: 'Fuel', title: 'Nutrition goal', build: nutritionEditor, check: validate.nutrition, skippable: true },
   { id: 'summary', eyebrow: 'Ready', title: 'Your plan is ready to forge', build: summary },
 ];
+
+// Skip restores the step's fields to their defaults — never keeps a half-typed invalid value.
+const SKIP_DEFAULTS = {
+  experience: (d, def) => { d.experience = def.experience; },
+  equipment: (d, def) => { d.equipment = { ...def.equipment }; d.fiveKSec = null; d._fiveK = ''; },
+  days: (d) => { d.daysPerWeek = recommendedDays(d.experience); d._daysTouched = false; },
+  race: (d, def) => { d.raceDate = null; d.division = def.division; },
+  nutrition: (d, def) => { d.goal = def.goal; d.activity = def.activity; },
+};
 
 let draft = null; // survives hash changes within the session
 let stepIdx = 0;
@@ -371,6 +380,12 @@ export function render(root) {
     btn.disabled = true;
     try {
       const today = todayISO();
+      let raceNote = null;
+      if (draft.raceDate && !(daysBetween(today, draft.raceDate) > 0)) { draft.raceDate = null; raceNote = 'That race date has passed, so FORGE planned a 12-week block. Add your next race in Me.'; }
+      for (let i = 0; i < STEPS.length; i++) {
+        const msg = STEPS[i].check?.(draft);
+        if (msg) { stepIdx = i; error = msg; btn.disabled = false; paint(); return; }
+      }
       const profile = cleanProfile(commitDraft(draft));
       profile.onboarded = true;
       profile.hrMax = profile.hrMax || hyrox.defaultHrMax(profile.age);
@@ -384,7 +399,7 @@ export function render(root) {
         st.bodyweight.push({ date: today, kg: profile.weightKg });
       });
       draft = null;
-      toast(`Plan forged, ${profile.name}. Let’s go.`, { kind: 'go' });
+      toast(raceNote || `Plan forged, ${profile.name}. Let’s go.`, { kind: raceNote ? undefined : 'go', ms: raceNote ? 6000 : undefined });
       navigate('#/today');
     } catch (e) {
       console.error(e);
@@ -426,7 +441,7 @@ export function render(root) {
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Back', disabled: stepIdx === 0, style: { visibility: stepIdx === 0 ? 'hidden' : 'visible' }, on: { click: () => go(-1) } }, icon('chevL')),
         h('div', { class: 'ob-dots', role: 'progressbar', 'aria-valuemin': '1', 'aria-valuemax': String(STEPS.length), 'aria-valuenow': String(stepIdx + 1), 'aria-label': `Step ${stepIdx + 1} of ${STEPS.length}` },
           STEPS.map((_, i) => h('i', { class: i < stepIdx ? 'done' : i === stepIdx ? 'on' : '' }))),
-        step.skippable ? h('button', { type: 'button', class: 'link-btn ob-skip', on: { click: () => { error = null; dir = 1; stepIdx++; paint(); } } }, 'Skip') : h('span', { class: 'ob-skip' })),
+        step.skippable ? h('button', { type: 'button', class: 'link-btn ob-skip', on: { click: () => { SKIP_DEFAULTS[step.id]?.(draft, defaultState().profile); error = null; dir = 1; stepIdx++; paint(); } } }, 'Skip') : h('span', { class: 'ob-skip' })),
       h('section', { class: 'ob-step ' + (dir > 0 ? 'in-r' : 'in-l'), 'aria-labelledby': 'ob-title' },
         stepIdx === 0 ? h('div', { class: 'ob-brand', 'aria-hidden': 'true' }, h('span', { class: 'ob-mark' }, icon('bell', 34)), 'FORGE') : null,
         h('div', { class: 'eyebrow' }, `${step.eyebrow} · ${stepIdx + 1}/${STEPS.length}`),

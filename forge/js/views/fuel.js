@@ -1,21 +1,19 @@
 // FORGE Fuel — food log, macro rings, water, weekly adherence and adaptive targets (docs/PROMPT.md §3.4).
 // Routes: #/fuel, #/fuel/<YYYY-MM-DD>, optional ?add=<breakfast|lunch|dinner|snacks|auto> opens the add sheet.
-import { store, sel, todayISO, addDays, uid } from '../store.js';
+import { store, sel, todayISO, addDays, uid, isISODate } from '../store.js';
 import { h, clear, toast, sheet, num, fmtDate, icon, navigate, seg, field, sectionHead, haptic, clamp, fmtWeight } from '../ui.js';
 import { ring, barChart, lineChart } from '../charts.js';
 import { FOODS } from '../data/foods.js';
-import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, kcalFloor } from '../engine/nutrition.js';
+import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
 
 const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snacks', 'Snacks']];
 const MEAL_LABEL = Object.fromEntries(MEALS);
 const ML_PER_OZ = 29.5735;
-const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OFF_TIMEOUT = 8000;
 const RECENT_CAP = 30;
 const OZ_G = 28.3495;
 const HH_UNITS = new Set(['cup', 'tbsp', 'tsp']);
 
-const validISO = (s) => ISO_RE.test(s || '') && !Number.isNaN(Date.parse(s));
 const r0 = (v) => Math.round(+v || 0);
 const r1 = (v) => Math.round((+v || 0) * 10) / 10;
 const fmtG = (v) => num(v, Math.abs(v) < 10 && Math.abs(v % 1) > 0.05 ? 1 : 0);
@@ -96,7 +94,12 @@ function pushRecent(st, id) {
 
 // ---------------------------------------------------------------------------------------------
 export function render(root, { args = [], query = {} } = {}) {
-  const date = validISO(args[0]) ? args[0] : todayISO();
+  const badDate = args[0] != null && !isISODate(args[0]);
+  const date = badDate ? todayISO() : args[0] || todayISO();
+  if (badDate) {
+    try { history.replaceState(null, '', location.pathname + location.search + '#/fuel'); } catch {}
+    setTimeout(() => toast('That date doesn’t exist — showing today', { ms: 2200 }), 50);
+  }
   const ctx = { date, sheets: new Set(), waterHist: [] };
 
   const paint = () => {
@@ -115,11 +118,12 @@ export function render(root, { args = [], query = {} } = {}) {
   };
   ctx.paint = paint;
   paint();
+  if (photoAvail == null) checkPhotoAvailable().then((ok) => { if (ok && root.isConnected) paint(); });
   const unsub = store.subscribe(() => paint());
 
   if (query.add) {
     const meal = MEAL_LABEL[query.add] ? query.add : defaultMeal();
-    try { history.replaceState(null, '', location.pathname + location.search + `#/fuel${args[0] ? '/' + date : ''}`); } catch {}
+    try { history.replaceState(null, '', location.pathname + location.search + `#/fuel${args[0] && !badDate ? '/' + date : ''}`); } catch {}
     openAddSheet(ctx, meal);
   }
   return () => {
@@ -146,7 +150,7 @@ function header(s, ctx) {
   const picker = h('input', {
     type: 'date', class: 'fu-date-input', value: date, 'aria-label': 'Pick a date',
     on: {
-      change: (e) => { if (validISO(e.target.value)) go(e.target.value); },
+      change: (e) => { if (isISODate(e.target.value)) go(e.target.value); },
       click: (e) => { try { e.target.showPicker?.(); } catch {} },
     },
   });
@@ -167,7 +171,7 @@ function header(s, ctx) {
       date !== today ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => go(today) } }, 'Today') : null),
     h('div', { class: 'row fu-head-actions' },
       h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => openAddSheet(ctx, defaultMeal()) } }, icon('search', 16), 'Log food'),
-      h('button', { type: 'button', class: 'btn sm subtle grow fu-snap-btn', on: { click: () => openAddSheet(ctx, defaultMeal(), { photo: true }) } }, cameraIcon(16), 'Snap meal')));
+      photoAvail === true ? h('button', { type: 'button', class: 'btn sm subtle grow fu-snap-btn', on: { click: () => openAddSheet(ctx, defaultMeal(), { photo: true }) } }, cameraIcon(16), 'Snap meal') : null));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -300,7 +304,16 @@ function amountEditor({ units, mode, qty, onChange }) {
   const unitEl = h('span', { class: 'fu-amt-unit' });
   const gEl = h('span', { class: 'fu-amt-g tabular' });
   const presetsEl = h('div', { class: 'chips' });
-  const emit = () => { gEl.textContent = st.u.id === 'g' ? '' : `= ${fmtG(Math.round(grams()))} g`; onChange({ mode: st.u.id, unit: st.u, qty: st.qty, grams: grams() }); };
+  const errEl = h('p', { class: 'fu-err', role: 'alert' });
+  const validNow = () => amountError(grams(), rawOf(input));
+  const emit = () => {
+    gEl.textContent = st.u.id === 'g' ? '' : `= ${fmtG(Math.round(grams()))} g`;
+    const err = validNow();
+    errEl.textContent = err || '';
+    fieldEl.classList.toggle('invalid', !!err);
+    if (err) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+    onChange({ mode: st.u.id, unit: st.u, qty: st.qty, grams: grams(), valid: !err, error: err });
+  };
   const setQty = (v) => { st.qty = Math.max(0, Math.round(v * 100) / 100); input.value = String(st.qty); emit(); };
   const frac = (v) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾', 1.5: '1½' }[v] || String(v));
   const paintPresets = () => {
@@ -309,6 +322,7 @@ function amountEditor({ units, mode, qty, onChange }) {
     for (const v of st.u.presets) presetsEl.append(h('button', { type: 'button', class: 'chip' + (v === st.qty ? ' on' : ''), on: { click: () => { setQty(v); paintPresets(); } } },
       st.u.id === 'g' ? `${v} g` : st.u.id === 'oz' ? `${v} oz` : st.u.id === 'hh' ? `${frac(v)} ${st.u.unit}` : frac(v)));
   };
+  const fieldEl = h('label', { class: 'fu-amt-field' }, input, unitEl, gEl);
   const segEl = units.length > 1 ? seg(units.map((u) => [u.id, u.seg]), st.u.id, (id) => {
     if (id === st.u.id) return;
     const g = grams();
@@ -323,11 +337,11 @@ function amountEditor({ units, mode, qty, onChange }) {
     segEl,
     h('div', { class: 'fu-amt-row' },
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Less', on: { click: () => { haptic(); setQty(st.qty - (st.u.id === 'g' && st.qty >= 100 ? 25 : st.u.step)); paintPresets(); } } }, icon('minus')),
-      h('label', { class: 'fu-amt-field' }, input, unitEl, gEl),
+      fieldEl,
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'More', on: { click: () => { haptic(); setQty(st.qty + (st.u.id === 'g' && st.qty >= 100 ? 25 : st.u.step)); paintPresets(); } } }, icon('plus'))),
-    presetsEl);
+    errEl, presetsEl);
   queueMicrotask(emit);
-  return { el, input, get: () => ({ mode: st.u.id, unit: st.u, qty: st.qty, grams: grams() }) };
+  return { el, input, get: () => ({ mode: st.u.id, unit: st.u, qty: st.qty, grams: grams(), valid: !validNow(), error: validNow() }) };
 }
 
 function macroPanel() {
@@ -346,6 +360,7 @@ function openEditSheet(ctx, entry) {
   const isQuick = !entry.grams && !['g', 'oz'].includes(entry.unit);
   let meal = entry.meal;
   let next = null; // computed macros
+  let nextValid = true;
 
   const content = ({ close }) => {
     const mp = macroPanel();
@@ -354,14 +369,17 @@ function openEditSheet(ctx, entry) {
       const f = {};
       const numIn = (k, label, v) => (f[k] = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(r1(v)), 'aria-label': label, on: { input: upd } }));
       function upd() {
-        const g = (k) => Math.max(0, parseFloat(f[k].value) || 0);
-        next = { kcal: r0(g('kcal')), p: r1(g('p')), c: r1(g('c')), f: r1(g('f')), fiber: r1(entry.fiber || 0), name: f.name.value.trim() || 'Quick add' };
+        const v = validateQuickAdd({ kcal: rawOf(f.kcal), p: rawOf(f.p), c: rawOf(f.c), f: rawOf(f.f) });
+        quickErr.set(v.ok ? null : Object.values(v.errors)[0]);
+        nextValid = v.ok;
+        next = { kcal: v.value.kcal, p: r1(v.value.p), c: r1(v.value.c), f: r1(v.value.f), fiber: r1(entry.fiber || 0), name: f.name.value.trim() || 'Quick add' };
         mp.set(next);
       }
       f.name = h('input', { type: 'text', value: entry.name, maxlength: '80', 'aria-label': 'Name', on: { input: upd } });
+      const quickErr = formError();
       body = h('div', { class: 'stack' }, field('Name', f.name),
         h('div', { class: 'grid2' }, field('Calories', numIn('kcal', 'Calories', entry.kcal)), field('Protein (g)', numIn('p', 'Protein', entry.p)),
-          field('Carbs (g)', numIn('c', 'Carbs', entry.c)), field('Fat (g)', numIn('f', 'Fat', entry.f))));
+          field('Carbs (g)', numIn('c', 'Carbs', entry.c)), field('Fat (g)', numIn('f', 'Fat', entry.f))), quickErr.el);
       upd();
     } else {
       const per = (k) => (entry.grams > 0 ? ((+entry[k] || 0) / entry.grams) * 100 : 0);
@@ -370,8 +388,9 @@ function openEditSheet(ctx, entry) {
       const units = portionUnits(pseudo, isImperial(s));
       if (entry.unit === 'oz' && !units.some((u) => u.id === 'oz')) units.splice(units.length - 1, 0, { id: 'oz', seg: 'oz', unit: 'oz', gramsPer: OZ_G, step: 0.5, presets: [2, 3, 4, 6, 8] });
       const toNext = ({ unit, qty, grams }) => ({ ...scaleFood({ per100: basis }, grams), qty: Math.round(qty * 100) / 100, unit: unit.id === 'serving' ? unit.unit : unit.unit, grams: Math.round(grams * 10) / 10 });
-      const amt = amountEditor({ units, mode: unitIdOf(entry.unit), qty: +entry.qty || 1, onChange: (v) => { next = toNext(v); mp.set(next); } });
+      const amt = amountEditor({ units, mode: unitIdOf(entry.unit), qty: +entry.qty || 1, onChange: (v) => { next = toNext(v); nextValid = v.valid; saveBtn.disabled = !v.valid; mp.set(next); } });
       next = toNext(amt.get());
+      nextValid = amt.get().valid;
       mp.set(next);
       body = amt.el;
     }
@@ -380,8 +399,12 @@ function openEditSheet(ctx, entry) {
       body,
       mp.el,
       groupField('Meal', seg(MEALS, meal, (m) => { meal = m; }, { label: 'Meal' })),
-      h('button', { type: 'button', class: 'btn primary block', on: { click: () => {
-        if (!next) return close();
+      saveBtn,
+      h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => { close(); deleteEntry(ctx, entry); } } }, icon('trash', 18), 'Delete'));
+  };
+  const saveBtn = h('button', { type: 'button', class: 'btn primary block', on: { click: () => {
+        if (!next) return;
+        if (!nextValid) { toast('Fix the amount first — nothing was saved', { kind: 'danger' }); return; }
         store.update((st) => {
           const arr = st.foodLog[ctx.date] || [];
           const i = arr.findIndex((e) => e.id === entry.id);
@@ -389,11 +412,9 @@ function openEditSheet(ctx, entry) {
           if (entry.foodId && !isQuick) updateFuelMeta(st, (m) => { m.lastPortion[entry.foodId] = { mode: unitIdOf(next.unit), qty: next.qty }; });
         });
         toast('Updated', { kind: 'go', ms: 1200 });
-        close();
-      } } }, icon('check', 18), 'Save'),
-      h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => { close(); deleteEntry(ctx, entry); } } }, icon('trash', 18), 'Delete'));
-  };
-  trackSheet(ctx, { title: entry.name, content });
+        sh.close();
+      } } }, icon('check', 18), 'Save');
+  const sh = trackSheet(ctx, { title: entry.name, content });
 }
 
 function deleteEntry(ctx, entry) {
@@ -466,19 +487,27 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     });
     listEl = h('div', { class: 'fu-results' });
     multiBar = h('div', { class: 'fu-multibar', hidden: true });
+    // "Snap a photo" only when the FORGE server answers (static hosting has no photo API → no dead end)
+    const photoSlot = h('div', { class: 'fu-photo-slot' });
+    const fillPhoto = () => {
+      clear(photoSlot);
+      if (photoAvail === true) photoSlot.append(h('button', { type: 'button', class: 'fu-photo-entry', on: { click: () => photoPage() } },
+        h('span', { class: 'fu-photo-ico' }, cameraIcon(22)),
+        h('span', { class: 'fu-photo-txt' }, h('b', null, 'Snap a photo'), h('span', null, 'AI estimates what’s on the plate — you check portions')),
+        icon('chevR', 18)));
+    };
+    fillPhoto();
+    if (photoAvail == null) checkPhotoAvailable().then(() => { if (photoSlot.isConnected) fillPhoto(); });
     const selectChip = h('button', { type: 'button', class: 'chip', 'aria-pressed': String(st.multi), on: { click: () => {
       st.multi = !st.multi; st.picked.clear(); selectChip.setAttribute('aria-pressed', String(st.multi)); paintList(); paintMulti();
     } } }, icon('check', 15), 'Select several');
     const el = h('div', { class: 'stack' },
       seg(MEALS.map(([v, l]) => [v, l === 'Breakfast' ? 'Bkfst' : l]), st.meal, (m) => { st.meal = m; mealTitle(); paintList(); paintMulti(); }, { label: 'Meal' }),
-      h('button', { type: 'button', class: 'fu-photo-entry', on: { click: () => photoPage() } },
-        h('span', { class: 'fu-photo-ico' }, cameraIcon(22)),
-        h('span', { class: 'fu-photo-txt' }, h('b', null, 'Snap a photo'), h('span', null, 'AI estimates what’s on the plate — you check portions')),
-        icon('chevR', 18)),
       h('div', { class: 'row' },
         h('label', { class: 'search grow' }, icon('search', 18), searchInput,
           h('button', { type: 'button', class: 'icon-btn fu-clear', 'aria-label': 'Clear search', on: { click: () => { st.q = ''; searchInput.value = ''; paintList(); searchInput.focus(); } } }, icon('x', 16))),
         h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Scan barcode', on: { click: () => barcodePage() } }, icon('barcode'))),
+      photoSlot,
       h('div', { class: 'chips scroll fu-actions' },
         h('button', { type: 'button', class: 'chip', on: { click: () => quickPage() } }, icon('zap', 15), 'Quick add'),
         selectChip,
@@ -641,7 +670,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     };
     const amt = amountEditor({
       units: portionUnits(food, imperial), mode: lp.mode, qty: lp.qty,
-      onChange: (v) => { cur = v; const m = scaleFood(food, v.grams); mp.set(m); paintAfter(m); addBtn.disabled = !(v.grams > 0); },
+      onChange: (v) => { cur = v; const m = scaleFood(food, v.valid ? v.grams : 0); mp.set(m); paintAfter(m); addBtn.disabled = !v.valid; },
     });
     cur = amt.get();
     { const m = scaleFood(food, cur.grams); mp.set(m); paintAfter(m); }
@@ -658,7 +687,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     const saveBox = fromOff && !known ? h('input', { type: 'checkbox', checked: true, id: 'fu-save-off' }) : null;
     const mealSeg = seg(MEALS, st.meal, (m) => { st.meal = m; addBtn.lastChild.textContent = `Add to ${MEAL_LABEL[m]}`; }, { label: 'Meal' });
     const addBtn = h('button', { type: 'button', class: 'btn primary block xl', on: { click: () => {
-      if (!(cur.grams > 0)) return;
+      if (!cur.valid) return;
       logFood(food, cur.mode, cur.qty, { saveOff: saveBox ? saveBox.checked : true });
       back();
     } } }, icon('plus', 18), h('span', null, `Add to ${MEAL_LABEL[st.meal]}`));
@@ -688,30 +717,34 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
   function quickPage(pre = {}) {
     st.page = 'quickPage';
     const f = {};
-    const numIn = (k, label) => (f[k] = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', placeholder: '0', 'aria-label': label, on: { input: upd } }));
+    const numIn = (k, label, max) => (f[k] = h('input', { type: 'number', inputmode: 'decimal', min: '0', max, step: 'any', placeholder: '0', 'aria-label': label, on: { input: upd } }));
     const hint = h('p', { class: 'xs muted' });
+    const fe = {};
+    const formErr = formError();
+    const mk = (k, label, unit, aria, max) => { const inp = numIn(k, aria, max); fe[k] = fieldErr(label, h('div', { class: 'input-unit' }, inp, h('span', null, unit)), inp); return fe[k].el; };
     function upd() {
-      const p = +f.p.value || 0, c = +f.c.value || 0, fa = +f.f.value || 0;
-      const calc = Math.round(p * 4 + c * 4 + fa * 9);
+      for (const k of ['kcal', 'p', 'c', 'f']) fe[k]?.set(null);
+      formErr.set(null);
+      const v = validateQuickAdd({ kcal: rawOf(f.kcal), p: rawOf(f.p), c: rawOf(f.c), f: rawOf(f.f) });
+      const calc = Math.round(4 * v.value.p + 4 * v.value.c + 9 * v.value.f);
       hint.textContent = calc ? `Macros add up to ${num(calc)} kcal${f.kcal.value ? '' : ' — used if calories are left blank'}.` : 'Calories required, or fill in macros and we’ll calculate them.';
     }
     f.name = h('input', { type: 'text', placeholder: 'Quick add', value: pre.name || '', maxlength: '80', 'aria-label': 'Name' });
-    const el = h('form', { class: 'stack', on: { submit: (e) => {
+    const el = h('form', { class: 'stack', novalidate: true, on: { submit: (e) => {
       e.preventDefault();
-      const p = Math.max(0, +f.p.value || 0), c = Math.max(0, +f.c.value || 0), fa = Math.max(0, +f.f.value || 0);
-      const kcal = Math.max(0, +f.kcal.value || Math.round(p * 4 + c * 4 + fa * 9));
-      if (!kcal) { toast('Enter calories or macros', { kind: 'danger' }); f.kcal.focus(); return; }
-      const e2 = { id: uid('fe'), meal: st.meal, foodId: null, name: f.name.value.trim() || 'Quick add', qty: 1, unit: 'quick add', grams: 0, kcal: Math.round(kcal), p: r1(p), c: r1(c), f: r1(fa), fiber: 0 };
+      const v = validateQuickAdd({ kcal: rawOf(f.kcal), p: rawOf(f.p), c: rawOf(f.c), f: rawOf(f.f) });
+      for (const k of ['kcal', 'p', 'c', 'f']) fe[k].set(v.errors[k]);
+      formErr.set(v.errors.form);
+      if (!v.ok) { (['kcal', 'p', 'c', 'f'].map((k) => v.errors[k] && f[k]).find(Boolean) || f.kcal).focus(); return; }
+      const { kcal, p, c, f: fa } = v.value;
+      const e2 = { id: uid('fe'), meal: st.meal, foodId: null, name: f.name.value.trim() || 'Quick add', qty: 1, unit: 'quick add', grams: 0, kcal, p: r1(p), c: r1(c), f: r1(fa), fiber: 0 };
       addEntries(ctx.date, [e2], { toastMsg: `Added ${num(e2.kcal)} kcal to ${MEAL_LABEL[st.meal]}` });
       back();
     } } },
     backBtn(),
-    field('Calories', h('div', { class: 'input-unit' }, numIn('kcal', 'Calories'), h('span', null, 'kcal'))),
-    h('div', { class: 'grid3' },
-      field('Protein', h('div', { class: 'input-unit' }, numIn('p', 'Protein grams'), h('span', null, 'g'))),
-      field('Carbs', h('div', { class: 'input-unit' }, numIn('c', 'Carb grams'), h('span', null, 'g'))),
-      field('Fat', h('div', { class: 'input-unit' }, numIn('f', 'Fat grams'), h('span', null, 'g')))),
-    hint,
+    mk('kcal', 'Calories', 'kcal', 'Calories', '5000'),
+    h('div', { class: 'grid3' }, mk('p', 'Protein', 'g', 'Protein grams', '500'), mk('c', 'Carbs', 'g', 'Carb grams', '500'), mk('f', 'Fat', 'g', 'Fat grams', '500')),
+    hint, formErr.el,
     field('Name (optional)', f.name),
     groupField('Meal', seg(MEALS, st.meal, (m) => { st.meal = m; }, { label: 'Meal' })),
     h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Quick add'));
@@ -723,23 +756,27 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
   // ---------- create food ----------
   function createPage(pre = {}) {
     st.page = 'createPage';
-    const f = {};
+    const f = {}, fe = {};
+    const formErr = formError();
     const txt = (k, label, v = '', ph = '') => (f[k] = h('input', { type: 'text', value: v, placeholder: ph, maxlength: '80', 'aria-label': label }));
-    const numIn = (k, label, v = '') => (f[k] = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: v === '' ? '' : String(v), placeholder: '0', 'aria-label': label }));
-    const el = h('form', { class: 'stack', on: { submit: (e) => {
+    const numIn = (k, label, v = '') => (f[k] = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: v === '' ? '' : String(v), placeholder: '0', 'aria-label': label,
+      on: { input: () => { fe[k]?.set(null); formErr.set(null); } } }));
+    const nf = (k, label, unit, aria, v) => { const inp = numIn(k, aria, v); fe[k] = fieldErr(label, h('div', { class: 'input-unit' }, inp, h('span', null, unit)), inp); return fe[k].el; };
+    const nameIn = txt('name', 'Food name', pre.name || '', 'e.g. Mum’s lasagne');
+    fe.name = fieldErr('Name', nameIn, nameIn);
+    nameIn.addEventListener('input', () => fe.name.set(null));
+    const el = h('form', { class: 'stack', novalidate: true, on: { submit: (e) => {
       e.preventDefault();
       const name = f.name.value.trim();
-      const grams = +f.grams.value;
-      const vals = Object.fromEntries(['kcal', 'p', 'c', 'fiber', 'fat'].map((k) => [k, Math.max(0, +f[k].value || 0)]));
-      if (!name) { toast('Give the food a name', { kind: 'danger' }); f.name.focus(); return; }
-      if (!(grams > 0 && grams <= 5000)) { toast('Serving size must be in grams (1–5000)', { kind: 'danger' }); f.grams.focus(); return; }
-      if (!vals.kcal) vals.kcal = Math.round(vals.p * 4 + vals.c * 4 + vals.fat * 9);
-      if (!vals.kcal) { toast('Enter calories per serving', { kind: 'danger' }); f.kcal.focus(); return; }
-      const k = 100 / grams;
+      const v = validateCustomFood({ grams: rawOf(f.grams), kcal: rawOf(f.kcal), p: rawOf(f.p), c: rawOf(f.c), fat: rawOf(f.fat), fiber: rawOf(f.fiber) });
+      fe.name.set(name ? null : 'Give the food a name');
+      for (const k of ['grams', 'kcal', 'p', 'c', 'fat', 'fiber']) fe[k].set(v.errors[k]);
+      formErr.set(v.errors.form);
+      if (!name || !v.ok) { (!name ? f.name : ['grams', 'kcal', 'p', 'c', 'fat', 'fiber'].map((k) => v.errors[k] && f[k]).find(Boolean) || f.kcal).focus(); return; }
       const food = {
         id: uid('cf-'), name, brand: f.brand.value.trim() || undefined,
-        serving: { label: f.label.value.trim() || '1 serving', grams },
-        per100: { kcal: r1(vals.kcal * k), p: r1(vals.p * k), c: r1(vals.c * k), f: r1(vals.fat * k), fiber: r1(vals.fiber * k) },
+        serving: { label: f.label.value.trim() || '1 serving', grams: v.value.grams },
+        per100: v.value.per100,
         tags: ['custom'], ...(pre.barcode || f.barcode.value.trim() ? { barcode: (pre.barcode || f.barcode.value.trim()).replace(/\D/g, '') } : {}),
       };
       store.update((s2) => { s2.customFoods = [food, ...(s2.customFoods || [])]; });
@@ -747,19 +784,20 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       detailPage(food);
     } } },
     backBtn(),
-    field('Name', txt('name', 'Food name', pre.name || '', 'e.g. Mum’s lasagne')),
+    fe.name.el,
     field('Brand (optional)', txt('brand', 'Brand', pre.brand || '')),
     h('div', { class: 'grid2' },
       field('Serving label', txt('label', 'Serving label', pre.label || '1 serving', '1 bar, 1 cup…')),
-      field('Serving size', h('div', { class: 'input-unit' }, numIn('grams', 'Serving grams', pre.grams ?? ''), h('span', null, 'g')))),
+      nf('grams', 'Serving size', 'g', 'Serving grams', pre.grams ?? '')),
     h('h4', null, 'Per serving'),
     h('div', { class: 'grid2' },
-      field('Calories', h('div', { class: 'input-unit' }, numIn('kcal', 'Calories per serving'), h('span', null, 'kcal'))),
-      field('Protein', h('div', { class: 'input-unit' }, numIn('p', 'Protein per serving'), h('span', null, 'g'))),
-      field('Carbs', h('div', { class: 'input-unit' }, numIn('c', 'Carbs per serving'), h('span', null, 'g'))),
-      field('Fat', h('div', { class: 'input-unit' }, numIn('fat', 'Fat per serving'), h('span', null, 'g'))),
-      field('Fiber', h('div', { class: 'input-unit' }, numIn('fiber', 'Fiber per serving'), h('span', null, 'g'))),
+      nf('kcal', 'Calories', 'kcal', 'Calories per serving'),
+      nf('p', 'Protein', 'g', 'Protein per serving'),
+      nf('c', 'Carbs', 'g', 'Carbs per serving'),
+      nf('fat', 'Fat', 'g', 'Fat per serving'),
+      nf('fiber', 'Fiber', 'g', 'Fiber per serving'),
       field('Barcode (optional)', h('input', { type: 'text', inputmode: 'numeric', value: pre.barcode || '', maxlength: '14', 'aria-label': 'Barcode', on: { input: (e) => { e.target.value = e.target.value.replace(/\D/g, ''); } } }))),
+    formErr.el,
     h('button', { type: 'submit', class: 'btn primary block xl' }, icon('check', 18), 'Save food'));
     f.barcode = el.querySelector('input[aria-label="Barcode"]');
     show(el, 'Create food');
@@ -1110,7 +1148,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     pickView();
   }
 
-  if (opts.photo) photoPage(); else browse();
+  if (opts.photo && photoAvail !== false) photoPage(); else browse();
   return sh;
 }
 
@@ -1233,15 +1271,23 @@ function waterCard(s, ctx) {
 }
 
 function customWater(ctx, imperial, add) {
-  const input = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', placeholder: imperial ? '12' : '330', 'aria-label': 'Amount' });
+  const input = h('input', { type: 'number', inputmode: 'decimal', min: '0', max: imperial ? '169' : '5000', step: 'any', placeholder: imperial ? '12' : '330', 'aria-label': 'Amount' });
   const unit = imperial ? 'oz' : 'ml';
-  const val = () => { const v = parseFloat(input.value); return Number.isFinite(v) && v > 0 ? (imperial ? v * ML_PER_OZ : v) : 0; };
+  const fe = fieldErr(`Amount (${unit})`, h('div', { class: 'input-unit' }, input, h('span', null, unit)), input);
+  const val = () => {
+    const r = parseNum(rawOf(input));
+    if (r.bad) { fe.set('Enter a number'); return 0; }
+    const res = validateWaterMl(r.empty ? NaN : imperial ? r.value * ML_PER_OZ : r.value);
+    fe.set(res.error);
+    return res.ok ? res.ml : 0;
+  };
+  input.addEventListener('input', () => fe.set(null));
   trackSheet(ctx, {
     title: 'Log water',
-    content: ({ close }) => h('form', { class: 'stack', on: { submit: (e) => { e.preventDefault(); const v = val(); if (v) { add(v); close(); } } } },
-      field(`Amount (${unit})`, h('div', { class: 'input-unit' }, input, h('span', null, unit))),
+    content: ({ close }) => h('form', { class: 'stack', novalidate: true, on: { submit: (e) => { e.preventDefault(); const v = val(); if (v) { add(v); close(); } else input.focus(); } } },
+      fe.el,
       h('div', { class: 'row gap' },
-        h('button', { type: 'button', class: 'btn ghost grow', on: { click: () => { const v = val(); if (v) { add(-v); close(); } } } }, icon('minus', 16), 'Remove'),
+        h('button', { type: 'button', class: 'btn ghost grow', on: { click: () => { const v = val(); if (v) { add(-v); close(); } else input.focus(); } } }, icon('minus', 16), 'Remove'),
         h('button', { type: 'submit', class: 'btn primary grow' }, icon('plus', 16), 'Add'))),
   });
   softFocus(input, 60);
@@ -1401,7 +1447,7 @@ function dayTools(s, ctx) {
 function copyDaySheet(ctx) {
   const st0 = { from: addDays(ctx.date, -1), meals: new Set(MEALS.map(([m]) => m)) };
   const preview = h('div', { class: 'small muted', 'aria-live': 'polite' });
-  const dateIn = h('input', { type: 'date', value: st0.from, max: addDays(todayISO(), 30), 'aria-label': 'Copy from date', on: { change: (e) => { if (validISO(e.target.value)) { st0.from = e.target.value; paint(); } } } });
+  const dateIn = h('input', { type: 'date', value: st0.from, max: addDays(todayISO(), 30), 'aria-label': 'Copy from date', on: { change: (e) => { if (isISODate(e.target.value)) { st0.from = e.target.value; paint(); } } } });
   const checks = h('div', { class: 'chips' });
   const btn = h('button', { type: 'submit', class: 'btn primary block' });
   const items = () => sel.foodsFor(store.get(), st0.from).filter((e) => st0.meals.has(e.meal));
@@ -1533,4 +1579,34 @@ async function openWeight() {
     if (typeof m.openWeightSheet === 'function') { m.openWeightSheet(); return; }
   } catch (e) { console.warn('weight sheet unavailable', e); }
   navigate('#/progress');
+}
+
+function rawOf(inp) { return inp?.validity?.badInput ? '?' : inp?.value ?? ''; }
+
+let errSeq = 0;
+/** field() with an inline error slot. → {el, set(msg|null)} */
+
+function fieldErr(label, control, input) {
+  const id = 'fe-err' + ++errSeq;
+  const err = h('span', { class: 'fu-err', id, role: 'alert' });
+  const el = field(label, control, err);
+  const set = (msg) => {
+    err.textContent = msg || '';
+    el.classList.toggle('invalid', !!msg);
+    if (input) { if (msg) { input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', id); } else input.removeAttribute('aria-invalid'); }
+  };
+  return { el, set };
+}
+
+function formError() {
+  const el = h('p', { class: 'fu-err fu-form-err', role: 'alert' });
+  return { el, set: (msg) => { el.textContent = msg || ''; } };
+}
+
+// Photo estimates need the FORGE server (api/health). Checked once per page load; null = unknown.
+let photoAvail = null;
+let photoCheck = null;
+function checkPhotoAvailable() {
+  if (!photoCheck) photoCheck = apiCall('apiAvailable').then((ok) => (photoAvail = !!ok), () => (photoAvail = false));
+  return photoCheck;
 }

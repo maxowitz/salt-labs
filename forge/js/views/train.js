@@ -6,7 +6,7 @@ import {
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { weekSummary } from '../engine/coach.js';
 import {
-  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker, once, startWorkout, wouldScale,
+  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker, once, startWorkout, wouldScale, arr, sessionsForWorkout,
 } from './session.js';
 
 function sortedDays(week) { return [...(week?.days || [])].sort((a, b) => String(a.date).localeCompare(String(b.date))); }

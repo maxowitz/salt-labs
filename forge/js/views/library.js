@@ -3,7 +3,7 @@ import { store } from '../store.js';
 import { h, icon, sheet, fmtBell, bellLb, fmtWeight, fmtDist, fmtDur, fmtDate, navigate, emptyState, clear, num } from '../ui.js';
 import { lineChart } from '../charts.js';
 import { EXERCISES, getExercise } from '../data/exercises.js';
-import { suggestWeight, lastPerformance } from '../engine/coach.js';
+import { suggestWeight, lastPerformance, setVolumeKg } from '../engine/coach.js';
 import { STATIONS } from '../engine/hyrox.js';
 
 export const CATS = [
@@ -33,8 +33,9 @@ function stationFor(e) {
 /** Per-session performance history for an exercise (oldest → newest). */
 export function exerciseHistory(exId, sessions) {
   const out = [];
-  for (const s of sessions || []) {
-    const sets = (s.sets || []).filter((x) => x && x.exId === exId);
+  for (const s of Array.isArray(sessions) ? sessions : []) {
+    if (!s || typeof s.date !== 'string') continue;
+    const sets = (Array.isArray(s.sets) ? s.sets : []).filter((x) => x && x.exId === exId);
     if (!sets.length) continue;
     const kgs = sets.map((x) => +x.kg || 0);
     const topKg = Math.max(...kgs);
@@ -43,7 +44,7 @@ export function exerciseHistory(exId, sessions) {
       sessionId: s.id, date: s.date, title: s.title, sets: sets.length,
       topKg, repsAtTop: +top.reps || 0, totalReps: sets.reduce((a, x) => a + (+x.reps || 0), 0),
       bestTime: Math.min(...sets.map((x) => +x.timeSec || Infinity)), distM: sets.reduce((a, x) => a + (+x.distanceM || 0), 0),
-      volume: sets.reduce((a, x) => a + (+x.kg || 0) * (+x.reps || 0), 0),
+      volume: sets.reduce((a, x) => a + (setVolumeKg(x) || 0), 0),
     });
   }
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -171,7 +172,7 @@ function renderDetail(root, exId) {
     const e = ex(exId);
     root.append(h('div', { class: 'tr-topbar' }, h('a', { class: 'tr-back', href: '#/library' }, icon('chevL', 20), 'Library')));
     const known = allExercises().some((x) => x.id === exId);
-    if (!e || (!known && !(e.cues || []).length && !s.sessions.some((x) => (x.sets || []).some((st) => st.exId === exId)))) {
+    if (!e || (!known && !(e.cues || []).length && !s.sessions.some((x) => Array.isArray(x?.sets) && x.sets.some((st) => st?.exId === exId)))) {
       root.append(emptyState('book', 'Exercise not found', 'It may have been renamed or removed.', h('a', { class: 'btn primary', href: '#/library' }, 'Browse library')));
       return;
     }

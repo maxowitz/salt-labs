@@ -12,7 +12,19 @@ const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 export const lockSettings = () => store.get().settings.lock || { enabled: false };
-export const isLockEnabled = () => !!lockSettings().enabled && !!lockSettings().hash;
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/** A lock config is only honoured when it is well-formed; garbage is treated as "no lock" (never a dead keypad). */
+export function validLock(l) {
+  if (!l || typeof l !== 'object' || l.enabled !== true) return false;
+  if (typeof l.hash !== 'string' || l.hash.length !== 44 || !B64.test(l.hash)) return false;
+  if (typeof l.salt !== 'string' || l.salt.length < 16 || l.salt.length > 64 || !B64.test(l.salt)) return false;
+  const it = l.iterations ?? ITERATIONS;
+  if (!Number.isInteger(it) || it < 10000 || it > 5000000) return false;
+  if (l.digits != null && ![4, 5, 6].includes(l.digits)) return false;
+  return true;
+}
+export const isLockEnabled = () => validLock(lockSettings());
+const timeoutMin = () => { const v = +lockSettings().timeoutMin; return Number.isFinite(v) && v >= 0 ? v : 5; };
 export const validCode = (c) => /^\d{4,6}$/.test(String(c || ''));
 
 async function derive(code, saltB64, iterations) {
@@ -30,7 +42,7 @@ function timingSafeEqual(a, b) {
 
 export async function verifyPasscode(code) {
   const l = lockSettings();
-  if (!l.hash || !l.salt || !validCode(code)) return false;
+  if (!validLock(l) || !validCode(code)) return false;
   const got = await derive(code, l.salt, l.iterations || ITERATIONS);
   return timingSafeEqual(got, l.hash);
 }
@@ -174,11 +186,11 @@ export function initLock() {
     if (!isLockEnabled()) return;
     if (document.visibilityState === 'hidden') {
       try { sessionStorage.setItem(HIDDEN_KEY, String(Date.now())); } catch {}
-      if ((lockSettings().timeoutMin ?? 5) === 0) lockNow();
+      if (timeoutMin() === 0) lockNow();
     } else {
       let at = 0;
       try { at = +sessionStorage.getItem(HIDDEN_KEY) || 0; } catch {}
-      const t = (lockSettings().timeoutMin ?? 5) * 60000;
+      const t = timeoutMin() * 60000;
       if (at && Date.now() - at >= t) lockNow();
     }
   });

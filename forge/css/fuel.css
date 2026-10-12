@@ -253,3 +253,10 @@
 .fu-item-g::-webkit-inner-spin-button, .fu-item-g::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .fu-amt-input:focus-visible, .fu-item-g:focus-visible { outline: none; } /* the field wrapper shows focus */
 .fu-item-step:focus-within { border-color: var(--accent); }
+
+/* ---------- QA R1: inline validation ---------- */
+.fu-err { color: var(--danger); font-size: 12.5px; font-weight: 600; min-height: 0; }
+.fu-err:empty { display: none; }
+.field.invalid input, .fu-amt-field.invalid { border-color: var(--danger) !important; }
+.fu-form-err { margin-top: -4px; }
+.fu-photo-slot:empty { display: none; }

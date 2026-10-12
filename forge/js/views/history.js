@@ -3,18 +3,19 @@ import { store, addDays, todayISO } from '../store.js';
 import { h, icon, toast, sheet, confirmDialog, fmtBell, bellLb, fmtWeight, fmtDist, fmtDur, fmtDate, fmtPace, navigate, field, emptyState, clear, num } from '../ui.js';
 import { typeBadge, typeMeta, safeEx, safeGetWorkout, rpePicker, backBar, once, arr, isoOk } from './session.js';
 import { exerciseSheet } from './library.js';
+import { sessionVolumeKg } from '../engine/coach.js';
 
 const FILTERS = [
   ['all', 'All', () => true],
-  ['kb', 'KB', (s) => s.type === 'strength' || s.type === 'conditioning' || (s.sets || []).some((x) => +x.kg > 0)],
-  ['run', 'Run', (s) => s.type === 'run' || s.type === 'cardio' || (s.cardio || []).length > 0],
+  ['kb', 'KB', (s) => s.type === 'strength' || s.type === 'conditioning' || arr(s.sets).some((x) => +x.kg > 0)],
+  ['run', 'Run', (s) => s.type === 'run' || s.type === 'cardio' || arr(s.cardio).length > 0],
   ['hyrox', 'HYROX', (s) => s.type === 'hyrox' || s.type === 'hybrid'],
 ];
 const ui = { filter: 'all' };
 
 const mondayOf = (iso) => { const [y, m, d] = iso.split('-').map(Number); const dow = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7; return addDays(iso, -dow); };
-const volumeOf = (s) => (s.sets || []).reduce((a, x) => a + (+x.kg || 0) * (+x.reps || 0), 0);
-const distOf = (s) => (s.cardio || []).reduce((a, c) => a + (+c.distanceM || 0), 0) + (s.sets || []).reduce((a, x) => a + (/run|row|ski|bike/.test(String(x.exId)) ? +x.distanceM || 0 : 0), 0);
+const volumeOf = (s) => { try { return sessionVolumeKg(s) || 0; } catch { return 0; } };
+const distOf = (s) => arr(s.cardio).reduce((a, c) => a + (+c.distanceM || 0), 0) + arr(s.sets).reduce((a, x) => a + (/run|row|ski|bike/.test(String(x.exId)) ? +x.distanceM || 0 : 0), 0);
 
 let from = '';
 const q = () => (from ? '?from=' + from : '');
@@ -35,7 +36,7 @@ function renderList(root) {
   root.append(chips);
 
   const f = (FILTERS.find((x) => x[0] === ui.filter) || FILTERS[0])[2];
-  const list = s.sessions.filter((x) => x && x.date).filter(f)
+  const list = arr(s.sessions).filter((x) => isoOk(x.date)).filter(f)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.startedAt || '').localeCompare(String(a.startedAt || '')));
   if (!list.length) {
     root.append(h('div', { class: 'card mt' }, s.sessions.length
@@ -61,7 +62,7 @@ function renderList(root) {
       return h('a', { class: 'li', href: '#/history/' + encodeURIComponent(x.id) + q() },
         typeBadge(x.type, 36),
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, x.title || typeMeta(x.type).label), h('div', { class: 'li-sub' }, sub)),
-        (x.prs || []).length ? h('span', { class: 'pill go', title: x.prs.join('\n') }, icon('trophy', 12), String(x.prs.length)) : null,
+        arr2(x.prs).length ? h('span', { class: 'pill go', title: arr2(x.prs).join('\n') }, icon('trophy', 12), String(arr2(x.prs).length)) : null,
         h('span', { class: 'muted' }, icon('chevR', 16)));
     }))));
   }
@@ -69,7 +70,7 @@ function renderList(root) {
 
 function renderDetail(root, id) {
   const s = store.get(), units = s.profile.units;
-  const x = s.sessions.find((y) => y.id === id);
+  const x = arr(s.sessions).find((y) => y.id === id);
   root.append(backBar('#/history' + q(), 'History'));
   if (!x) {
     root.append(emptyState('list', 'Session not found', 'It may have been deleted.', h('a', { class: 'btn primary', href: '#/history' + q() }, 'Back to history')));
@@ -77,13 +78,14 @@ function renderDetail(root, id) {
   }
   const w = x.workoutId ? safeGetWorkout(s.plan, x.workoutId) : null;
   const vol = volumeOf(x), dist = distOf(x);
-  const sets = x.sets || [];
+  const sets = arr(x.sets);
+  const cardio = arr(x.cardio);
   const reps = sets.reduce((a, y) => a + (+y.reps || 0), 0);
 
   root.append(h('div', { class: 'card hero' },
     h('div', { class: 'row gap top' }, typeBadge(x.type, 48),
       h('div', { class: 'grow' },
-        h('div', { class: 'eyebrow' }, `${typeMeta(x.type).label} · ${fmtDate(x.date, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}`),
+        h('div', { class: 'eyebrow' }, `${typeMeta(x.type).label} · ${fmtDate(String(x.date || ''), { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}`),
         h('h1', { class: 'tr-stitle' }, x.title || 'Session'))),
     h('div', { class: 'tr-sstats' },
       stat(x.durationSec ? fmtDur(x.durationSec) : '–', 'Duration'),
@@ -93,9 +95,9 @@ function renderDetail(root, id) {
     w ? h('a', { class: 'link-btn tr-plink', href: '#/session/' + encodeURIComponent(w.id) }, icon('calendar', 14), ` Planned: ${w.title} →`) : null,
     x.readiness != null ? h('div', { class: 'xs muted mt' }, `Readiness that day: ${Math.round(x.readiness)}/100`) : null));
 
-  if ((x.prs || []).length) {
-    root.append(h('div', { class: 'callout go mt stack sm' }, h('div', { class: 'row' }, icon('trophy', 18), h('b', null, `${x.prs.length} personal record${x.prs.length > 1 ? 's' : ''}`)),
-      h('ul', { class: 'tr-cues small' }, x.prs.map((p) => h('li', null, String(p))))));
+  if (arr2(x.prs).length) {
+    root.append(h('div', { class: 'callout go mt stack sm' }, h('div', { class: 'row' }, icon('trophy', 18), h('b', null, `${arr2(x.prs).length} personal record${arr2(x.prs).length > 1 ? 's' : ''}`)),
+      h('ul', { class: 'tr-cues small' }, arr2(x.prs).map((p) => h('li', null, String(p))))));
   }
 
   // sets grouped by exercise
@@ -124,9 +126,9 @@ function renderDetail(root, id) {
       h('span', { class: 'li-end num small muted' }, workStr(list[0])))))) : null));
   }
 
-  if ((x.cardio || []).length) {
+  if (cardio.length) {
     root.append(h('div', { class: 'section-head' }, h('h2', null, 'Cardio')));
-    root.append(h('div', { class: 'card flush' }, h('div', { class: 'list' }, x.cardio.map((c) => {
+    root.append(h('div', { class: 'card flush' }, h('div', { class: 'list' }, cardio.map((c) => {
       const pace = c.distanceM > 0 && c.timeSec > 0 ? (c.timeSec / c.distanceM) * 1000 : null;
       const erg = c.mode === 'row' || c.mode === 'ski';
       return h('div', { class: 'li' },
@@ -137,7 +139,7 @@ function renderDetail(root, id) {
     }))));
   }
 
-  if (!sets.length && !(x.cardio || []).length) {
+  if (!sets.length && !cardio.length) {
     root.append(h('div', { class: 'callout info small mt' }, x.untracked ? 'Logged without set-by-set tracking.' : 'No sets or cardio recorded in this session.'));
   }
 
@@ -184,3 +186,5 @@ function editSheet(x) {
 
 const cap = (s) => String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1);
 function stat(v, k) { return h('div', { class: 'stat' }, h('div', { class: 'v' }, v), h('div', { class: 'k' }, k)); }
+
+const arr2 = (v) => (Array.isArray(v) ? v.filter((p) => p != null).map(String) : []);

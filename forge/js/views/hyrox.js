@@ -36,7 +36,7 @@ function workFor(st, units) {
 function bestStationTimes(sessions, st) {
   const ids = new Set([st.id, stationExId(st)]);
   let best = null;
-  for (const s of sessions) for (const x of s.sets || []) {
+  for (const s of arr(sessions)) for (const x of arr(s.sets)) {
     if (ids.has(x.exId) && +x.timeSec > 0 && (!best || +x.timeSec < best.timeSec)) best = { timeSec: +x.timeSec, date: s.date, id: s.id };
   }
   return best;
@@ -160,7 +160,7 @@ export function render(root) {
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Log a station benchmark'), h('div', { class: 'li-sub' }, 'Time a station (or a 1 km run) to sharpen your prediction')),
         icon('plus', 18)))));
 
-    const logged = s.sessions.filter((x) => x.type === 'hyrox').slice(-5).reverse();
+    const logged = arr(s.sessions).filter((x) => x.type === 'hyrox' && isoOk(x.date)).slice(-5).reverse();
     if (logged.length) {
       root.append(h('h4', { class: 'tr-gh mt' }, 'Recent HYROX logs'), h('div', { class: 'card flush' }, h('div', { class: 'list' }, logged.map((x) => h('a', { class: 'li', href: '#/history/' + encodeURIComponent(x.id) },
         h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, x.title || 'HYROX'), h('div', { class: 'li-sub' }, fmtDate(x.date))),

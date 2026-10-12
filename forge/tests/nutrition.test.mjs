@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   bmr, tdee, computeTargets, dayTargets, dayTargetsFor, weeklyTargets, adaptiveTdee, scaleFood, searchFoods, macrosForKcal,
   weightTrend, robustTrend, trainingKcal, sessionIntensity, assumedDailyTraining, kcalFloor, fiberTarget, referenceWeight, goalKcal,
-  ACTIVITY_FACTORS, TRAINING_RATE,
+  ACTIVITY_FACTORS, TRAINING_RATE, validateQuickAdd, validateCustomFood, validateWaterMl, amountError, parseNum, LIMITS,
 } from '../js/engine/nutrition.js';
 import { FOODS } from '../js/data/foods.js';
 
@@ -379,4 +379,47 @@ test('FOODS integrity', () => {
     'poke-bowl', 'coffee-black', 'latte-2', 'beer-regular', 'wine-red', 'cola', 'orange-juice']) {
     assert.ok(seen.has(id), 'missing staple ' + id);
   }
+});
+
+// ---------------------------------------------------------------- QA R1 P1-5 input bounds
+test('QA quick add: kcal ≤ 5000, macros ≤ 500 g, numbers only, macros vs kcal', () => {
+  assert.equal(validateQuickAdd({ kcal: '1e9' }).ok, false);
+  assert.match(validateQuickAdd({ kcal: '1e9' }).errors.kcal, /5,000/);
+  assert.equal(validateQuickAdd({ kcal: '?' }).errors.kcal, 'Enter a number');
+  assert.equal(validateQuickAdd({ kcal: '-5' }).errors.kcal, 'Can’t be negative');
+  assert.match(validateQuickAdd({ kcal: '300', p: '900' }).errors.p, /500/);
+  assert.equal(validateQuickAdd({}).errors.kcal, 'Enter calories or macros');
+  assert.deepEqual(validateQuickAdd({ p: '20', c: '30' }).value, { kcal: 200, p: 20, c: 30, f: 0 });
+  assert.ok(validateQuickAdd({ kcal: '100', p: '50' }).errors.form, 'macros 200 kcal > 100 kcal');
+  assert.ok(validateQuickAdd({ kcal: '450', p: '30', c: '40', f: '15' }).ok);
+  assert.ok(validateQuickAdd({ kcal: '1,5' }).ok, 'decimal comma');
+  assert.deepEqual(parseNum('abc'), { bad: true });
+});
+
+test('QA create food: serving ≥ 1 g, per-100 g kcal ≤ 900, macros physically consistent', () => {
+  const r = validateCustomFood({ grams: '0.0001', kcal: '200' });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.grams, /1 g/);
+  assert.match(validateCustomFood({ grams: '5', kcal: '200' }).errors.kcal, /900/);
+  assert.ok(validateCustomFood({ grams: '50', kcal: '200', p: '30', c: '30', fat: '20' }).errors.form, 'macros 80 g in a 50 g serving');
+  assert.ok(validateCustomFood({ grams: '100', kcal: '100', p: '20', c: '20' }).errors.form, 'macros 160 kcal > 100 kcal');
+  assert.ok(validateCustomFood({ grams: '100', kcal: '100', c: '10', fiber: '12' }).errors.fiber);
+  assert.ok(validateCustomFood({ grams: '', kcal: '100' }).errors.grams);
+  const ok = validateCustomFood({ grams: '80', kcal: '210', p: '18', c: '22', fat: '6', fiber: '3' });
+  assert.ok(ok.ok);
+  assert.deepEqual(ok.value.per100, { kcal: 262.5, p: 22.5, c: 27.5, f: 7.5, fiber: 3.8 });
+  assert.ok(validateCustomFood({ grams: '40', p: '10', c: '20', fat: '5' }).ok, 'kcal from macros when blank');
+});
+
+test('QA water ≤ 5 L per add; amounts must be > 0 and ≤ 5 kg', () => {
+  assert.equal(validateWaterMl(250).ok, true);
+  assert.equal(validateWaterMl(99999 * 29.5735).ok, false);
+  assert.equal(validateWaterMl(0).ok, false);
+  assert.equal(validateWaterMl(NaN).ok, false);
+  assert.equal(validateWaterMl(LIMITS.waterMaxMl).ok, true);
+  assert.equal(amountError(-3 * 40), 'Enter an amount above 0');
+  assert.equal(amountError(0), 'Enter an amount above 0');
+  assert.match(amountError(6000), /5 kg/);
+  assert.equal(amountError(80), null);
+  assert.equal(amountError(80, '?'), 'Enter a number');
 });
