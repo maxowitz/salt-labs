@@ -62,7 +62,7 @@
 .tr-day.s-done .tr-mark { color: var(--go); font-size: 12px; }
 .tr-day.s-missed { border-style: dashed; border-color: var(--danger); }
 .tr-day.s-missed .tr-mark { color: var(--danger); }
-.tr-day.is-today { border: 2px solid var(--accent); }
+.tr-day.is-today { border: 2px solid var(--rule-ink); }
 .tr-day.is-today .tr-dow { color: var(--text); }
 .tr-day.sel { outline: 1px solid var(--text); outline-offset: 1px; }
 

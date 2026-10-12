@@ -313,6 +313,16 @@ function weekAvgTraining(state, iso) {
   return { kcal: n(t.trainKcalAvg, assumed.kcal), hours: n(t.trainHoursAvg, assumed.hours), source: 'assumed' };
 }
 
+/**
+ * Day carb floor in g/kg (R3 P2-1): rest 3, easy/moderate 4, hard 5 — but a short hard session
+ * (< 45 min) only needs 4 g/kg; IOC 5–7 g/kg guidance assumes ~1 h/day of training.
+ */
+export function carbFloorGkg(intensity, minutes = 0) {
+  if (!intensity) return null;
+  if (intensity === 'hard' && n(minutes) < 45) return 4;
+  return CARB_FLOOR[intensity] ?? 4;
+}
+
 /** Un-floored kcal for one day: weekly-average target ± training difference, with Peak/Taper easing. */
 function rawDayKcal(state, iso) {
   const profile = state.profile || {};
@@ -378,17 +388,24 @@ export function dayTargetsFor(state = {}, dateISO) {
   const notes = [...raw.notes];
   const fl = flooredDayKcal(state, dateISO, raw);
   if (fl.raised) notes.push('kcal-floor-day');
-  const kcal = Math.round(fl.kcal);
+  // one-tap "+ 40 g carbs today" from Fuel (settings.fuel.carbBoost[date], grams) eases that day's deficit
+  const boostG = Math.max(0, Math.min(200, n(state.settings?.fuel?.carbBoost?.[dateISO], 0)));
+  if (boostG) notes.push('carb-boost');
+  const kcal = Math.round(fl.kcal + boostG * 4);
   let carbs = base.carbs + (kcal - base.kcal) / 4;
   let fat = base.fat;
   const intensity = known ? (tr.kcal > 0 ? tr.intensity : 'rest') : null;
+  const floorGkg = carbFloorGkg(intensity, tr.min);
+  let shortGkg = 0;
   if (intensity) {
-    const floor = CARB_FLOOR[intensity] * refKg;
+    const floor = floorGkg * refKg;
     if (carbs < floor) {
       const fatMin = Math.max(0.6 * refKg, (0.2 * kcal) / 9);
       const cut = Math.max(0, Math.min(fat - fatMin, ((floor - carbs) * 4) / 9));
       fat -= cut; carbs += (cut * 9) / 4;
-      if (carbs < floor - 1) notes.push('carb-floor-unmet');
+      shortGkg = Math.max(0, (floor - carbs) / refKg);
+      // only flag a meaningful shortfall (> 0.5 g/kg) to avoid alert fatigue on every cut day (R3 P2-1)
+      if (shortGkg > 0.5) notes.push('carb-floor-unmet');
     }
   }
   const hours = known ? tr.min / 60 : wk.hours;
@@ -398,14 +415,17 @@ export function dayTargetsFor(state = {}, dateISO) {
     waterMl: Math.max(round(30 * refKg, 50), waterMl), fiber: fiberTarget(kcal),
     dayType: known ? (tr.kcal > 0 ? 'training' : 'rest') : null, intensity,
     trainingKcal: tr.kcal, trainingMin: tr.min, sessions: tr.items, source: tr.source,
-    phase, weekAvgTrainingKcal: Math.round(wk.kcal), carbsPerKg: Math.round((Math.max(0, carbs) / refKg) * 10) / 10, notes,
+    phase, weekAvgTrainingKcal: Math.round(wk.kcal), carbsPerKg: Math.round((Math.max(0, carbs) / refKg) * 10) / 10,
+    carbFloorGkg: intensity ? floorGkg : null, carbShortG: Math.round(shortGkg * refKg), carbBoostG: boostG, notes,
   };
 }
 
 /**
  * Pre-session fuelling prompt for a date (R2 P2-5).
  * fuelingNote(state, dateISO) → null (no session) | {
- *   title, min, intensity,          // the day's (first) session
+ *   headline: string,               // what to show in one line: `pre`, or `warn` when the shortfall is severe (> 1 g/kg)
+ *   title, min, intensity,          // the day's hardest session
+ *   severe: boolean, shortG: number // carb shortfall in grams (0 when none worth flagging)
  *   pre:    string|null,            // e.g. "Hill Sprint Power (45 min): 1–1.5 g/kg carbs 2–3 h before (≈ 80–120 g)."
  *   during: string|null,            // ≥ 75 min: carbs + fluid per hour
  *   warn:   string|null,            // hard day whose carbs are below the session floor
@@ -417,18 +437,20 @@ export function fuelingNote(state = {}, dateISO) {
   if (d.dayType !== 'training' || !d.sessions?.length) return null;
   const s0 = d.sessions.reduce((a, x) => (RANK[x.intensity] > RANK[a.intensity] ? x : a), d.sessions[0]);
   const { refKg } = profileNums(state.profile || {});
-  const range = s0.intensity === 'hard' ? [1, 1.5] : s0.intensity === 'moderate' ? [0.5, 1] : null;
+  // pre-session carbs scale with intensity AND length (R3 P2-1)
+  const range = s0.intensity === 'hard' ? (n(s0.min) < 45 ? [0.5, 1] : [1, 1.5]) : s0.intensity === 'moderate' ? [0.5, 1] : null;
   const carbsG = range ? [Math.round((range[0] * refKg) / 10) * 10, Math.round((range[1] * refKg) / 10) * 10] : null;
   const label = `${s0.title}${s0.min ? ` (${s0.min} min)` : ''}`;
   const pre = range
     ? `${label}: have ${range[0]}–${range[1]} g/kg carbs 2–3 h before (≈ ${carbsG[0]}–${carbsG[1]} g), plus a little protein.`
     : `${label}: an easy session — a normal meal 2–3 h before is plenty.`;
   const during = d.trainingMin >= 75 ? `It’s ${d.trainingMin} min: take 30–60 g carbs per hour and 500–750 ml fluid with sodium during.` : null;
-  const floorG = CARB_FLOOR[d.intensity] ?? 4;
-  const warn = d.intensity === 'hard' && d.notes.includes('carb-floor-unmet')
-    ? `Today’s carbs (${d.carbs} g ≈ ${d.carbsPerKg} g/kg) are below the ${floorG} g/kg we’d suggest for a hard session — consider easing the deficit today.`
+  const short = d.notes.includes('carb-floor-unmet') && (d.intensity === 'hard' || d.intensity === 'moderate');
+  const warn = short
+    ? `Today’s carbs (${d.carbs} g ≈ ${d.carbsPerKg} g/kg) are ${d.carbShortG} g under the ${d.carbFloorGkg} g/kg we’d suggest for this session — consider easing the deficit today.`
     : null;
-  return { title: s0.title, min: s0.min, intensity: s0.intensity, pre, during, warn, carbsG };
+  const severe = short && d.carbShortG / refKg > 1;
+  return { title: s0.title, min: s0.min, intensity: s0.intensity, headline: severe ? warn : pre, pre, during, warn, severe, shortG: short ? d.carbShortG : 0, carbsG };
 }
 
 /**
@@ -543,20 +565,20 @@ export function adaptiveTdee(state = {}, todayISO) {
   // (carb-load / creatine / sodium water): if the last 3 days' residuals all share a sign and are large,
   // fit without them and lower confidence one notch.
   let stepGuard = false;
-  const tol = Math.max(0.25, 2.5 * fit.mad);
+  const tol = Math.max(0.3, 3 * fit.mad);
   const kept = pts.filter((p) => Math.abs(p.y - (fit.intercept + fit.slope * p.x)) <= tol);
   if (kept.length >= 4 && kept.length < pts.length) {
     const dropped = pts.filter((p) => !kept.includes(p));
     const lateSameSign = dropped.filter((p) => p.x > days - 4);
-    if (lateSameSign.length >= 2 && new Set(lateSameSign.map((p) => Math.sign(p.y - (fit.intercept + fit.slope * p.x)))).size === 1) stepGuard = true;
+    if (lateSameSign.length >= 3 && new Set(lateSameSign.map((p) => Math.sign(p.y - (fit.intercept + fit.slope * p.x)))).size === 1) stepGuard = true;
     pts = kept; fit = robustTrend(pts);
   }
-  const tail = pts.filter((p) => p.x > days - 3);
-  if (tail.length >= 2 && pts.length - tail.length >= 4) {
+  const tail = pts.filter((p) => p.x > days - 4);
+  if (tail.length >= 3 && pts.length - tail.length >= 4) {
     const res = tail.map((p) => p.y - (fit.intercept + fit.slope * p.x));
-    const thr = Math.max(0.3, 1.5 * fit.mad);
+    const thr = Math.max(0.5, 1.5 * fit.mad);
     if (res.every((r) => r > thr) || res.every((r) => r < -thr)) {
-      pts = pts.filter((p) => p.x <= days - 3);
+      pts = pts.filter((p) => p.x <= days - 4);
       fit = robustTrend(pts);
       stepGuard = true;
     }
@@ -679,6 +701,7 @@ export function searchFoods(query, foods = [], opts = {}) {
     if (!food || !food.name) return;
     const ix = indexOf(food);
     let score = 0, hard = 0;
+    const aliasHit = ix.primary.includes(q);
     for (const t of toks) {
       if (SOFT_WORDS.has(t) && !allSoft) {
         // cooking method / filler: counts only as a whole-word hit on the name or tags, else a small penalty (R2 P2-1)
@@ -687,12 +710,12 @@ export function searchFoods(query, foods = [], opts = {}) {
         continue;
       }
       const s = Math.max(tokenScore(t, ix.name, 1, true), tokenScore(t, ix.brand, 0.6, false), tokenScore(t, ix.tags, 0.4, false), tokenScore(t, ix.serving, 0.3, false));
-      if (!s) return;
+      if (!s) { if (aliasHit) continue; return; } // a curated alias phrase ("iced latte") matches as a whole
       hard++;
       score += s;
     }
-    if (!hard) return;
-    if (ix.primary.includes(q)) score += 60; // curated alias is explicit intent: beats any name-prefix bonus
+    if (!hard && !aliasHit) return;
+    if (aliasHit) score += 60; // curated alias is explicit intent: beats any name-prefix bonus
     if (ix.full === q) score += 50;
     else if (qRe.test(ix.full)) score += 25;
     if (ix.name[0] && singular(ix.name[0]) === singular(toks[0])) score += 8;

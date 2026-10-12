@@ -413,7 +413,7 @@ button.rb-cell:hover { color: var(--text); }
 .weekcells .done .sq { background: var(--surface-3); border-color: var(--surface-3); color: var(--text); }
 .weekcells .done .sq::before { content: "✓\00a0"; color: var(--go); }
 .weekcells .rest .sq { border-color: transparent; color: var(--muted); }
-.weekcells .today .sq { border: 2px solid var(--accent); color: var(--text); }
+.weekcells .today .sq { border: 2px solid var(--rule-ink); color: var(--text); }
 .weekcells .missed .sq { color: var(--danger); border-style: dashed; border-color: var(--danger); }
 
 /* ---------- Inverted instrument plate (rest dock, toast) ---------- */

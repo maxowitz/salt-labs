@@ -542,9 +542,9 @@ FOODS.push(
 const PRIMARY = {
   'white-rice-cooked': ['rice'], 'coffee-black': ['coffee'], 'peanut-butter': ['pb', 'peanut butter'], 'egg-whole': ['egg', 'eggs'],
   'sirloin-steak-cooked': ['steak'], 'burrito-chicken': ['burrito'], 'energy-gel': ['gel', 'gels'], 'mixed-veg-frozen': ['veg', 'vegetables'],
-  'chicken-breast-cooked': ['chicken', 'chicken breast', 'grilled chicken', 'grilled chicken breast'], 'oatmeal-cooked': ['oatmeal', 'porridge'], 'oats-rolled-dry': ['oats'],
+  'chicken-breast-cooked': ['chicken', 'chicken breast', 'grilled chicken', 'grilled chicken breast'], 'oatmeal-cooked': ['oatmeal', 'porridge'], 'oats-rolled-dry': ['oats'], 'overnight-oats': ['protein oats', 'overnight oats'],
   'greek-yogurt-nonfat': ['greek yogurt', 'yogurt', 'yoghurt'], 'whey-protein': ['whey', 'protein powder'], 'protein-shake-rtd': ['protein shake'],
-  'salmon-cooked': ['salmon', 'salmon fillet'], 'bagel-plain': ['bagel'], 'burrito-bowl-chicken': ['chipotle bowl', 'burrito bowl'], 'latte-2': ['latte'],
+  'salmon-cooked': ['salmon', 'salmon fillet'], 'bagel-plain': ['bagel'], 'burrito-bowl-chicken': ['chipotle bowl', 'burrito bowl'], 'latte-2': ['latte', 'iced latte'],
   'beer-regular': ['beer'], 'electrolyte-mix-sugar-free': ['electrolyte', 'electrolytes'], 'sweet-potato-baked': ['sweet potato'],
   'pizza-cheese': ['pizza'], 'almonds': ['almonds', 'almond'], 'cottage-cheese-2': ['cottage cheese'], 'tuna-canned-water': ['tuna'],
   'bread-white': ['bread', 'toast'], 'pasta-cooked': ['pasta'], 'apple': ['apple'], 'banana': ['banana'], 'potato-baked': ['potato', 'potatoes', 'baked potato'],

@@ -721,3 +721,80 @@ test('R2 P2: scaled estMin recomputed; station names carry no distance; early ta
   const hyb = scaleWorkout(planWorkouts(plan).find((w) => w.type === 'hybrid' && !w.title.startsWith('Deload')), 50).workout;
   assert.ok(!hyb.blocks.some((b) => /same 1 km split/.test(b.notes || '')));
 });
+
+// ---------- Review round 3 regressions (live3 compliant-athlete scenarios) ----------
+const LIVE = {
+  A: { ...PROFILE, sex: 'm', weightKg: 82, experience: 'intermediate', bells: [{ kg: 16, count: 2 }, { kg: 24, count: 2 }, { kg: 32, count: 1 }], equipment: {}, daysPerWeek: 5, raceDate: '2027-01-03', division: 'open', fiveKSec: 1440 },
+  B: { ...PROFILE, sex: 'f', weightKg: 65, experience: 'beginner', bells: [{ kg: 12, count: 1 }, { kg: 16, count: 1 }], equipment: {}, daysPerWeek: 3, raceDate: '2026-12-06', division: 'open' },
+  M: { ...PROFILE, sex: 'm', weightKg: 80, experience: 'beginner', bells: [{ kg: 12, count: 1 }, { kg: 16, count: 1 }, { kg: 20, count: 1 }, { kg: 24, count: 1 }], equipment: {}, daysPerWeek: 4, raceDate: '2027-01-31', division: 'open' },
+  C: { ...PROFILE, sex: 'm', weightKg: 90, experience: 'advanced', bells: [{ kg: 24, count: 2 }, { kg: 28, count: 2 }, { kg: 32, count: 2 }], equipment: { row: true, ski: true, bike: true }, daysPerWeek: 6, raceDate: '2027-02-28', division: 'pro', fiveKSec: 1260 },
+};
+// Logs exactly like the player: blockKind + targetReps on each set (no hold flag — detected via the plan).
+function live3(profile, rpe, weeks) {
+  const plan = generatePlan(profile, START);
+  const sessions = [], hist = {};
+  for (const w of plan.weeks.slice(0, weeks)) for (const d of w.days) {
+    if (!d.workoutId) continue;
+    const wo = plan.workouts[d.workoutId];
+    const sets = [];
+    for (const b of wo.blocks) for (const it of b.items) {
+      if (getExercise(it.exId).category !== 'kb' || b.kind === 'warmup' || b.kind === 'cooldown') continue;
+      const adv = liveItemAdvice(it, profile, sessions, { plan, todayISO: d.date });
+      if (b.kind === 'strength') (hist[it.exId] ||= []).push({ week: w.index + 1, hold: !!it.hold, kg: adv.kg, reason: adv.reason, earned: adv.earned });
+      const n = b.kind === 'strength' ? it.sets || 1 : b.rounds || b.minutes || 1;
+      for (let i = 0; i < n; i++) sets.push({ exId: it.exId, kg: adv.kg, reps: it.reps ?? null, distanceM: it.distanceM ?? null, rpe: b.kind === 'strength' ? rpe : null, blockKind: b.kind, targetReps: it.reps ?? null });
+    }
+    sessions.push({ id: d.workoutId, workoutId: d.workoutId, date: d.date, sets, rpe });
+  }
+  return hist;
+}
+
+test('R3 P1-1: deloads never wipe an earned bell; "Earned" only on the actual bump', () => {
+  for (const [who, rpe, weeks] of [['A', 7, 12], ['C', 6, 16], ['M', 6, 16], ['B', 6, 8]]) {
+    const hist = live3(LIVE[who], rpe, weeks);
+    for (const [ex, rows] of Object.entries(hist)) {
+      let best = 0;
+      for (const r of rows) {
+        if (r.hold) continue;
+        assert.ok(r.kg >= best, `${who} ${ex} w${r.week}: ${r.kg} after ${best}`);
+        if (r.earned) assert.ok(r.kg > best, `${who} ${ex} w${r.week}: "Earned" without a bump`);
+        best = Math.max(best, r.kg);
+      }
+    }
+  }
+  const c = live3(LIVE.C, 6, 16)['kb-tgu'].filter((r) => !r.hold);
+  const firstTop = c.findIndex((r) => r.kg === 32);
+  assert.ok(firstTop >= 0 && c.slice(firstTop).every((r) => r.kg === 32), 'C keeps 32 kg TGU after deload');
+});
+
+test('R3 P1-2: presses/TGU start at the standard bell and can progress one standard step', () => {
+  const m = live3(LIVE.M, 6, 16);
+  assert.equal(m['kb-press'][0].kg, 16, 'beginner man starts pressing 16');
+  assert.equal(m['kb-tgu'][0].kg, 16, 'beginner man starts get-ups at 16');
+  assert.ok(Math.max(...m['kb-press'].map((r) => r.kg)) >= 20, 'press progresses 16 → 20');
+  const b = live3(LIVE.B, 6, 8);
+  assert.ok(Math.max(...b['kb-tgu'].map((r) => r.kg)) >= 16, 'B TGU 12 → 16 (+4 kg step)');
+  // never more than one standard size per jump
+  for (const hist of [m, b, live3(LIVE.C, 6, 16)]) for (const rows of Object.values(hist)) {
+    const xs = rows.filter((r) => !r.hold).map((r) => r.kg);
+    for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] <= 8, `jump ${xs[i - 1]} → ${xs[i]}`);
+  }
+});
+
+test('R3 P1-3: long run never shrinks through Build and reaches ≥ 60 min (intermediate, 12 weeks)', () => {
+  for (const prof of [{ ...PROFILE, daysPerWeek: 4, bells: [{ kg: 16, count: 1 }, { kg: 20, count: 1 }, { kg: 24, count: 1 }] }, LIVE.A]) {
+    const plan = generatePlan(prof, START);
+    const longOf = (wk) => Math.max(0, ...wk.days.filter((d) => d.workoutId).flatMap((d) => allItems(plan.workouts[d.workoutId])).filter((it) => it.exId === 'run-long').map((it) => it.timeSec));
+    const base = plan.weeks.filter((w) => w.phase === 'base' && !w.deload);
+    const lastBaseLong = longOf(base[base.length - 1]);
+    const build = plan.weeks.filter((w) => w.phase === 'build' && !w.deload);
+    for (const wk of build.slice(1)) assert.ok(longOf(wk) >= lastBaseLong * 0.9, `week ${wk.index + 1}: ${longOf(wk) / 60} vs ${lastBaseLong / 60}`);
+    assert.ok(longOf(build[build.length - 1]) >= 3600, `last build long ${longOf(build[build.length - 1]) / 60}`);
+    let prev = 0;
+    for (const wk of plan.weeks.filter((w) => !w.deload && w.phase !== 'taper')) {
+      const l = longOf(wk);
+      if (l && prev) assert.ok(l <= prev + 600, `long run +${(l - prev) / 60} min in week ${wk.index + 1}`);
+      if (l) prev = Math.max(prev, l);
+    }
+  }
+});

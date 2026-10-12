@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   bmr, tdee, computeTargets, dayTargets, dayTargetsFor, weeklyTargets, adaptiveTdee, scaleFood, searchFoods, macrosForKcal,
   weightTrend, robustTrend, trainingKcal, sessionIntensity, assumedDailyTraining, kcalFloor, fiberTarget, referenceWeight, goalKcal,
-  ACTIVITY_FACTORS, TRAINING_RATE, maxGoalRate, defaultDeficit, fatFreeMass, energyAvailability, fuelingNote, sodiumSummary, validateQuickAdd, validateCustomFood, validateWaterMl, amountError, parseNum, LIMITS,
+  ACTIVITY_FACTORS, TRAINING_RATE, carbFloorGkg, maxGoalRate, defaultDeficit, fatFreeMass, energyAvailability, fuelingNote, sodiumSummary, validateQuickAdd, validateCustomFood, validateWaterMl, amountError, parseNum, LIMITS,
 } from '../js/engine/nutrition.js';
 import { FOODS } from '../js/data/foods.js';
 
@@ -205,9 +205,9 @@ test('legacy dayTargets is weekly-neutral (5 training / 2 rest)', () => {
 });
 
 // ---------------------------------------------------------------- adaptive TDEE (P1-8)
-function synthState({ days = 28, startKg = 85, kgPerWeek = -0.5, intake = 2000, today = '2026-10-12', noise = 0, skipFood = 0, partial = 0, spike = 0, targetsKcal = 2400 } = {}) {
+function synthState({ days = 28, startKg = 85, kgPerWeek = -0.5, intake = 2000, today = '2026-10-12', noise = 0, skipFood = 0, partial = 0, spike = 0, targetsKcal = 2400, seed: seed0 = 7 } = {}) {
   const bodyweight = [], foodLog = {};
-  let seed = 7;
+  let seed = seed0;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
   for (let i = days; i >= 0; i--) {
     const d = addDays(today, -i);
@@ -534,7 +534,7 @@ test('R2 P2 fuelingNote: pre-session carbs, long-session advice, carb-short warn
   const long = { ...s, sessions: [{ date: '2026-10-14', type: 'run', title: 'Long run', durationSec: 95 * 60 }] };
   assert.match(fuelingNote(long, '2026-10-14').during, /30–60 g/);
   const lowCarb = { ...s, targets: { kcal: 1700, protein: 200, carbs: 120, fat: 60, waterMl: 3000, trainKcalAvg: 300 } };
-  assert.match(fuelingNote(lowCarb, '2026-10-12').warn || '', /below the 5 g\/kg/);
+  assert.match(fuelingNote(lowCarb, '2026-10-12').warn || '', /under the 5 g\/kg/);
 });
 
 test('R2 P2 adaptive: a late step change is excluded and lowers confidence', () => {
@@ -551,4 +551,51 @@ test('R2 P2 fat ≥ 25 % when gaining; water from reference weight', () => {
   const big = { sex: 'm', age: 40, heightCm: 178, weightKg: 120, activity: 'light', goal: 'lose', daysPerWeek: 4 };
   const t = computeTargets(big, { trainingHours: 0 });
   assert.equal(t.waterMl, Math.round((35 * referenceWeight(big)) / 50) * 50);
+});
+
+// ---------------------------------------------------------------- R3 polish
+test('R3 carb floors and pre-session carbs scale with session length; warn only on a real shortfall', () => {
+  assert.equal(carbFloorGkg('hard', 25), 4);
+  assert.equal(carbFloorGkg('hard', 60), 5);
+  assert.equal(carbFloorGkg('rest', 0), 3);
+  const workouts = { e: { id: 'e', title: 'Iron Engine EMOM', type: 'conditioning', estMin: 25, blocks: [{ kind: 'emom' }] } };
+  const plan = { weeks: [{ index: 0, phase: 'build', days: [{ date: '2026-10-12', workoutId: 'e', rest: false }, ...[1, 2, 3, 4, 5, 6].map((i) => ({ date: addDays('2026-10-12', i), workoutId: null, rest: true }))] }], workouts };
+  const s = { profile: male, targets: computeTargets(male, { plan }), sessions: [], plan };
+  const n = fuelingNote(s, '2026-10-12');
+  assert.match(n.pre, /0\.5–1 g\/kg/, 'short hard session: 0.5–1 g/kg before');
+  assert.deepEqual(n.carbsG, [40, 80]);
+  assert.equal(n.headline, n.pre, 'pre leads');
+  // small shortfall (< 0.5 g/kg) is not flagged
+  const near = { ...s, targets: { ...s.targets, carbs: Math.round(4 * 80 - 30 - (dayTargetsFor(s, '2026-10-12').kcal - s.targets.kcal) / 4), fat: 30 } };
+  assert.ok(!dayTargetsFor(near, '2026-10-12').notes.includes('carb-floor-unmet'));
+  // big shortfall is flagged and severe → headline is the warning
+  const low = { ...s, targets: { kcal: 1700, protein: 200, carbs: 100, fat: 60, waterMl: 3000, trainKcalAvg: 100 } };
+  const nl = fuelingNote(low, '2026-10-12');
+  assert.ok(nl.warn && nl.severe && nl.headline === nl.warn && nl.shortG > 40);
+  // "+ 40 g carbs today" boost raises that day only
+  const boosted = { ...low, settings: { fuel: { carbBoost: { '2026-10-12': 40 } } } };
+  const d0 = dayTargetsFor(low, '2026-10-12'), d1 = dayTargetsFor(boosted, '2026-10-12');
+  assert.equal(d1.kcal - d0.kcal, 160);
+  assert.ok(d1.carbs > d0.carbs && d1.carbShortG <= d0.carbShortG - 30, `short ${d0.carbShortG} → ${d1.carbShortG}`);
+  assert.equal(dayTargetsFor(boosted, '2026-10-13').kcal, dayTargetsFor(low, '2026-10-13').kcal);
+});
+
+test('R3 adaptive step guard: clean data is rarely downgraded and spread stays tight', () => {
+  let downgraded = 0;
+  const est = [];
+  for (let k = 0; k < 120; k++) {
+    const st = synthState({ noise: 1.2, kgPerWeek: -0.5 + (k % 5) * 0.05, seed: 1000 + k * 7919 });
+    const r = adaptiveTdee(st, '2026-10-12');
+    if (r.stepGuard) downgraded++;
+    est.push(r.tdee - (2000 + (0.5 - (k % 5) * 0.05) * 1100));
+  }
+  assert.ok(downgraded / 120 < 0.01, `false step-guard rate ${downgraded}/120`);
+  const mean = est.reduce((a, x) => a + x, 0) / est.length;
+  const sd = Math.sqrt(est.reduce((a, x) => a + (x - mean) ** 2, 0) / est.length);
+  assert.ok(Math.abs(mean) < 60 && sd < 160, `bias ${Math.round(mean)} sd ${Math.round(sd)}`);
+});
+
+test('R3 search aliases: protein oats, iced latte', () => {
+  assert.equal(searchFoods('protein oats', FOODS, { limit: 1 })[0]?.id, 'overnight-oats');
+  assert.equal(searchFoods('iced latte', FOODS, { limit: 1 })[0]?.id, 'latte-2');
 });

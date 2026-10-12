@@ -234,7 +234,16 @@ function fuelNotes(s, date) {
   try { ea = energyAvailability(s, date); } catch (e) { console.error(e); }
   if (fn?.pre) lines.push(h('li', null, h('span', { class: 'lbl' }, 'Before'), h('span', null, fn.pre)));
   if (fn?.during) lines.push(h('li', null, h('span', { class: 'lbl' }, 'During'), h('span', null, fn.during)));
-  if (fn?.warn) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl' }, 'Carbs'), h('span', null, fn.warn)));
+  const boost = +fuelMeta(s).carbBoost[date] || 0;
+  const setBoost = (g) => store.update((st) => updateFuelMeta(st, (m) => { if (g > 0) m.carbBoost[date] = g; else delete m.carbBoost[date]; }));
+  if (fn?.warn) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl' }, 'Carbs'), h('span', null, fn.warn, ' ',
+    h('button', { type: 'button', class: 'link-btn fu-boost', on: { click: () => {
+      setBoost(Math.min(200, boost + 40));
+      haptic();
+      toast('Added 40 g carbs to today’s target', { action: { label: 'Undo', fn: () => setBoost(boost) } });
+    } } }, '+ 40 g carbs today'))));
+  else if (boost) lines.push(h('li', null, h('span', { class: 'lbl' }, 'Carbs'), h('span', null, `Today’s target includes +${boost} g carbs for training. `,
+    h('button', { type: 'button', class: 'link-btn fu-boost', on: { click: () => setBoost(0) } }, 'Remove'))));
   if (ea?.low) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl' }, 'Energy'),
     h('span', null, `Today’s target leaves ≈ ${num(ea.ea, 0)} kcal per kg of fat-free mass after training — under 30 risks low energy availability (RED-S). `,
       s.profile.goal === 'lose' ? 'Consider a slower goal rate below.' : 'Make sure you eat to target today.')));
@@ -505,7 +514,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
   };
 
   // ---------- browse ----------
-  let searchInput, listEl, multiBar;
+  let searchInput, listEl, multiBar, browseSelectChip;
   function browse() {
     st.page = 'browse';
     searchInput = h('input', {
@@ -525,7 +534,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     };
     fillPhoto();
     if (photoAvail == null) checkPhotoAvailable().then(() => { if (photoSlot.isConnected) fillPhoto(); });
-    const selectChip = h('button', { type: 'button', class: 'chip', 'aria-pressed': String(st.multi), on: { click: () => {
+    const selectChip = browseSelectChip = h('button', { type: 'button', class: 'chip', 'aria-pressed': String(st.multi), on: { click: () => {
       st.multi = !st.multi; st.picked.clear(); selectChip.setAttribute('aria-pressed', String(st.multi)); paintList(); paintMulti();
     } } }, 'Select several');
     const el = h('div', { class: 'stack' },
@@ -592,8 +601,9 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       } },
     }, icon('plus'));
     return h('div', { class: 'li fu-food' },
-      h('button', { type: 'button', class: 'fu-food-main', on: { click: () => detailPage(food) } },
+      longPress(h('button', { type: 'button', class: 'fu-food-main', 'aria-description': 'Long-press to select several', on: { click: () => detailPage(food) } },
         h('div', { class: 'li-title' }, food.name, food.brand ? h('span', { class: 'muted fu-brand' }, ` · ${food.brand}`) : null), sub),
+      () => { st.multi = true; st.picked.clear(); st.picked.set(food.id, food); haptic(25); paintList(); paintMulti(); browseSelectChip?.setAttribute('aria-pressed', 'true'); }),
       addBtn);
   }
 
@@ -618,7 +628,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     let rows = [];
     let empty;
     if (st.tab === 'recent') {
-      rows = (s.recentFoods || []).map((id) => map.get(id)).filter(Boolean);
+      rows = mealAwareRecents(s, st.meal).map((id) => map.get(id)).filter(Boolean);
       empty = ['Nothing recent yet', 'Foods you log show up here for one-tap re-logging. Try searching “chicken”, “oats” or “banana”.'];
     } else if (st.tab === 'fav') {
       rows = (s.favorites || []).map((id) => map.get(id)).filter(Boolean);
@@ -1138,7 +1148,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       clear(root).append(backBtn(),
         h('div', { class: 'row gap fu-photo-head' }, h('div', { class: 'fu-photo-prev sm' }, ph.prepared?.previewUrl ? h('img', { src: ph.prepared.previewUrl, alt: 'Your meal photo' }) : null),
           h('div', { class: 'grow' }, h('h3', null, `${ph.items.length} item${ph.items.length > 1 ? 's' : ''} found`),
-            h('p', { class: 'xs muted' }, 'Untick anything that’s wrong, and adjust grams.'))),
+            h('p', { class: 'xs muted' }, 'Untick anything that’s wrong, and adjust amounts.'))),
         h('div', { class: 'callout fu-ai-note' }, h('b', null, 'AI estimate — check portions.'), ph.notes ? h('p', { class: 'small mt' }, ph.notes) : null),
         h('div', { class: 'stack sm' }, rows),
         h('h4', null, 'Total selected'),
@@ -1165,11 +1175,18 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         it.grams = Math.max(0, it.oz ? Math.round((it.grams + dir * d) / (0.5 * OZ_G)) * 0.5 * OZ_G : Math.round(it.grams + dir * d));
         gIn.value = shown(); haptic(); upd();
       };
-      const inc = h('input', { type: 'checkbox', checked: it.include, 'aria-label': `Include ${it.name}`, on: { change: (e) => { it.include = e.target.checked; card.classList.toggle('off', !it.include); refresh(); } } });
+      // one control: a ledger check box (R3 P2-6)
+      const inc = h('button', { type: 'button', class: 'fu-check fu-incl' + (it.include ? ' on' : ''), role: 'checkbox', 'aria-checked': String(it.include), 'aria-label': `Include ${it.name}`,
+        on: { click: () => {
+          it.include = !it.include;
+          inc.classList.toggle('on', it.include); inc.setAttribute('aria-checked', String(it.include));
+          clear(inc).append(...(it.include ? [icon('check', 16)] : []));
+          card.classList.toggle('off', !it.include); refresh();
+        } } }, it.include ? icon('check', 16) : null);
       const swapEl = h('div');
       const card = h('div', { class: 'fu-item' + (it.include ? '' : ' off') },
         h('div', { class: 'row top' },
-          h('label', { class: 'toggle fu-item-inc' }, inc, h('span')),
+          inc,
           h('div', { class: 'grow stack sm' },
             h('div', { class: 'row between' }, nameIn, h('span', { class: 'pill fu-conf ' + it.confidence, title: 'Model confidence' }, it.confidence === 'medium' ? 'med' : it.confidence)),
             h('div', { class: 'row between' },
@@ -1476,13 +1493,15 @@ function unitIdOf(unit) {
 
 function fuelMeta(s) {
   const f = s.settings?.fuel;
-  return { lastPortion: f?.lastPortion && typeof f.lastPortion === 'object' ? f.lastPortion : {}, incompleteDays: Array.isArray(f?.incompleteDays) ? f.incompleteDays : [] };
+  return { lastPortion: f?.lastPortion && typeof f.lastPortion === 'object' ? f.lastPortion : {}, incompleteDays: Array.isArray(f?.incompleteDays) ? f.incompleteDays : [],
+    carbBoost: f?.carbBoost && typeof f.carbBoost === 'object' ? f.carbBoost : {} };
 }
 
 function updateFuelMeta(st, fn) {
   const cur = fuelMeta(st);
-  const next = { lastPortion: { ...cur.lastPortion }, incompleteDays: [...cur.incompleteDays] };
+  const next = { lastPortion: { ...cur.lastPortion }, incompleteDays: [...cur.incompleteDays], carbBoost: { ...cur.carbBoost } };
   fn(next);
+  next.carbBoost = Object.fromEntries(Object.entries(next.carbBoost).filter(([d, g]) => isISODate(d) && +g > 0).sort().slice(-30));
   // keep the portion memory bounded
   const keys = Object.keys(next.lastPortion);
   if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete next.lastPortion[k];
@@ -1705,4 +1724,31 @@ export function offSodium(n = {}) {
   const salt = parseFloat(n.salt_100g);
   if (Number.isFinite(salt) && salt >= 0 && salt <= 100) return { na: Math.round(salt * 400) };
   return {};
+}
+
+/**
+ * Recents ordered for the meal being logged (R3 P2-4): foods most often logged in this meal slot over
+ * the last 30 days first (ties by recency), then the rest in recency order.
+ */
+function mealAwareRecents(s, meal) {
+  const ids = s.recentFoods || [];
+  const today = todayISO();
+  const count = new Map();
+  for (let i = 0; i < 30; i++) {
+    for (const e of s.foodLog[addDays(today, -i)] || []) if (e.meal === meal && e.foodId) count.set(e.foodId, (count.get(e.foodId) || 0) + 1);
+  }
+  return ids.map((id, i) => ({ id, i, c: count.get(id) || 0 })).sort((a, b) => b.c - a.c || a.i - b.i).map((x) => x.id);
+}
+
+/** Long-press (450 ms) on an element calls fn and swallows the following click. */
+function longPress(el, fn) {
+  let t = null, fired = false;
+  const start = () => { fired = false; clearTimeout(t); t = setTimeout(() => { t = null; fired = true; fn(); }, 450); };
+  const cancel = () => { clearTimeout(t); t = null; };
+  el.addEventListener('pointerdown', start);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, cancel);
+  el.addEventListener('pointermove', (e) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) cancel(); });
+  el.addEventListener('click', (e) => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; } }, true);
+  el.addEventListener('contextmenu', (e) => { if (fired || t) e.preventDefault(); });
+  return el;
 }

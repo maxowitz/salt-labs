@@ -262,3 +262,8 @@
 .fu-fuel-notes li.warn .lbl { color: var(--warn); }
 .fu-item-unit { min-height: 44px; }
 .fu-item .data, .fu-food .li-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- R3: carb boost, include check ---------- */
+.fu-boost { display: inline; min-height: 0; padding: 0; font-size: 13px; }
+.fu-incl { width: 28px; height: 28px; margin-top: 6px; }
+.fu-incl.on { background: var(--go); border-color: var(--go); }
