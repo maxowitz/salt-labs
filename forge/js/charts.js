@@ -227,10 +227,10 @@ export function ribbon({ weeks = [], current = -1, onPick, selected = null, labe
     leg.className = 'rb-legend';
     leg.style.gridTemplateColumns = groups.map((g) => `${g.n}fr`).join(' ');
     const curPhase = weeks[current]?.phase;
-    for (const g of groups) {
+    for (const [gi, g] of groups.entries()) {
       const l = document.createElement('span');
       l.className = 'lbl' + (g.phase === curPhase ? ' ink' : '');
-      l.textContent = g.n === 1 ? String(g.phase || '').charAt(0).toUpperCase() : String(g.phase || '');
+      l.textContent = g.n === 1 && gi !== groups.length - 1 ? String(g.phase || '').charAt(0).toUpperCase() : String(g.phase || '');
       leg.append(l);
     }
     wrap.append(leg);

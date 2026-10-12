@@ -244,7 +244,7 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .icon-btn.filled { border-color: var(--line); background: transparent; color: var(--text); }
 .icon-btn.on { color: var(--accent); }
 .link-btn {
-  color: var(--accent); font-family: var(--font-mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2); font-family: var(--font-mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
   padding: 6px 2px; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none;
 }
 
@@ -388,6 +388,7 @@ input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--text); }
 button.rb-cell:hover { color: var(--text); }
 .rb-legend { display: grid; gap: 3px; margin-top: 6px; }
 .rb-legend .lbl { font-size: 9.5px; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.rb-legend .lbl:last-child { justify-self: end; overflow: visible; }
 
 /* Zone ruler (replaces semicircle gauge) — charts.zoneRuler() */
 .zone-ruler { width: 100%; }
@@ -485,7 +486,7 @@ body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 .callout.go { --c: var(--go); }
 .callout.info { --c: var(--info); }
 .callout.danger { --c: var(--danger); }
-.chart { width: 100%; height: auto; overflow: visible; }
+.chart { width: 100%; max-width: 560px; height: auto; overflow: visible; }
 .chart text { fill: var(--muted); font-size: 10px; font-family: var(--font-mono); }
 .skeleton { background: var(--surface-2); animation: pulse 1.2s steps(2, end) infinite; border-radius: 0; }
 .fade-in { animation: fadeIn .18s var(--ease) both; }
@@ -514,7 +515,11 @@ body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 /* a section rule already separates; a ruled region directly under it doesn't need a second line */
 .section-head + .card, .section-head + .list, .section-head + .ledger { border-top: 0; padding-top: 0; }
 /* tap targets ≥ 44px without changing the visual size (UX r1) */
-button.rb-cell::before { content: ""; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+button.rb-cell::before { content: ""; position: absolute; left: -2px; right: -2px; top: -10px; bottom: -10px; }
 .toggle input { inset: -9px -4px; width: auto; height: auto; }
 a.pill { position: relative; }
 a.pill::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+
+.link-btn:hover { color: var(--text); }
+.link-btn.key { color: var(--accent); }
+.link-btn.key:hover { color: var(--accent-2); }
