@@ -72,6 +72,12 @@ http.createServer((req, res) => {
   // static files, safely rooted
   let p = path.normalize(url).replace(/^(\.\.[\/\\])+/, "");
   if (p === "/" || p === "\\") p = "/index.html";
+  // sub-apps (e.g. /forge) live in folders: redirect to the slash form so relative URLs resolve, then serve index.html
+  if (!path.extname(p) && !p.endsWith("/") && fs.existsSync(path.join(ROOT, p, "index.html"))) {
+    res.writeHead(301, { Location: p + "/" + (req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "") });
+    return res.end();
+  }
+  if (p.endsWith("/") || p.endsWith("\\")) p += "index.html";
   const file = path.join(ROOT, p);
   if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, buf) => {
