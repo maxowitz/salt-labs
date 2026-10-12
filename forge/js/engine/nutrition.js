@@ -540,3 +540,98 @@ export function searchFoods(query, foods = [], opts = {}) {
   const res = scored.map((x) => x.food);
   return opts.limit ? res.slice(0, opts.limit) : res;
 }
+
+// ---------- input validation (QA R1 P1-5): pure, shared by every Fuel form ----------
+export const LIMITS = { entryKcal: 5000, entryMacroG: 500, per100Kcal: 900, servingMinG: 1, servingMaxG: 5000, entryMaxG: 5000, waterMaxMl: 5000 };
+
+/** '' → {empty}, junk → {bad}, else {value}. Accepts "1,5". */
+export function parseNum(v) {
+  if (v == null || String(v).trim() === '') return { empty: true };
+  const x = Number(String(v).trim().replace(',', '.'));
+  return Number.isFinite(x) ? { value: x } : { bad: true };
+}
+
+function readNums(raw, keys, errors, { maxFor = () => Infinity, unitFor = () => '' } = {}) {
+  const out = {};
+  for (const k of keys) {
+    const r = parseNum(raw[k]);
+    if (r.bad) { errors[k] = 'Enter a number'; continue; }
+    if (r.empty) { out[k] = null; continue; }
+    if (r.value < 0) { errors[k] = 'Can’t be negative'; continue; }
+    if (r.value > maxFor(k)) { errors[k] = `Max ${maxFor(k).toLocaleString('en-US')} ${unitFor(k)}`.trim(); continue; }
+    out[k] = r.value;
+  }
+  return out;
+}
+
+/**
+ * Quick add: kcal ≤ 5000 per entry, each macro ≤ 500 g, numbers only. Blank kcal = from macros.
+ * Macros may not add up to clearly more energy than the calories entered.
+ * → {ok, errors:{kcal?,p?,c?,f?,form?}, value:{kcal,p,c,f}}
+ */
+export function validateQuickAdd(raw = {}) {
+  const errors = {};
+  const v = readNums(raw, ['kcal', 'p', 'c', 'f'], errors, {
+    maxFor: (k) => (k === 'kcal' ? LIMITS.entryKcal : LIMITS.entryMacroG), unitFor: (k) => (k === 'kcal' ? 'kcal per entry' : 'g'),
+  });
+  const p = v.p || 0, c = v.c || 0, f = v.f || 0;
+  const macroKcal = Math.round(4 * p + 4 * c + 9 * f);
+  let kcal = v.kcal;
+  if (!errors.kcal && kcal == null) {
+    kcal = macroKcal;
+    if (kcal > LIMITS.entryKcal) errors.kcal = `Macros add up to ${macroKcal.toLocaleString('en-US')} kcal — max ${LIMITS.entryKcal.toLocaleString('en-US')} per entry`;
+  }
+  if (!errors.kcal && !(kcal > 0) && !['p', 'c', 'f'].some((k) => errors[k])) errors.kcal = 'Enter calories or macros';
+  if (!Object.keys(errors).length && v.kcal != null && macroKcal > v.kcal * 1.2 + 20) {
+    errors.form = `Macros add up to ${macroKcal.toLocaleString('en-US')} kcal — more than the ${Math.round(v.kcal).toLocaleString('en-US')} kcal entered.`;
+  }
+  return { ok: !Object.keys(errors).length, errors, value: { kcal: Math.round(kcal || 0), p, c, f } };
+}
+
+/**
+ * Create food: serving 1–5000 g; per-serving values ≥ 0; per 100 g kcal ≤ 900, macros ≤ 100 g,
+ * fibre ≤ carbs, and macros may not add up to clearly more energy than the calories.
+ * → {ok, errors:{grams?,kcal?,p?,c?,fat?,fiber?,form?}, value:{grams, perServing:{…}, per100:{kcal,p,c,f,fiber}}}
+ */
+export function validateCustomFood(raw = {}) {
+  const errors = {};
+  const g = parseNum(raw.grams);
+  let grams = null;
+  if (g.bad || g.empty) errors.grams = 'Enter the serving weight in grams';
+  else if (g.value < LIMITS.servingMinG) errors.grams = `At least ${LIMITS.servingMinG} g`;
+  else if (g.value > LIMITS.servingMaxG) errors.grams = `Max ${LIMITS.servingMaxG.toLocaleString('en-US')} g`;
+  else grams = g.value;
+  const v = readNums(raw, ['kcal', 'p', 'c', 'fat', 'fiber'], errors, {
+    maxFor: (k) => (k === 'kcal' ? LIMITS.entryKcal * 4 : 2000), unitFor: (k) => (k === 'kcal' ? 'kcal' : 'g'),
+  });
+  const p = v.p || 0, c = v.c || 0, f = v.fat || 0, fiber = v.fiber || 0;
+  let kcal = v.kcal;
+  if (!errors.kcal && kcal == null) kcal = Math.round(4 * p + 4 * c + 9 * f);
+  if (!errors.kcal && !(kcal > 0)) errors.kcal = 'Enter calories per serving';
+  if (!errors.fiber && fiber > c + 1e-9) errors.fiber = 'Fiber is part of carbs — it can’t exceed them';
+  let per100 = null;
+  if (grams && !Object.keys(errors).length) {
+    const k = 100 / grams;
+    per100 = { kcal: Math.round(kcal * k * 10) / 10, p: Math.round(p * k * 10) / 10, c: Math.round(c * k * 10) / 10, f: Math.round(f * k * 10) / 10, fiber: Math.round(fiber * k * 10) / 10 };
+    if (per100.kcal > LIMITS.per100Kcal) errors.kcal = `That’s ${Math.round(per100.kcal).toLocaleString('en-US')} kcal per 100 g — more than pure fat (900). Check the serving size.`;
+    else if (per100.p + per100.c + per100.f > 100.5) errors.form = 'Protein + carbs + fat weigh more than the serving itself. Check the serving size.';
+    else if (4 * p + 4 * (c - fiber) + 9 * f > kcal * 1.25 + 10) errors.form = `Macros add up to ${Math.round(4 * p + 4 * (c - fiber) + 9 * f)} kcal — more than the ${Math.round(kcal)} kcal entered.`;
+  }
+  return { ok: !Object.keys(errors).length, errors, value: { grams, perServing: { kcal: Math.round(kcal || 0), p, c, f, fiber }, per100 } };
+}
+
+/** One water entry: 0 < ml ≤ 5000. → {ok, error, ml} */
+export function validateWaterMl(ml) {
+  if (!Number.isFinite(ml)) return { ok: false, error: 'Enter an amount' };
+  if (ml <= 0) return { ok: false, error: 'Enter an amount above 0' };
+  if (ml > LIMITS.waterMaxMl) return { ok: false, error: 'Max 5 L (169 oz) at a time' };
+  return { ok: true, error: null, ml: Math.round(ml) };
+}
+
+/** A logged amount: grams must be > 0 and ≤ 5000. → error string | null */
+export function amountError(grams, raw) {
+  if (raw != null && parseNum(raw).bad) return 'Enter a number';
+  if (!Number.isFinite(grams) || grams <= 0) return 'Enter an amount above 0';
+  if (grams > LIMITS.entryMaxG) return 'Max 5 kg per entry — split it into several';
+  return null;
+}

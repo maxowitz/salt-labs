@@ -32,7 +32,7 @@ function localWeekSummary(sessions, start) {
     if (!(s.date >= start && s.date < end)) continue;
     out.count++;
     out.minutes += (s.durationSec || 0) / 60;
-    for (const x of s.sets || []) out.kbVolumeKg += (+x.kg || 0) * (+x.reps || 0);
+    out.kbVolumeKg += safe(() => coach.sessionVolumeKg(s), 0) || 0;
     for (const c of s.cardio || []) { out.cardioM += +c.distanceM || 0; if (isRunMode(c.mode)) out.runM += +c.distanceM || 0; }
   }
   return out;

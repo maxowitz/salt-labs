@@ -107,7 +107,7 @@ function profileSection(p, s) {
   const exp = EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience);
   return h('section', null, sectionHead('Profile'),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
-      row('Name', p.name || '—', () => openEditor('Name', nameEditor, [validate.name]), 'user'),
+      row('Name', String(p.name ?? '') || '—', () => openEditor('Name', nameEditor, [validate.name]), 'user'),
       row('Sex & age', `${p.sex === 'f' ? 'Female' : 'Male'} · ${p.age} yrs`, () => openEditor('Sex & age', sexAgeEditor, [validate.sexAge]), 'heart'),
       row('Height & weight', `${fmtHeight(p.heightCm, units)} · ${fmtWeight(bw?.kg ?? p.weightKg, units, 1)}${bw ? ` · weighed ${fmtDate(bw.date, { month: 'short', day: 'numeric' })}` : ''}`, () => openEditor('Height & weight', bodyEditor, [validate.body]), 'scale'),
       row('Goal weight', p.goalWeightKg ? fmtWeight(p.goalWeightKg, units, 1) : 'Not set', () => openEditor('Goal weight', goalWeightEditor, [checkGoal]), 'target'),
@@ -520,12 +520,13 @@ export function render(root, params = {}) {
     const s = store.get();
     const p = s.profile;
     const y = window.scrollY;
-    const initial = (p.name || 'F').trim()[0]?.toUpperCase() || 'F';
+    const pname = String(p.name ?? '').trim();
+    const initial = pname[0]?.toUpperCase() || 'F';
     clear(root).append(h('div', { class: 'me stack' },
       h('header', { class: 'me-head' },
         h('div', { class: 'avatar', 'aria-hidden': 'true' }, initial),
         h('div', { class: 'grow' },
-          h('h1', null, p.name || 'Athlete'),
+          h('h1', null, pname || 'Athlete'),
           h('div', { class: 'row wrap mt-xs' },
             h('span', { class: 'pill accent' }, `HYROX ${cap(p.division)}`),
             h('span', { class: 'pill' }, EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience)),

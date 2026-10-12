@@ -171,7 +171,7 @@ function headerBlock(s, today) {
   const raceDate = s.profile.raceDate || s.plan?.raceDate;
   const days = raceDate ? daysBetween(today, raceDate) : null;
   const P = safe(() => program.PHASES, {}) || {};
-  const name = (s.profile.name || '').trim();
+  const name = String(s.profile.name ?? '').trim();
   return h('header', { class: 'today-head' },
     h('div', { class: 'today-hello' },
       h('div', { class: 'eyebrow' }, fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })),
@@ -240,13 +240,14 @@ function blockKindLabel(k) {
 }
 
 function sessionSummary(sess) {
-  const vol = (sess.sets || []).reduce((a, x) => a + (+x.kg || 0) * (+x.reps || 0), 0);
+  const vol = safe(() => coach.sessionVolumeKg(sess), 0) || 0;
   const dist = (sess.cardio || []).reduce((a, c) => a + (+c.distanceM || 0), 0) + (sess.sets || []).reduce((a, x) => a + (+x.distanceM || 0), 0);
   return { vol, dist, sets: (sess.sets || []).length };
 }
 
 function sessionCard(s, today) {
   const units = s.profile.units;
+  const volTxt = (kg) => (units === 'metric' ? num(Math.round(kg)) : num(Math.round(kg / 0.45359237)));
   const active = s.activeWorkout;
   const done = sel.sessionsOn(s, today);
   const wfd = s.plan ? safe(() => program.workoutForDate(s.plan, today), null) : null;
@@ -272,7 +273,7 @@ function sessionCard(s, today) {
         h('div', { class: 'grow' }, h('div', { class: 'eyebrow go' }, 'Session complete'), h('div', { class: 'card-title' }, doneSession.title || 'Workout'))),
       h('div', { class: 'grid3 mt' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, fmtDur(doneSession.durationSec || 0, { long: true })), h('span', { class: 'k' }, 'time')),
-        sm.vol ? h('div', { class: 'stat' }, h('span', { class: 'v' }, num(Math.round(sm.vol)), h('small', null, 'kg')), h('span', { class: 'k' }, 'volume'))
+        sm.vol ? h('div', { class: 'stat' }, h('span', { class: 'v' }, volTxt(sm.vol), h('small', null, units === 'metric' ? 'kg' : 'lb')), h('span', { class: 'k' }, 'volume'))
           : h('div', { class: 'stat' }, h('span', { class: 'v' }, sm.dist ? (units === 'metric' ? num(sm.dist / 1000, 1) : num(sm.dist / 1609.344, 1)) : String(sm.sets), h('small', null, sm.dist ? (units === 'metric' ? 'km' : 'mi') : 'sets')), h('span', { class: 'k' }, sm.dist ? 'distance' : 'logged')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, doneSession.rpe ? String(doneSession.rpe) : '–'), h('span', { class: 'k' }, 'session RPE'))),
       doneSession.prs?.length ? h('div', { class: 'pr-strip mt' }, icon('trophy', 16), h('span', null, doneSession.prs.slice(0, 2).join(' · '))) : null,

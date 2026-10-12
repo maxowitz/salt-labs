@@ -23,7 +23,7 @@ export function currentWeekIndex(plan, iso) {
 }
 
 export function dayStatus(day, s, today) {
-  const logged = s.sessions.find((x) => (day.workoutId && x.workoutId === day.workoutId) || x.date === day.date);
+  const logged = arr(s.sessions).find((x) => x.date === day.date) || sessionsForWorkout(s, day.workoutId, day.date)[0];
   if (logged) return { state: 'done', session: logged };
   if (day.rest || !day.workoutId) return { state: 'rest' };
   if (day.date < today) return { state: 'missed' };
@@ -149,7 +149,7 @@ function renderPlan(root, s, args) {
 
   // summary
   const planned = days.filter((d) => d.workoutId && !d.rest);
-  const doneCount = planned.filter((d) => s.sessions.some((x) => x.workoutId === d.workoutId || x.date === d.date)).length;
+  const doneCount = statuses.filter((st, i) => st.state === 'done' && days[i].workoutId && !days[i].rest).length;
   let sum = null;
   try { sum = weekSummary(s.sessions, first); } catch {}
   root.append(h('div', { class: 'tr-wsum' },
@@ -290,7 +290,7 @@ export function logCardioSheet(preset = {}) {
     const st = store.get();
     const day = st.plan?.weeks?.flatMap((w) => w.days || []).find((d) => d.date === date.value && d.workoutId);
     const w = day ? safeGetWorkout(st.plan, day.workoutId) : null;
-    if (w && (w.type === 'run' || (w.blocks || []).some((b) => b.kind === 'cardio')) && !st.sessions.some((x) => x.workoutId === w.id)) {
+    if (w && (w.type === 'run' || (w.blocks || []).some((b) => b.kind === 'cardio')) && !sessionsForWorkout(st, w.id, date.value).length) {
       linkCb = h('input', { type: 'checkbox', checked: true });
       linkCb.dataset.wid = w.id; linkCb.dataset.title = w.title; linkCb.dataset.type = w.type;
       linkSlot.append(h('label', { class: 'switch tr-link' }, h('span', { class: 'small' }, 'Counts as planned ', h('b', null, w.title)), linkCb));
@@ -319,6 +319,14 @@ export function logCardioSheet(preset = {}) {
             const timeSec = parseDur(time.value);
             if (!(distanceM > 0) && !(timeSec > 0)) { toast('Add a distance or a time', { kind: 'danger' }); dist.focus(); return false; }
             if (time.value && !(timeSec > 0)) { toast('Time looks off — use mm:ss', { kind: 'danger' }); time.focus(); return false; }
+            if (distanceM > 300000) { toast(`Distance looks too long (max ${units === 'metric' ? '300 km' : '186 mi'})`, { kind: 'danger' }); dist.focus(); return false; }
+            if (timeSec != null && timeSec > 0 && timeSec < 60) { toast('Time must be at least 1:00 — use mm:ss', { kind: 'danger' }); time.focus(); return false; }
+            if (timeSec > 86400) { toast('Time must be under 24 hours', { kind: 'danger' }); time.focus(); return false; }
+            const minPace = { run: 150, walk: 300, row: 150, ski: 150, bike: 60 }[mode] || 150; // fastest plausible sec/km
+            if (distanceM > 0 && timeSec > 0 && timeSec / (distanceM / 1000) < minPace) {
+              toast(`That's faster than ${fmtDur(minPace)}/km — check distance and time`, { kind: 'danger' }); dist.focus(); return false;
+            }
+            if (hr.value !== '' && (!(+hr.value >= 30) || +hr.value > 240)) { toast('Avg HR should be 30–240 bpm', { kind: 'danger' }); hr.focus(); return false; }
             const avgHr = +hr.value > 0 ? Math.round(+hr.value) : null;
             const label = MODES.find((m) => m[0] === mode)[1];
             const linked = linkCb?.checked ? linkCb.dataset : null;
@@ -343,7 +351,7 @@ export function logPastSheet() {
   const s = store.get(), today = todayISO();
   let rpe = 6, freeType = 'strength';
   const plan = s.plan;
-  const doneIds = new Set(s.sessions.map((x) => x.workoutId).filter(Boolean));
+  const doneIds = new Set((plan?.weeks || []).flatMap((wk) => wk.days || []).filter((d) => d.workoutId && sessionsForWorkout(s, d.workoutId, d.date).length).map((d) => d.workoutId));
   const planDays = (plan?.weeks || []).flatMap((w) => w.days || []).filter((d) => d.workoutId && d.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 21);
   const temps = Array.isArray(TEMPLATES) ? TEMPLATES.filter((t) => !/free/i.test(t.id)) : [];

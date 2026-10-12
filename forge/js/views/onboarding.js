@@ -107,7 +107,7 @@ function numInput(value, { min, max, step = 1, unit, label, onInput, inputmode =
 // ---------- Step builders: (draft, ctx) → Element. ctx.refresh() re-renders the step. ----------
 export function nameEditor(d) {
   return field('Your first name', h('input', {
-    type: 'text', value: d.name || '', maxlength: 40, autocomplete: 'given-name', placeholder: 'e.g. Alex', autofocus: true,
+    type: 'text', value: String(d.name ?? ''), maxlength: 40, autocomplete: 'given-name', placeholder: 'e.g. Alex', autofocus: true,
     on: { input: (e) => { d.name = e.target.value; } },
   }));
 }
@@ -251,7 +251,7 @@ export function nutritionEditor(d, ctx) {
 
 // ---------- Validators (return message or null) ----------
 export const validate = {
-  name: (d) => (!d.name || !d.name.trim() ? 'What should your coach call you?' : d.name.trim().length > 40 ? 'Keep it under 40 characters.' : null),
+  name: (d) => (!String(d.name ?? '').trim() ? 'What should your coach call you?' : String(d.name).trim().length > 40 ? 'Keep it under 40 characters.' : null),
   sexAge: (d) => (!['m', 'f'].includes(d.sex) ? 'Pick one so we can set calorie targets.'
     : !Number.isFinite(d.age) || d.age < 14 || d.age > 90 ? 'Age should be between 14 and 90.' : null),
   body: (d) => {
@@ -284,7 +284,7 @@ export const validate = {
 export function commitDraft(d) {
   if (d._fiveK !== undefined) d.fiveKSec = d._fiveK ? parseDur(d._fiveK) : null;
   if (Number.isFinite(d.weightKg)) d.weightKg = r1(d.weightKg);
-  if (typeof d.name === 'string') d.name = d.name.trim();
+  d.name = String(d.name ?? '').trim();
   return d;
 }
 
@@ -430,7 +430,7 @@ export function render(root) {
       h('section', { class: 'ob-step ' + (dir > 0 ? 'in-r' : 'in-l'), 'aria-labelledby': 'ob-title' },
         stepIdx === 0 ? h('div', { class: 'ob-brand', 'aria-hidden': 'true' }, h('span', { class: 'ob-mark' }, icon('bell', 34)), 'FORGE') : null,
         h('div', { class: 'eyebrow' }, `${step.eyebrow} · ${stepIdx + 1}/${STEPS.length}`),
-        h('h1', { id: 'ob-title', class: 'ob-title' }, step.id === 'sexAge' && draft.name ? `Nice to meet you, ${draft.name.trim()}.` : step.title),
+        h('h1', { id: 'ob-title', class: 'ob-title' }, step.id === 'sexAge' && String(draft.name ?? '').trim() ? `Nice to meet you, ${String(draft.name).trim()}.` : step.title),
         step.sub ? h('p', { class: 'ob-sub' }, step.sub) : null,
         body, errEl),
       h('footer', { class: 'ob-foot' }, nextBtn,
