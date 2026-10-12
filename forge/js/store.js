@@ -167,7 +167,12 @@ function sanitizeDeep(out, def) {
   const st = out.settings;
   st.theme = oneOf(st.theme, ['dark', 'light', 'system'], 'dark');
   for (const k of ['sound', 'voice', 'haptics']) st[k] = st[k] !== false;
-  if (st.lock && !(isObj(st.lock) && typeof st.lock.hash === 'string' && typeof st.lock.salt === 'string' && st.lock.hash && st.lock.salt)) delete st.lock;
+  if (st.lock != null) {
+    if (!isObj(st.lock)) delete st.lock;
+    else if (st.lock.enabled && !(typeof st.lock.hash === 'string' && st.lock.hash && typeof st.lock.salt === 'string' && st.lock.salt)) {
+      st.lock = { enabled: false, timeoutMin: st.lock.timeoutMin }; // broken lock: switch off, keep the preference
+    }
+  }
   out.savedAt = fin(out.savedAt, 0, 1e15, 0);
 }
 
