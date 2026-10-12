@@ -62,6 +62,7 @@ function itemTarget(it, block) {
   if (it.reps) parts.push(`${it.reps}${it.perSide ? '/side' : ''} reps`.replace(' reps', block?.kind === 'strength' ? '' : ' reps'));
   if (it.timeSec && !it.reps) parts.push(fmtDur(it.timeSec));
   if (it.distanceM) parts.push(fmtTarget(it.distanceM));
+  if (it.paceSec > 0) { const p = fmtPace(it.paceSec, units()); if (!String(it.note || '').includes(p)) parts.push(`@ ${p}`); }
   return parts.join(' ').trim();
 }
 const units = () => store.get().profile?.units || 'metric';
@@ -389,8 +390,8 @@ function player(ctx, aw, { fresh = false } = {}) {
       h('button', { class: 'btn ghost wo-nav', disabled: i <= 0, 'aria-label': 'Previous block', on: { click: () => goBlock(i - 1) } }, icon('chevL')),
       isFree ? h('button', { class: 'btn subtle wo-nav-add', on: { click: () => addExerciseSheet() } }, icon('plus'), 'Exercise') : null,
       last || !n
-        ? h('button', { class: 'btn go grow wo-next', on: { click: () => finish() } }, icon('flag'), 'Finish')
-        : h('button', { class: 'btn primary grow wo-next', on: { click: () => { markDone(i); goBlock(i + 1); } } }, 'Next block', icon('chevR')));
+        ? h('button', { class: 'btn primary grow wo-next', on: { click: () => finish() } }, icon('flag'), 'Finish')
+        : h('button', { class: 'btn grow wo-next', on: { click: () => { markDone(i); goBlock(i + 1); } } }, 'Next block', icon('chevR')));
   }
   function markDone(i) { aw.blocks[i] = { ...(aw.blocks[i] || {}), done: true }; }
 
@@ -797,7 +798,8 @@ function player(ctx, aw, { fresh = false } = {}) {
       const key = `blocks.${bi}.items.${ii}.timer`;
       const is = (bs.items[ii] = bs.items[ii] || {});
       const cardio = isCardioEx(it.exId);
-      const meters = it.distanceM && (it.distanceM < 1000 || !cardio);
+      const meters = !cardio || (it.distanceM && it.distanceM < 1000);
+      const showDist = cardio || it.distanceM > 0;
       const timedCountdown = it.timeSec > 0 && !(it.distanceM > 0);
       const segs = [{ label: it.note || exName(it.exId), sec: timedCountdown ? it.timeSec : Infinity, kind: 'work' }];
       let t = blockTimers.get(key);
@@ -863,8 +865,8 @@ function player(ctx, aw, { fresh = false } = {}) {
           if (s?.done && document.activeElement !== timeIn && is.timeSec && timeIn.value !== fmtDur(is.timeSec)) { timeIn.value = fmtDur(is.timeSec); updPace(); }
         }
         put(c, h('div', { class: 'wo-cardio-stage' }, face.el, ctl.el),
-          h('div', { class: 'grid3 wo-cardio-fields' },
-            h('label', { class: 'field' }, h('span', { class: 'field-label' }, `Distance (${distUnit})`), distIn),
+          h('div', { class: (showDist ? 'grid3' : 'grid2') + ' wo-cardio-fields' },
+            showDist ? h('label', { class: 'field' }, h('span', { class: 'field-label' }, `Distance (${distUnit})`), distIn) : null,
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Time'), timeIn),
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, cardio ? 'Avg HR' : 'Avg HR (opt.)'), hrIn)),
           paceEl,

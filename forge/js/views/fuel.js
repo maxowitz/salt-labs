@@ -195,7 +195,7 @@ function mealCard(s, ctx, meal, label) {
     h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, e.name), h('div', { class: 'li-sub' }, entryAmount(e))),
     h('div', { class: 'li-end' }, h('div', { class: 'fu-kcal' }, num(e.kcal)), h('div', { class: 'xs muted' }, macroLine(e)))))) : null,
     h('div', { class: 'fu-meal-actions' },
-      h('button', { type: 'button', class: 'btn sm primary', on: { click: () => openAddSheet(ctx, meal) } }, icon('plus', 16), 'Add'),
+      h('button', { type: 'button', class: 'btn sm subtle fu-add-btn', 'aria-label': `Add food to ${label}`, on: { click: () => openAddSheet(ctx, meal) } }, icon('plus', 16), 'Add'),
       yList.length ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => copyMeal(ctx, meal, yList) }, title: `Copy ${yList.length} item(s) from yesterday` },
         icon('copy', 16), `Copy yesterday`) : null,
       list.length ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => saveTemplate(ctx, meal, list) } }, icon('star', 16), 'Save meal') : null));
@@ -268,7 +268,7 @@ function amountEditor({ servingGrams, servingLabel, mode, qty, onChange }) {
       st.mode === 'g' ? `${v} g` : v === 0.5 ? '½' : v === 1.5 ? '1½' : String(v)));
   };
   input.addEventListener('input', () => paintPresets());
-  const segEl = servingGrams ? seg([['serving', `Servings (${servingLabel})`], ['g', 'Grams']], st.mode, (m) => {
+  const segEl = servingGrams ? seg([['serving', 'Servings'], ['g', 'Grams']], st.mode, (m) => {
     if (m === st.mode) return;
     const g = grams();
     st.mode = m;
@@ -890,7 +890,7 @@ function weeklyCard(s, ctx) {
     const dt = dayTargets(s.targets, isTrainingDay(s, d));
     if (t.kcal > 0) { logged++; pSum += t.p; kSum += t.kcal; }
     const ok = dt.kcal && Math.abs(t.kcal - dt.kcal) <= dt.kcal * 0.1;
-    return { label: fmtDate(d, { weekday: 'narrow' }), value: t.kcal, color: !t.kcal ? 'var(--surface-3)' : ok ? 'var(--go)' : t.kcal > dt.kcal ? 'var(--warn)' : 'var(--accent)', dim: d !== ctx.date && !t.kcal };
+    return { label: fmtDate(d, { weekday: 'narrow' }), value: t.kcal, color: !t.kcal ? 'var(--surface-3)' : ok ? 'var(--go)' : t.kcal > dt.kcal ? 'var(--warn)' : 'var(--muted)', dim: d !== ctx.date && !t.kcal };
   });
   const avgP = logged ? pSum / logged : 0, avgK = logged ? kSum / logged : 0;
   return h('section', { 'aria-label': 'Last 7 days' },
@@ -899,7 +899,7 @@ function weeklyCard(s, ctx) {
       barChart({ bars, height: 130, target: base, yFmt: (v) => (v >= 1000 ? `${r1(v / 1000)}k` : String(r0(v))), ariaLabel: `Calories for the 7 days ending ${fmtDate(ctx.date)} against a ${num(base)} kcal target` }),
       h('div', { class: 'fu-legend xs muted' },
         h('span', null, h('i', { class: 'dot', style: { background: 'var(--go)' } }), 'within 10 %'),
-        h('span', null, h('i', { class: 'dot', style: { background: 'var(--accent)' } }), 'under'),
+        h('span', null, h('i', { class: 'dot', style: { background: 'var(--muted)' } }), 'under'),
         h('span', null, h('i', { class: 'dot', style: { background: 'var(--warn)' } }), 'over')),
       h('div', { class: 'grid3 mt' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, logged ? num(avgK) : '–'), h('span', { class: 'k' }, 'Avg kcal')),

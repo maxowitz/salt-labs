@@ -65,7 +65,7 @@ export function blockStructure(b) {
     case 'circuit': return `${b.rounds || 1} round${(b.rounds || 1) > 1 ? 's' : ''} through the list${b.restSec ? ` · ${fmtSec(b.restSec)} rest between rounds` : ''}`;
     case 'strength': return b.restSec ? `Rest ${fmtSec(b.restSec)} between sets` : '';
     case 'station': return 'For time — race pace, smooth transitions';
-    case 'cardio': return b.durationSec ? `About ${fmtSec(b.durationSec)}` : 'Steady, controlled effort';
+    case 'cardio': return b.durationSec ? `About ${fmtSec(b.durationSec)}` : '';
     case 'warmup': return b.durationSec ? `${fmtSec(b.durationSec)} · move well, raise temperature` : '';
     case 'cooldown': return b.durationSec ? `${fmtSec(b.durationSec)} · bring the heart rate down` : '';
     default: return '';

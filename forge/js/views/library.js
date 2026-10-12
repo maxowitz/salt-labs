@@ -93,11 +93,11 @@ function lastText(l, units) {
 
 function metaPills(e) {
   return [
-    e.category ? h('span', { class: 'pill accent' }, CAT_LABEL[e.category] || cap(e.category)) : null,
+    e.category ? h('span', { class: 'pill' }, CAT_LABEL[e.category] || cap(e.category)) : null,
     e.pattern ? h('span', { class: 'pill' }, cap(e.pattern)) : null,
     e.double ? h('span', { class: 'pill' }, 'Double bell') : null,
     e.unilateral ? h('span', { class: 'pill' }, 'Unilateral') : null,
-    e.hyrox ? h('span', { class: 'pill peak' }, 'HYROX') : null,
+    e.hyrox ? h('span', { class: 'pill' }, 'HYROX') : null,
   ];
 }
 
@@ -150,7 +150,7 @@ function renderList(root) {
       h('div', { class: 'li-main' },
         h('div', { class: 'li-title' }, e.name),
         h('div', { class: 'li-sub' }, [cap(e.pattern), (e.muscles || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))),
-      e.hyrox ? h('span', { class: 'pill peak' }, 'HYROX') : null,
+      e.hyrox ? h('span', { class: 'pill' }, 'HYROX') : null,
       h('span', { class: 'muted' }, icon('chevR', 16))))));
   };
 

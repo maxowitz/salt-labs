@@ -332,7 +332,7 @@ export function logCardioSheet(preset = {}) {
               rpe, notes: notes.value.trim(), readiness: null, prs: [],
             });
             close();
-            toast(sess.prs?.length ? `🏆 ${sess.prs[0]}` : `${label} logged ✓`, { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
+            toast(sess.prs?.length ? `PR · ${sess.prs[0]}` : `${label} logged ✓`, { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
           },
         },
       }, icon('check'), 'Save')),

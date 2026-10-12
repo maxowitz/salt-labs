@@ -282,7 +282,7 @@ export function hyroxReadiness(state = {}, todayISO) {
     if (ex.category === 'kb' && ['hinge', 'carry', 'squat', 'ballistic'].includes(ex.pattern)) heavy = Math.max(heavy, +x.kg || 0);
   }
   const owned = Math.max(0, ...((profile.bells || []).map((b) => +b.kg || 0)));
-  if (!heavy) heavy = owned * 0.8;
+  if (!heavy) heavy = Math.round(owned * 0.8 / 4) * 4;
   const strength = Math.round(clamp((heavy / spec) * 100, 0, 100));
 
   // Station practice

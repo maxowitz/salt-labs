@@ -1,11 +1,7 @@
 /* FORGE workout player + timers. Uses tokens from app.css. */
 
-/* ---------- Kind pills ---------- */
-.pill.kind-warmup, .pill.kind-cooldown { background: color-mix(in srgb, var(--recovery) 18%, transparent); color: var(--recovery); }
-.pill.kind-strength { background: var(--accent-soft); color: var(--accent); }
-.pill.kind-emom, .pill.kind-amrap, .pill.kind-circuit, .pill.kind-tabata { background: color-mix(in srgb, var(--build) 18%, transparent); color: var(--build); }
-.pill.kind-intervals, .pill.kind-cardio { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
-.pill.kind-station { background: color-mix(in srgb, var(--peak) 16%, transparent); color: var(--peak); }
+/* ---------- Kind pills: neutral (monotone) ---------- */
+.pill[class*="kind-"] { background: var(--surface-3); color: var(--text-2); }
 
 /* ---------- Empty / conflict ---------- */
 .wo-empty { min-height: 70dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 24px 8px; color: var(--muted); }
@@ -24,7 +20,7 @@
 .wo-pre-cta {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   padding: 12px 16px calc(12px + var(--safe-b));
-  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  background: var(--bg); border-top: 1px solid var(--line);
   max-width: 640px; margin: 0 auto;
 }
 .wo-start { min-height: 60px; font-size: 18px; }
@@ -40,20 +36,19 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .wo-head {
   position: sticky; top: 0; z-index: 25; display: flex; align-items: center; gap: 10px;
   margin: calc(-14px - var(--safe-t)) -16px 0; padding: calc(10px + var(--safe-t)) 12px 8px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: var(--bg); border-bottom: 1px solid var(--line);
 }
 .wo-head-mid { flex: 1; min-width: 0; text-align: center; line-height: 1.1; }
 .wo-head-title { font-size: 12.5px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
-.wo-elapsed { font-family: var(--font-display); font-weight: 800; font-size: 26px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.wo-elapsed { font-family: var(--font-display); font-weight: 700; font-size: 26px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .wo-head .icon-btn { width: 48px; height: 48px; color: var(--text); }
 .wo-pause { background: var(--surface-3) !important; }
 .wo-prog { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 2px 10px; }
 .wo-prog-bars { flex: 1; display: flex; gap: 4px; }
 .wo-prog-bars i { flex: 1; height: 5px; border-radius: 99px; background: var(--surface-3); transition: background .2s; }
-.wo-prog-bars i.done { background: var(--go); }
+.wo-prog-bars i.done { background: var(--text-2); }
 .wo-prog-bars i.cur { background: var(--accent); }
-.wo-prog-txt { font-size: 13px; font-weight: 800; color: var(--text-2); }
+.wo-prog-txt { font-size: 13px; font-weight: 700; color: var(--text-2); }
 .wo-main { display: flex; flex-direction: column; gap: 14px; }
 
 .wo-bhead { display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 0; }
@@ -65,8 +60,7 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
   display: flex; gap: 10px; align-items: center;
   max-width: 640px; margin: 0 auto;
   padding: 10px 16px calc(10px + var(--safe-b));
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: var(--bg);
   border-top: 1px solid var(--line);
 }
 .wo-foot .btn { min-height: 56px; border-radius: 16px; font-size: 16px; }
@@ -75,7 +69,7 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 
 /* ---------- Exercise cards / sets ---------- */
 .wo-ex { display: flex; flex-direction: column; gap: 12px; transition: border-color .2s; }
-.wo-ex.active { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.wo-ex.active { border-color: var(--line-2); }
 .wo-ex-head { display: flex; align-items: flex-start; gap: 8px; }
 .wo-ex-name { font-size: 19px; }
 .wo-ex-target { font-size: 14px; color: var(--text-2); margin-top: 3px; font-variant-numeric: tabular-nums; }
@@ -84,7 +78,7 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 
 .wo-bells { margin-top: -2px; }
 .wo-bell { min-height: 44px; padding: 6px 14px; flex-direction: column; gap: 0; line-height: 1.05; justify-content: center; }
-.wo-bell .num { font-weight: 800; font-size: 15px; color: var(--text); }
+.wo-bell .num { font-weight: 700; font-size: 15px; color: var(--text); }
 .wo-bell.on .num { color: var(--accent); }
 .wo-bell small { font-size: 10.5px; color: var(--muted); font-weight: 600; }
 .wo-bells-step { max-width: 240px; }
@@ -96,13 +90,14 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
   transition: background .2s, border-color .2s, opacity .2s;
 }
 .wo-set.cur { background: var(--surface-3); border-color: var(--line-2); }
-.wo-set.done { background: var(--go-soft); border-color: color-mix(in srgb, var(--go) 35%, transparent); }
-.wo-set-n { width: 20px; font-weight: 800; color: var(--muted); font-size: 14px; text-align: center; flex: none; }
+.wo-set.done { background: var(--surface); border-color: var(--line); }
+.wo-set.done .wo-set-kg, .wo-set.done .wo-set-reps { color: var(--text-2); }
+.wo-set-n { width: 20px; font-weight: 700; color: var(--muted); font-size: 14px; text-align: center; flex: none; }
 .wo-set-val { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
-.wo-set-kg { font-family: var(--font-display); font-size: 20px; font-weight: 800; display: flex; flex-direction: column; line-height: 1.05; white-space: nowrap; flex: none; }
+.wo-set-kg { font-family: var(--font-display); font-size: 20px; font-weight: 700; display: flex; flex-direction: column; line-height: 1.05; white-space: nowrap; flex: none; }
 .wo-set-kg small { font-family: var(--font); font-size: 11px; color: var(--muted); font-weight: 600; }
 .wo-x { color: var(--muted); font-weight: 700; flex: none; }
-.wo-set-reps { font-family: var(--font-display); font-size: 22px; font-weight: 800; white-space: nowrap; }
+.wo-set-reps { font-family: var(--font-display); font-size: 22px; font-weight: 700; white-space: nowrap; }
 .wo-set .stepper { flex: 1 1 auto; min-width: 0; max-width: 168px; background: var(--surface); gap: 0; }
 .wo-set .stepper .icon-btn { width: 36px; height: 46px; }
 .wo-set .stepper-val { font-size: 22px; min-width: 0; }
@@ -112,8 +107,8 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
   background: var(--surface); border: 2px solid var(--line-2); color: var(--muted);
   transition: transform .1s, background .15s, color .15s;
 }
-.wo-check.cur { background: var(--go); border-color: var(--go); color: var(--go-ink); width: 64px; height: 56px; box-shadow: 0 6px 18px color-mix(in srgb, var(--go) 25%, transparent); }
-.wo-check.done { background: var(--go); border-color: var(--go); color: var(--go-ink); }
+.wo-check.cur { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); width: 64px; height: 56px; }
+.wo-check.done { background: transparent; border-color: color-mix(in srgb, var(--go) 60%, transparent); color: var(--go); }
 .wo-check:active { transform: scale(.94); }
 .wo-addset { align-self: flex-start; }
 .wo-block-done { display: flex; align-items: center; gap: 8px; font-weight: 650; }
@@ -122,30 +117,30 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .wo-rest-dock { position: fixed; left: 0; right: 0; bottom: calc(77px + var(--safe-b)); z-index: 29; max-width: 640px; margin: 0 auto; padding: 0 10px; pointer-events: none; }
 .wo-rest-dock.on { pointer-events: auto; }
 .wo-rest {
-  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 20px; padding: 12px 14px;
-  box-shadow: var(--shadow); animation: woUp .28s var(--ease) both;
+  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 16px; padding: 12px 14px;
+  animation: woUp .28s var(--ease) both;
 }
 @keyframes woUp { from { transform: translateY(16px); opacity: 0; } }
 .wo-rest-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.wo-rest-time { font-family: var(--font-display); font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; color: var(--info); }
+.wo-rest-time { font-family: var(--font-display); font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; color: var(--text); }
 .wo-rest-time.warn { color: var(--accent); }
 .wo-rest-btns { display: flex; gap: 6px; }
 .wo-rest-btns .btn { min-height: 52px; padding: 0 12px; font-variant-numeric: tabular-nums; }
 .wo-rest-bar { margin-top: 10px; height: 6px; }
-.wo-rest-bar > i { background: var(--info); transition: width .25s linear; }
+.wo-rest-bar > i { background: var(--text-2); transition: width .25s linear; }
 .wo-rest-next { margin-top: 8px; font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Big timer face ---------- */
 .wo-stage { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px 0; }
-.tf { position: relative; width: min(78vw, 330px); aspect-ratio: 1; display: grid; place-items: center; --ph: var(--go); }
+.tf { position: relative; width: min(78vw, 330px); aspect-ratio: 1; display: grid; place-items: center; --ph: var(--text); }
 .tf.tf-md { width: min(58vw, 220px); }
 .tf-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
-.tf-track { stroke: var(--surface-3); stroke-width: 5; }
-.tf-arc { stroke: var(--ph); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset .25s linear, stroke .3s; }
+.tf-track { stroke: var(--line); stroke-width: 3; }
+.tf-arc { stroke: var(--ph); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .25s linear, stroke .3s; }
 .tf-center { position: relative; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.tf-phase { font-size: 14px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--ph); }
+.tf-phase { font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
 .tf-time {
-  font-family: var(--font-display); font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 1;
+  font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 1;
   font-size: clamp(64px, 22vw, 96px); color: var(--text);
 }
 .tf-time.long { font-size: clamp(48px, 16vw, 72px); }
@@ -153,23 +148,22 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .tf-md .tf-time.long { font-size: clamp(36px, 11vw, 46px); }
 .tf-sub { font-size: 13px; color: var(--muted); font-weight: 600; min-height: 18px; font-variant-numeric: tabular-nums; }
 .tf.phase-rest { --ph: var(--info); }
-.tf.phase-prep { --ph: var(--accent); }
-.tf.phase-idle { --ph: var(--muted); }
-.tf.phase-open { --ph: var(--go); }
+.tf.phase-rest .tf-phase { color: var(--info); }
+.tf.phase-prep { --ph: var(--muted); }
+.tf.phase-idle { --ph: var(--line-2); }
+.tf.phase-open { --ph: var(--text-2); }
 .tf.phase-done { --ph: var(--go); }
-.tf.phase-work .tf-ring { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--go) 25%, transparent)); }
+.tf.phase-done .tf-phase { color: var(--go); }
 .tf.warn .tf-time { color: var(--accent); }
-.tf.warn { animation: tfPulse 1s ease-in-out infinite; }
-@keyframes tfPulse { 50% { transform: scale(1.015); } }
 
 /* transport */
 .tc { display: flex; align-items: center; justify-content: center; gap: 22px; padding: 6px 0; }
 .tc-main {
   width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--text); color: var(--bg);
   transition: transform .1s;
 }
-.tc-main.paused { background: var(--go); color: var(--go-ink); box-shadow: 0 8px 24px color-mix(in srgb, var(--go) 30%, transparent); }
+.tc-main.paused { background: var(--accent); color: var(--accent-ink); }
 .tc-main:active { transform: scale(.94); }
 .tc-side { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); }
 .tc-side:disabled { opacity: .35; }
@@ -178,12 +172,12 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .rc { display: flex; gap: 10px; align-items: stretch; }
 .rc-minus { width: 64px; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--text-2); }
 .rc-plus {
-  flex: 1; min-height: 88px; border-radius: 20px; background: var(--go-soft); border: 2px solid var(--go); color: var(--text);
+  flex: 1; min-height: 88px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line-2); color: var(--text);
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 18px; transition: transform .08s;
 }
 .rc-plus:active { transform: scale(.97); }
-.rc-k { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--go); text-align: left; }
-.rc-val { font-family: var(--font-display); font-size: 48px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.rc-k { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: left; }
+.rc-val { font-family: var(--font-display); font-size: 48px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 .rc-hint { font-size: 12px; color: var(--muted); text-align: right; font-weight: 700; }
 
 /* timed block */
@@ -194,9 +188,9 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .wo-now { width: 100%; display: flex; flex-direction: column; gap: 6px; }
 .wo-now:empty { display: none; }
 .wo-item { display: flex; align-items: center; gap: 10px; min-height: 44px; width: 100%; }
-.wo-item-reps { font-family: var(--font-display); font-weight: 800; font-size: 18px; min-width: 44px; color: var(--accent); }
+.wo-item-reps { font-family: var(--font-display); font-weight: 700; font-size: 18px; min-width: 44px; color: var(--text); font-variant-numeric: tabular-nums; }
 .wo-item-name { flex: 1; min-width: 0; font-weight: 700; }
-.wo-item-kg { font-weight: 800; color: var(--text-2); }
+.wo-item-kg { font-weight: 700; color: var(--text-2); }
 .wo-item.big { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 8px 6px 8px 14px; }
 .wo-item.big .wo-item-reps { font-size: 30px; min-width: 56px; }
 .wo-item.big .wo-item-name { font-size: 18px; }
@@ -209,11 +203,11 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 
 /* cardio */
 .wo-cardio-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.wo-cardio-fields { grid-template-columns: 1.1fr 1fr 0.9fr; }
+.wo-cardio-fields.grid3 { grid-template-columns: 1.1fr 1fr 0.9fr; }
 .wo-cardio-fields input { font-variant-numeric: tabular-nums; font-weight: 700; text-align: center; padding: 10px 8px; }
-.wo-pace { text-align: center; font-weight: 800; color: var(--go); min-height: 20px; }
+.wo-pace { text-align: center; font-weight: 600; color: var(--text); min-height: 20px; }
 .wo-cardio.logged { border-color: color-mix(in srgb, var(--go) 40%, var(--line)); }
-.wo-cardio-done { display: flex; align-items: center; gap: 10px; color: var(--go); font-weight: 800; }
+.wo-cardio-done { display: flex; align-items: center; gap: 10px; color: var(--go); font-weight: 700; }
 .wo-cardio-done .num { flex: 1; color: var(--text); }
 
 /* checklist */
@@ -225,32 +219,32 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .wo-li.checked .wo-li-name { color: var(--muted); text-decoration: line-through; }
 .wo-li-name { display: block; font-weight: 700; }
 .wo-li-note { display: block; font-size: 12.5px; color: var(--muted); }
-.wo-li-time { font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--text-2); }
-.wo-li.running { background: var(--go-soft); }
-.wo-li.running .wo-li-time { color: var(--go); font-size: 24px; }
-.wo-li-play { margin-right: 6px; color: var(--go); }
+.wo-li-time { font-family: var(--font-display); font-weight: 700; font-size: 17px; color: var(--text-2); }
+.wo-li.running { background: var(--surface-2); }
+.wo-li.running .wo-li-time { color: var(--text); font-size: 24px; }
+.wo-li-play { margin-right: 6px; color: var(--text); }
 .wo-bullets { margin-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); }
 .wo-badge-done { background: var(--go); color: var(--go-ink); }
 
 /* pause veil */
-.wo-veil { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.wo-veil { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: var(--bg); }
 .wo-veil[hidden] { display: none; }
 .wo-veil-card { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
-.wo-veil-time { font-family: var(--font-display); font-size: 72px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; margin-bottom: 8px; }
+.wo-veil-time { font-family: var(--font-display); font-size: 72px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin-bottom: 8px; }
 
 /* ---------- Summary / done ---------- */
 .wo-sum-stats .stat .v { font-size: 26px; }
-.wo-prs { background: radial-gradient(120% 120% at 100% 0%, var(--go-soft), transparent 60%), var(--surface); border-color: color-mix(in srgb, var(--go) 40%, var(--line)); }
+.wo-prs { border-color: color-mix(in srgb, var(--go) 45%, var(--line)); }
 .wo-prs .row { color: var(--go); }
 .wo-prs h3 { color: var(--text); }
 .wo-prs ul { margin: 8px 0 0 20px; display: flex; flex-direction: column; gap: 4px; font-weight: 650; }
-.wo-rpe-val { font-family: var(--font-display); font-weight: 800; font-size: 28px; min-width: 36px; text-align: right; color: var(--accent); }
+.wo-rpe-val { font-family: var(--font-display); font-weight: 700; font-size: 28px; min-width: 36px; text-align: right; color: var(--text); }
 
 .wo-done { min-height: 80dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 24px 4px; }
 .wo-done-mark {
   width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 8px;
   background: var(--go); color: var(--go-ink);
-  box-shadow: 0 0 0 10px var(--go-soft), 0 0 0 22px color-mix(in srgb, var(--go) 6%, transparent);
+ 
   animation: woPop .6s var(--ease) both;
 }
 .wo-done-mark .ico { stroke-width: 2.6; }
@@ -265,12 +259,12 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 .tm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tm-row .stepper { width: 190px; }
 .tm-row .seg { width: 190px; }
-.tm-total { text-align: center; font-weight: 800; color: var(--text-2); font-size: 15px; }
+.tm-total { text-align: center; font-weight: 700; color: var(--text-2); font-size: 15px; }
 .tm-sw-hint { display: flex; align-items: center; gap: 12px; color: var(--text-2); }
 .tm-start { margin-top: 18px; min-height: 60px; font-size: 18px; }
 .view-timer .stack { margin-top: 12px; }
 .tm-run { display: flex; flex-direction: column; gap: 16px; }
-.tm-rounds { text-align: center; font-family: var(--font-display); font-weight: 800; font-size: 22px; min-height: 28px; color: var(--text-2); }
+.tm-rounds { text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; min-height: 28px; color: var(--text-2); }
 .tm-laps { max-height: 34dvh; overflow-y: auto; }
 
 @media (min-width: 700px) {
@@ -282,3 +276,5 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
 }
 
 .view-workout a.btn, .view-timer a.btn { text-decoration: none; }
+/* keep toasts above the player footer */
+body.wo-running #toast-root { bottom: calc(150px + var(--safe-b)); }

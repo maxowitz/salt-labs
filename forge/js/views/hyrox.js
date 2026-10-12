@@ -182,7 +182,7 @@ function stationCard(st, i, s) {
         h('div', { class: 'eyebrow' }, `1 km run → station ${i + 1}`),
         h('h3', null, st.name),
         h('div', { class: 'row wrap mt', style: { gap: '6px' } },
-          workFor(st, p.units) ? h('span', { class: 'pill accent' }, workFor(st, p.units)) : null,
+          workFor(st, p.units) ? h('span', { class: 'pill' }, workFor(st, p.units)) : null,
           spec ? h('span', { class: 'pill' }, spec) : null,
           best ? h('a', { class: 'pill go', href: '#/history/' + encodeURIComponent(best.id) }, icon('trophy', 12), fmtDur(best.timeSec)) : null))),
     (st.tips || []).length ? h('ul', { class: 'tr-cues small mt' }, st.tips.map((t) => h('li', null, String(t)))) : null,
@@ -247,7 +247,7 @@ export function benchmarkSheet(presetId) {
             }
             sess = saveSession(sess);
             close();
-            toast(sess.prs?.length ? `🏆 ${sess.prs[0]}` : `Logged ${fmtDur(t)} ✓`, { kind: 'go' });
+            toast(sess.prs?.length ? `PR · ${sess.prs[0]}` : `Logged ${fmtDur(t)} ✓`, { kind: 'go' });
           },
         },
       }, icon('check'), 'Save time')),

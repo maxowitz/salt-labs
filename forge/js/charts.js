@@ -16,7 +16,7 @@ export function ring({ value = 0, max = 1, size = 88, stroke = 9, color = 'var(-
   const svg = s('svg', { viewBox: `0 0 ${size} ${size}`, width: size, height: size, role: 'img', 'aria-label': `${label ?? ''} ${sub ?? ''}`.trim() });
   svg.append(s('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: track, 'stroke-width': stroke }));
   svg.append(s('circle', {
-    cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': stroke, 'stroke-linecap': 'round',
+    cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': stroke, 'stroke-linecap': p1 > 0 ? 'round' : 'butt',
     'stroke-dasharray': `${c * p1} ${c}`, transform: `rotate(-90 ${size / 2} ${size / 2})`,
     style: 'transition: stroke-dasharray .6s cubic-bezier(.22,1,.36,1)',
   }));

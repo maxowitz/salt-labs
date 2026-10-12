@@ -297,6 +297,7 @@ function sessionCard(s, today) {
   const changes = scaled?.changes || [];
   const tm = TYPE_META[w.type] || TYPE_META.strength;
   const blocks = (w.blocks || []).filter((b) => b.kind !== 'warmup' && b.kind !== 'cooldown');
+  const sameKind = blocks.length > 1 && blocks.every((b) => b.kind === blocks[0].kind);
   return h('section', { class: `card hero session-card type-${w.type || 'strength'}` },
     h('div', { class: 'row between' },
       h('div', { class: 'row' }, h('span', { class: 'pill' }, icon(tm.icon, 13), tm.label), w.phase ? h('span', { class: `pill ${w.phase}` }, w.phase) : null),
@@ -304,8 +305,8 @@ function sessionCard(s, today) {
     h('h2', { class: 'session-title' }, w.title || 'Today’s session'),
     w.summary ? h('p', { class: 'small dim' }, w.summary) : null,
     blocks.length ? h('ol', { class: 'block-peek' },
-      blocks.slice(0, 4).map((b) => h('li', null, h('span', { class: 'bk' }, blockKindLabel(b.kind)), h('span', { class: 'bt' }, b.title || '')))) : null,
-    (w.equipment || []).length ? h('div', { class: 'chips mt' }, w.equipment.slice(0, 5).map((e) => h('span', { class: 'chip sm' }, e))) : null,
+      blocks.slice(0, 4).map((b) => h('li', null, sameKind ? null : h('span', { class: 'bk' }, blockKindLabel(b.kind)), h('span', { class: 'bt' }, b.title || '')))) : null,
+    (w.equipment || []).length ? h('p', { class: 'xs muted mt' }, w.equipment.slice(0, 4).join(' · ') + (w.equipment.length > 4 ? ` +${w.equipment.length - 4}` : '')) : null,
     changes.length ? h('div', { class: 'callout scaled mt' },
       h('div', { class: 'row' }, icon('zap', 16), h('strong', null, `Auto-scaled for readiness ${Math.round(score)}`)),
       h('ul', null, changes.map((c) => h('li', null, c)))) : !Number.isFinite(score) ? h('p', { class: 'xs muted mt' }, 'Do your check-in above and FORGE will scale this session to how you feel.') : null,
