@@ -1,7 +1,8 @@
 // FORGE Me — profile, equipment, targets, plan, settings, data (docs/PROMPT.md §3.6).
 import { store, todayISO, daysBetween } from '../store.js';
 import { h, clear, icon, seg, sheet, toast, confirmDialog, navigate, num, fmtDur, fmtDate, fmtWeight,
-  toDisplayWeight, fromDisplayWeight, field, sectionHead } from '../ui.js';
+  toDisplayWeight, fromDisplayWeight, field, sectionHead, masthead } from '../ui.js';
+import { ribbon } from '../charts.js';
 import * as program from '../engine/program.js';
 import * as hyrox from '../engine/hyrox.js';
 import { validLock } from '../lock.js';
@@ -34,7 +35,7 @@ function openEditor(title, builder, checks = []) {
         commitDraft(draft);
         close();
         await applyProfile(cleanProfile(draft), before);
-      } } }, icon('check'), 'Save')),
+      } } }, 'Save')),
   });
 }
 
@@ -90,7 +91,6 @@ const checkGoal = (d) => (d.goalWeightKg != null && (!(d.goalWeightKg >= 35) || 
 // ---------- rows ----------
 function row(label, value, onClick, ic) {
   return h('button', { type: 'button', class: 'li me-row', on: { click: onClick } },
-    ic ? h('span', { class: 'badge' }, icon(ic, 18)) : null,
     h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, label), value ? h('div', { class: 'li-sub' }, value) : null),
     icon('chevR', 18));
 }
@@ -106,7 +106,7 @@ function profileSection(p, s) {
   const bw = [...(s?.bodyweight || [])].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
   const units = p.units;
   const exp = EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience);
-  return h('section', null, sectionHead('Profile'),
+  return h('section', null, sectionHead('Profile', null, 1),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       row('Name', String(p.name ?? '') || '—', () => openEditor('Name', nameEditor, [validate.name]), 'user'),
       row('Sex & age', `${p.sex === 'f' ? 'Female' : 'Male'} · ${p.age} yrs`, () => openEditor('Sex & age', sexAgeEditor, [validate.sexAge]), 'heart'),
@@ -146,7 +146,7 @@ function openHrSheet() {
 function equipmentSection(p) {
   const bells = (p.bells || []).map((b) => `${b.kg}${b.count === 2 ? '×2' : ''}`).join(' · ') || 'None';
   const eq = Object.entries(p.equipment || {}).filter(([, v]) => v).map(([k]) => ({ row: 'Rower', ski: 'SkiErg', bike: 'Bike', pullup: 'Pull-up bar', sandbag: 'Sandbag', wallball: 'Wall ball' }[k]));
-  return h('section', null, sectionHead('Equipment'),
+  return h('section', null, sectionHead('Equipment', null, 2),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       row('Kettlebells', `${bells} kg`, () => openEditor('Kettlebells owned', bellGrid, [validate.bells]), 'bell'),
       row('Cardio kit & 5 km', `Run${eq.length ? ' · ' + eq.join(' · ') : ''}${p.fiveKSec ? ` · 5 km ${fmtDur(p.fiveKSec)}` : ''}`,
@@ -180,11 +180,11 @@ function targetsSection(s, repaint) {
         h('div', { class: 'row gap mt' },
           h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => setT('kcal', macroKcal) } }, `Set kcal to ${num(macroKcal)}`),
           h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => setT('carbs', Math.max(0, Math.round(t.carbs - diff / 4))) } }, 'Balance with carbs')))
-      : h('p', { class: 'xs go' }, icon('check', 14), ` Macros match calories (4·P + 4·C + 9·F = ${num(macroKcal)} kcal).`)) : null;
-  return h('section', null, sectionHead('Nutrition targets'),
+      : h('p', { class: 'xs go' }, `✓ Macros match calories (4·P + 4·C + 9·F = ${num(macroKcal)} kcal).`)) : null;
+  return h('section', null, sectionHead('Nutrition targets', null, 3),
     h('div', { class: 'card' },
       h('div', { class: 'target-strip' },
-        [['kcal', t.kcal, '', 'var(--accent)'], ['Protein', t.protein, 'g', 'var(--protein)'], ['Carbs', t.carbs, 'g', 'var(--carbs)'], ['Fat', t.fat, 'g', 'var(--fat)'], ['Water', t.waterMl / 1000, 'L', 'var(--water)']]
+        [['kcal', t.kcal, '', 'var(--text-2)'], ['Protein', t.protein, 'g', 'var(--protein)'], ['Carbs', t.carbs, 'g', 'var(--carbs)'], ['Fat', t.fat, 'g', 'var(--fat)'], ['Water', t.waterMl / 1000, 'L', 'var(--water)']]
           .map(([k, v, u, c]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, num(v, u === 'L' ? 1 : 0), h('small', null, u)), h('span', { class: 'k' }, h('i', { class: 'swatch', style: { background: c } }), k)))),
       h('div', { class: 'list mt' },
         toggleRow('Automatic targets', t.auto ? 'Computed from your profile, goal and weight' : 'Manual — edit below', !!t.auto, (on) => {
@@ -204,13 +204,13 @@ function planSection(s) {
   const P = safe(() => program.PHASES, {}) || {};
   const raceTxt = p.raceDate ? `${fmtDate(p.raceDate, { month: 'short', day: 'numeric', year: 'numeric' })} · ${Math.max(0, daysBetween(today, p.raceDate))} days` : `No race booked (${NO_RACE_WEEKS}-week block)`;
   const div = DIVISIONS.find((d) => d.value === p.division)?.label || cap(p.division);
-  return h('section', null, sectionHead('Plan'),
+  return h('section', null, sectionHead('Plan', null, 4),
     h('div', { class: 'card flush' },
       plan ? h('div', { class: 'me-plan' },
         h('div', { class: 'row between' },
-          h('div', null, h('div', { class: 'eyebrow' }, 'Current plan'), h('div', { class: 'card-title' }, `${plan.weeks.length} weeks`)),
+          h('div', null, h('div', { class: 'eyebrow' }, 'Current plan'), h('div', { class: 'card-title' }, h('span', { class: 'fig me-weeks' }, String(plan.weeks.length)), ' weeks')),
           h('div', { class: 'right xs muted' }, `Started ${fmtDate(plan.startDate || plan.weeks[0]?.days[0]?.date)}`, h('br'), plan.generatedAt ? `Built ${fmtDate(String(plan.generatedAt).slice(0, 10))}` : '')),
-        h('div', { class: 'phase-bar mt' }, plan.weeks.map((w) => h('i', { style: { flexGrow: '1', background: `var(--${w.phase})`, opacity: w.deload ? 0.5 : 1 }, title: `Week ${w.index + 1}: ${P[w.phase]?.label || w.phase}` }))))
+        h('div', { class: 'mt' }, safe(() => ribbon({ weeks: plan.weeks, current: Math.max(-1, Math.min(plan.weeks.length, Math.floor(daysBetween(plan.weeks[0]?.days[0]?.date || todayISO(), todayISO()) / 7))), ariaLabel: `${plan.weeks.length}-week plan` }), null)))
         : h('div', { class: 'me-plan' }, h('p', { class: 'muted small' }, 'No plan yet.')),
       h('div', { class: 'list' },
         row('Race & division', `${raceTxt} · ${div}`, () => openEditor('Your race', raceEditor, [validate.race]), 'flag'),
@@ -218,13 +218,13 @@ function planSection(s) {
         h('button', { type: 'button', class: 'li me-row', on: { click: async () => {
           const ok = await confirmDialog('Rebuild your plan from today using your current profile, bells and race date? Your logged sessions, PRs and food log are kept.' + (s.activeWorkout ? ' The workout in progress will keep running.' : ''), { ok: 'Regenerate' });
           if (ok) regenerate();
-        } } }, h('span', { class: 'badge' }, icon('repeat', 18)), h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Regenerate plan'), h('div', { class: 'li-sub' }, 'Keeps your history')), icon('chevR', 18)))));
+        } } }, h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Regenerate plan'), h('div', { class: 'li-sub' }, 'Keeps your history')), icon('chevR', 18)))));
 }
 
 function settingsSection(s) {
   const st = s.settings;
   const setS = (k, v) => store.update((x) => { x.settings[k] = v; });
-  return h('section', null, sectionHead('Settings'),
+  return h('section', null, sectionHead('Settings', null, 5),
     h('div', { class: 'card stack' },
       h('div', { class: 'stack sm' }, h('span', { class: 'field-label' }, 'Units'),
         seg([['imperial', 'Imperial'], ['metric', 'Metric']], s.profile.units, (v) => store.update((x) => { x.profile.units = v; }), { label: 'Units' })),
@@ -398,8 +398,7 @@ function backupCard(host, sy, pers) {
   const usage = pers?.usage ?? store.exportJSON().length * 2;
   const persisted = pers?.persisted;
   const stor = h('div', { class: 'list' },
-    h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('settings', 18)),
-      h('span', { class: 'li-main' },
+    h('div', { class: 'li' }, h('span', { class: 'li-main' },
         h('div', { class: 'li-title' }, persisted ? 'Protected storage' : 'Standard storage'),
         h('div', { class: 'li-sub wrap' }, `${fmtBytes(usage)} used${pers?.quota ? ` of ${fmtBytes(pers.quota)}` : ''} · ${persisted ? 'browser won’t auto-clear it' : 'browser may clear it if space runs low'}`)),
       persisted ? h('span', { class: 'pill go' }, 'On')
@@ -411,26 +410,23 @@ function backupCard(host, sy, pers) {
 
   let cloud;
   if (!sy || !st) {
-    cloud = h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('upload', 18)),
-      h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'), h('div', { class: 'li-sub' }, 'Unavailable in this build')));
+    cloud = h('div', { class: 'li' }, h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'), h('div', { class: 'li-sub' }, 'Unavailable in this build')));
   } else if (!st.enabled) {
     cloud = h('div', { class: 'li li-col' },
-      h('div', { class: 'row gap' }, h('span', { class: 'badge' }, icon('upload', 18)),
-        h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'),
+      h('div', { class: 'row gap' }, h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'),
           h('div', { class: 'li-sub wrap' }, st.serverAvailable === false ? 'Server not reachable right now — FORGE works offline; backup needs the FORGE server.' : 'Off · encrypted on this device with your passphrase'))),
       h('button', { type: 'button', class: 'btn primary block', disabled: st.serverAvailable === false, on: { click: () => enableCloud(sy) } }, 'Turn on encrypted backup'));
   } else {
     const line = st.lastError ? `Last attempt failed: ${st.lastError}` : st.pending ? `Changes waiting · last synced ${ago(st.lastSyncAt)}` : `Last synced ${ago(st.lastSyncAt)}`;
     cloud = h('div', { class: 'li li-col' },
-      h('div', { class: 'row gap' }, h('span', { class: 'badge' }, icon('check', 18)),
-        h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup', h('span', { class: 'pill go sync-pill' }, 'On')),
+      h('div', { class: 'row gap' }, h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup', h('span', { class: 'pill go sync-pill' }, 'On')),
           h('div', { class: 'li-sub wrap' + (st.lastError ? ' danger-text' : '') }, line))),
       h('div', { class: 'grid2' },
         h('button', { type: 'button', class: 'btn subtle', on: { click: async (e) => {
           const b = e.currentTarget; b.disabled = true;
           try { await sy.syncNow(); toast('Synced', { kind: 'go', ms: 1500 }); } catch (err) { toast('Sync failed: ' + (err.message || err), { kind: 'danger', ms: 5000 }); }
           b.disabled = false;
-        } } }, icon('repeat', 18), 'Sync now'),
+        } } }, 'Sync now'),
         h('button', { type: 'button', class: 'btn ghost', on: { click: async () => {
           const ok = await confirmDialog('Stop backing up this device? Your data stays here, and the encrypted copy on the server is kept so you can turn backup on again with the same passphrase.', { ok: 'Turn off' });
           if (!ok) return;
@@ -445,8 +441,8 @@ function backupCard(host, sy, pers) {
 
   const files = h('div', { class: 'stack sm me-files' },
     h('div', { class: 'grid2' },
-      h('button', { type: 'button', class: 'btn subtle', disabled: !sy?.exportEncrypted, on: { click: exportEncrypted } }, icon('download', 18), 'Encrypted export'),
-      h('button', { type: 'button', class: 'btn subtle', on: { click: importData } }, icon('upload', 18), 'Import file')),
+      h('button', { type: 'button', class: 'btn subtle', disabled: !sy?.exportEncrypted, on: { click: exportEncrypted } }, 'Encrypted export'),
+      h('button', { type: 'button', class: 'btn subtle', on: { click: importData } }, 'Import file')),
     h('button', { type: 'button', class: 'btn ghost sm', on: { click: exportPlain } }, 'Export unencrypted JSON'),
     h('p', { class: 'xs muted' }, `Last file backup: ${ago(s.settings.lastBackupAt)}. Unencrypted files are readable by anyone who gets them. ${s.sessions.length} sessions · ${Object.keys(s.foodLog).length} food days · ${s.bodyweight.length} weigh-ins.`));
 
@@ -462,13 +458,13 @@ async function paintBackup(host) {
 function backupSection() {
   const host = h('div', { id: 'backup' }, h('div', { class: 'card' }, h('div', { class: 'skeleton', style: { height: '120px' } })));
   paintBackup(host);
-  return h('section', { id: 'backup-section' }, sectionHead('Backup & sync'), host);
+  return h('section', { id: 'backup-section' }, sectionHead('Backup & sync', null, 7), host);
 }
 
 function lockSection(s) {
   const l = s.settings.lock || {};
   const on = validLock(l);
-  return h('section', null, sectionHead('App lock'),
+  return h('section', null, sectionHead('App lock', null, 6),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       toggleRow('Passcode lock', on ? `${l.digits || 4}-digit passcode · locks after ${l.timeoutMin === 0 ? 'leaving the app' : `${l.timeoutMin ?? 5} min away`}` : 'Ask for a 4–6 digit code when FORGE opens',
         on, async (want) => { const m = await import('../lock.js'); if (want) await m.setupFlow(); else await m.disableFlow(); paintAll(); }),
@@ -480,7 +476,7 @@ function lockSection(s) {
 let paintAll = () => {};
 
 function dangerSection() {
-  return h('section', null, sectionHead('Danger zone'),
+  return h('section', null, sectionHead('Danger zone', null, 8),
     h('div', { class: 'card' },
       h('button', { type: 'button', class: 'btn ghost danger-text block', on: { click: async () => {
         const ok = await confirmDialog('Erase ALL FORGE data on this device — profile, plan, sessions, food log and settings? This cannot be undone. Cloud backups (if on) are not deleted.', { ok: 'Erase everything', danger: true });
@@ -488,7 +484,7 @@ function dangerSection() {
         store.reset();
         toast('All data erased');
         navigate('#/onboarding');
-      } } }, icon('trash', 18), 'Reset all data')));
+      } } }, 'Reset all data')));
 }
 
 function openInstallSheet() {
@@ -506,11 +502,10 @@ function openInstallSheet() {
 }
 
 function aboutSection() {
-  return h('section', null, sectionHead('About'),
+  return h('section', null, sectionHead('About', null, 9),
     h('div', { class: 'card flush' }, h('div', { class: 'list' },
       row('Install as app', 'iOS: Share → Add to Home Screen', openInstallSheet, 'download'),
-      h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('info', 18)),
-        h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, `FORGE ${VERSION}`), h('div', { class: 'li-sub' }, 'Kettlebell · Engine · HYROX · Fuel. Local-first, offline-ready.'))))),
+      h('div', { class: 'li' }, h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, `FORGE ${VERSION}`), h('div', { class: 'li-sub' }, 'Kettlebell · Engine · HYROX · Fuel. Local-first, offline-ready.'))))),
     h('p', { class: 'xs muted center mt' }, 'Not medical advice. Listen to your body; consult a professional before starting a new program.'));
 }
 
@@ -523,13 +518,14 @@ export function render(root, params = {}) {
     const y = window.scrollY;
     const pname = String(p.name ?? '').trim();
     const initial = pname[0]?.toUpperCase() || 'F';
-    clear(root).append(h('div', { class: 'me stack' },
+    clear(root).append(h('div', { class: 'me' },
+      masthead(`HYROX ${cap(p.division)}`),
       h('header', { class: 'me-head' },
         h('div', { class: 'avatar', 'aria-hidden': 'true' }, initial),
         h('div', { class: 'grow' },
           h('h1', null, pname || 'Athlete'),
           h('div', { class: 'row wrap mt-xs' },
-            h('span', { class: 'pill accent' }, `HYROX ${cap(p.division)}`),
+            h('span', { class: 'pill' }, `HYROX ${cap(p.division)}`),
             h('span', { class: 'pill' }, EXPERIENCE.find((e) => e.value === p.experience)?.label || cap(p.experience)),
             h('span', { class: 'pill' }, `${p.daysPerWeek}×/wk`)))),
       profileSection(p, s),

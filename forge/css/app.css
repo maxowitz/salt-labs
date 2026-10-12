@@ -20,6 +20,7 @@
   --line-2: #4A463E;
   --rule-ink: #ECE6DA;        /* heavy rule under mastheads / above key tables */
   --tick-off: #34312A;        /* unfilled tick */
+  --line-ctl: #716B60;        /* form-control boundary, ≥ 3:1 (WCAG 1.4.11) */
   --text: #ECE6DA;
   --text-2: #B8B0A2;
   --muted: #8E877B;
@@ -46,10 +47,6 @@
   --plate-ink: #13120F;
   --plate-line: #A39C8E;
   --plate-accent: #8E3E1D;
-  /* legacy tint aliases — kept so un-migrated view CSS keeps working; DESIGN §3 retires them in Phase B */
-  --go-soft: color-mix(in srgb, var(--go) 12%, transparent);
-  --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
-  --shadow: none;
 
   --radius: 3px;              /* controls */
   --radius-sm: 3px;
@@ -78,6 +75,7 @@
   --line-2: #ADA595;
   --rule-ink: #1C1A16;
   --tick-off: #D3CCBD;
+  --line-ctl: #857D71;
   --text: #1C1A16;
   --text-2: #48433B;
   --muted: #6B6458;
@@ -192,7 +190,7 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 }
 .section-head h2::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--line); min-width: 12px; }
 .section-head > :last-child:not(h2):not(.ix) { flex: none; }
-.section-head .link-btn { padding: 0; min-height: 32px; display: inline-flex; align-items: center; }
+.section-head .link-btn { padding: 0 2px; min-height: 44px; margin: -10px 0; display: inline-flex; align-items: center; }
 
 /* ---------- Cards → ruled regions (no floating boxes) ---------- */
 .card {
@@ -210,8 +208,6 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .card.clickable:hover, .card.clickable:active { background: var(--surface-2); }
 .card-title { font-family: var(--font); font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; }
 .divider { height: 1px; background: var(--line); margin: 12px 0; border: 0; }
-/* Phase A shim: these view rules assumed 16px card padding; neutralise the negative margins until Phase B migrates them. */
-:root .rest-list, :root .me .card.stack > .list, :root .me .card > .list.mt { margin-left: 0; margin-right: 0; margin-bottom: 0; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -224,7 +220,8 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 }
 .btn:hover { background: var(--surface-2); }
 .btn:active { background: var(--surface-3); }
-.btn:disabled { opacity: .4; pointer-events: none; }
+.btn:disabled { opacity: .45; pointer-events: none; }
+.btn.primary:disabled, .btn.go:disabled { opacity: 1; background: transparent; border-color: var(--line); color: var(--muted); }
 .btn .k { font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: .04em; opacity: .85; margin-left: auto; }
 .btn:has(> .k) { justify-content: space-between; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -236,7 +233,7 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.danger:hover { background: var(--surface-2); }
 .btn.subtle { background: transparent; border-color: var(--line-2); }
-.btn.sm { min-height: 40px; padding: 0 12px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: .02em; }
+.btn.sm { min-height: 44px; padding: 0 12px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: .02em; }
 .btn.xl { min-height: 52px; font-size: 16px; }
 .btn.block { width: 100%; }
 .icon-btn {
@@ -248,12 +245,12 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .icon-btn.on { color: var(--accent); }
 .link-btn {
   color: var(--accent); font-family: var(--font-mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
-  padding: 6px 2px; min-height: 36px; text-decoration: none;
+  padding: 6px 2px; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none;
 }
 
 /* ---------- Chips (square tags) / pills (stamps) ---------- */
 .chip {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 36px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; min-height: 44px; white-space: nowrap;
   border-radius: var(--radius-xs); background: transparent; border: 1px solid var(--line-2);
   font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: .01em; color: var(--text-2);
   text-decoration: none;
@@ -263,6 +260,7 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
 .chips.scroll::-webkit-scrollbar { display: none; }
+.chips.scroll > * { flex: none; white-space: nowrap; }
 .pill {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: var(--radius-xs);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.4;
@@ -314,43 +312,46 @@ h4 { font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-tran
 .field-hint { font-size: 12.5px; color: var(--muted); }
 .input, input[type="text"], input[type="number"], input[type="date"], input[type="search"], input[type="email"], input[type="time"], input[type="password"], select, textarea {
   width: 100%; min-height: 48px; padding: 10px 12px; border-radius: var(--radius);
-  background: var(--surface); border: 1px solid var(--line-2); color: var(--text);
+  background: var(--surface); border: 1px solid var(--line-ctl); color: var(--text);
   font-size: 16px; /* prevents iOS zoom */
 }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 textarea { min-height: 90px; resize: vertical; }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--line-2); box-shadow: none; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--line-ctl); box-shadow: none; }
 input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px; }
 input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--text); }
 .input-unit { position: relative; }
 .input-unit input { padding-right: 48px; }
 .input-unit span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-family: var(--font-mono); font-size: 12px; pointer-events: none; }
 .search {
-  display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line-2);
+  display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line-ctl);
   border-radius: var(--radius); padding: 0 12px; min-height: 48px; color: var(--muted);
 }
 .search:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 .search input { border: 0; background: transparent; padding: 0; min-height: 46px; box-shadow: none !important; outline: none !important; }
 
-.seg { display: flex; background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius); padding: 0; gap: 0; overflow: hidden; }
+.seg { display: flex; background: transparent; border: 1px solid var(--line-ctl); border-radius: var(--radius); padding: 0; gap: 0; overflow: hidden; }
 .seg button {
-  flex: 1 1 0; min-height: 40px; border-radius: 0; padding: 0 8px; border-left: 1px solid var(--line-2);
+  flex: 1 1 0; min-height: 44px; border-radius: 0; padding: 0 6px; border-left: 1px solid var(--line-ctl);
   font-family: var(--font-mono); font-weight: 500; font-size: 12px; letter-spacing: .02em; color: var(--text-2);
 }
 .seg button:first-child { border-left: 0; }
 .seg button:hover { background: var(--surface-2); }
 .seg button.on { background: var(--text); color: var(--bg); }
 
-.stepper { display: flex; align-items: center; gap: 0; background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius); padding: 0; }
+.stepper { display: flex; align-items: center; gap: 0; background: transparent; border: 1px solid var(--line-ctl); border-radius: var(--radius); padding: 0; }
 .stepper .icon-btn { border-radius: 0; }
 .stepper-val { flex: 1; text-align: center; font-family: var(--font-fig); font-weight: 600; font-size: 24px; font-variant-numeric: tabular-nums; min-width: 56px; }
 
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
 .toggle { position: relative; width: 46px; height: 26px; flex: none; }
 .toggle input { opacity: 0; width: 100%; height: 100%; position: absolute; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
-.toggle span { position: absolute; inset: 0; border-radius: var(--radius-xs); background: transparent; border: 1px solid var(--line-2); transition: background .15s var(--ease); }
+.toggle span { position: absolute; inset: 0; border-radius: var(--radius-xs); background: transparent; border: 1px solid var(--line-ctl); transition: background .15s var(--ease); }
 .toggle span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 1px; background: var(--muted); transition: transform .15s var(--ease), background .15s; }
 .toggle input:checked + span { background: var(--text); border-color: var(--text); }
 .toggle input:checked + span::after { transform: translateX(20px); background: var(--bg); }
+.toggle input:checked + span::before { content: "✓"; position: absolute; left: 7px; top: 50%; transform: translateY(-50%); font-size: 11px; line-height: 1; color: var(--bg); }
 .toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- Progress: tick meters (DESIGN §5.3) + legacy bar ---------- */
@@ -464,7 +465,9 @@ button.rb-cell:hover { color: var(--text); }
 .toast.show { transform: none; opacity: 1; }
 .toast.go::before, .toast.danger::before { content: ""; width: 3px; align-self: stretch; flex: none; background: var(--go); }
 .toast.danger::before { background: var(--danger); }
-.toast-action { color: var(--plate-accent); font-family: var(--font-mono); font-weight: 500; text-transform: uppercase; font-size: 11.5px; letter-spacing: .06em; min-height: 32px; }
+.toast-action { color: var(--plate-accent); font-family: var(--font-mono); font-weight: 500; text-transform: uppercase; font-size: 11.5px; letter-spacing: .06em; min-height: 44px; padding: 0 4px; }
+/* never cover an open sheet's buttons: toasts move to the top while a sheet is open */
+body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 
 /* ---------- Empty ---------- */
 .empty { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 6px; padding: 20px 0; color: var(--muted); }

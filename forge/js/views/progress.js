@@ -1,8 +1,8 @@
 // FORGE Progress — trends, PRs, HYROX readiness and adherence (docs/PROMPT.md §3.5).
 import { store, sel, todayISO, addDays, daysBetween } from '../store.js';
 import { h, clear, icon, seg, num, fmtDur, fmtDate, fmtWeight, fmtBell, bellLb, fmtDist, fmtPace,
-  toDisplayWeight, emptyState, sectionHead, M_PER_MI, KG_PER_LB } from '../ui.js';
-import { lineChart, barChart, heatmap, gauge, ring } from '../charts.js';
+  toDisplayWeight, emptyState, sectionHead, fig, masthead, M_PER_MI, KG_PER_LB } from '../ui.js';
+import { lineChart, barChart, heatmap, ticks, zoneRuler } from '../charts.js';
 import * as coach from '../engine/coach.js';
 import * as hyrox from '../engine/hyrox.js';
 import * as nutrition from '../engine/nutrition.js';
@@ -77,7 +77,7 @@ function xLabelsFor(startISO, days, n = 4) {
 function weightSection(s, today, startISO, days) {
   const units = s.profile.units;
   const all = [...s.bodyweight].sort((a, b) => a.date.localeCompare(b.date));
-  const head = sectionHead('Body weight', h('button', { type: 'button', class: 'btn sm subtle', on: { click: openWeightSheet } }, icon('plus', 16), 'Log'));
+  const head = sectionHead('Body weight', h('button', { type: 'button', class: 'link-btn', on: { click: openWeightSheet } }, '+ Log'), 1);
   if (!all.length) {
     return h('section', null, head, h('div', { class: 'card' }, emptyState('scale', 'No weigh-ins yet', 'Log your weight a few mornings a week to see your true trend.',
       h('button', { type: 'button', class: 'btn ghost sm', on: { click: openWeightSheet } }, 'Log weight'))));
@@ -98,7 +98,7 @@ function weightSection(s, today, startISO, days) {
     ? h('div', { class: 'chart-empty center' }, h('p', { class: 'small' }, `Log ${3 - all.length} more weigh-in${3 - all.length === 1 ? '' : 's'} to see your trend.`), h('p', { class: 'xs muted' }, 'Weigh in a few mornings a week, after the bathroom, before food.'))
     : raw.length
     ? lineChart({
-      series: [{ points: raw, color: 'var(--muted)', width: 0.001, dots: true, dotOpacity: 0.55 }, { points: trend, color: 'var(--accent)', width: 2.6 }],
+      series: [{ points: raw, color: 'var(--muted)', width: 0.001, dots: true, dotOpacity: 0.55 }, { points: trend, color: 'var(--accent)', width: 1.8 }],
       xLabels: xLabelsFor(startISO, days), yFmt: (v) => num(v, 0), goal: goalKg ? toY(goalKg) : undefined, height: 170,
       ariaLabel: `Body weight trend, latest ${num(latestTrend, 1)} ${u}`,
     })
@@ -107,7 +107,7 @@ function weightSection(s, today, startISO, days) {
     h('div', { class: 'card' },
       h('div', { class: 'grid3' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(latestTrend, 1), h('small', null, u)), h('span', { class: 'k' }, 'Trend weight')),
-        h('div', { class: 'stat' }, h('span', { class: 'v ' + (delta < 0 ? 'go' : delta > 0 ? 'accent' : '') }, signed(delta, 1), h('small', null, u)), h('span', { class: 'k' }, 'This range')),
+        h('div', { class: 'stat' }, h('span', { class: 'v' }, signed(delta, 1), h('small', null, u)), h('span', { class: 'k' }, 'This range')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, perWeek == null ? '–' : signed(perWeek, 2)), h('span', { class: 'k' }, `${u} / week`))),
       h('div', { class: 'chart-wrap mt' }, chart),
       h('div', { class: 'legend' },
@@ -123,7 +123,7 @@ function trainingSection(s, today, startISO, days, repaint) {
   const weeks = Array.from({ length: nWeeks }, (_, i) => addDays(thisMon, -7 * (nWeeks - 1 - i)));
   const summaries = weeks.map((w) => safe(() => coach.weekSummary(s.sessions, w), null) || localWeekSummary(s.sessions, w));
   const totals = summaries.reduce((a, x) => ({ count: a.count + (x.count || 0), minutes: a.minutes + (x.minutes || 0), kb: a.kb + (x.kbVolumeKg || 0), run: a.run + (x.runM || 0) }), { count: 0, minutes: 0, kb: 0, run: 0 });
-  const head = sectionHead('Training', h('a', { class: 'link-btn', href: '#/history' }, 'History'));
+  const head = sectionHead('Training', h('a', { class: 'link-btn', href: '#/history' }, 'History'), 2);
   if (!s.sessions.length) {
     return h('section', null, head, h('div', { class: 'card' }, emptyState('bell', 'No sessions logged yet', 'Finish your first workout and your weekly volume, minutes and run distance show up here.',
       h('a', { class: 'btn ghost sm', href: '#/today' }, 'Go to today’s session'))));
@@ -164,44 +164,43 @@ function loadSection(s, today) {
     spike: ['Spike — back off', 'A sharp jump in load raises injury risk. Swap the next hard day for Zone 2 or recovery.'],
   }[tl.chronic > 0 ? tl.status : 'none'] || ['Building data', 'Log a couple of weeks of training to see your acute:chronic ratio.'];
   const colors = { low: 'var(--info)', optimal: 'var(--go)', high: 'var(--warn)', spike: 'var(--danger)' };
-  return h('div', { class: 'card load-card' },
-    h('div', { class: 'eyebrow' }, 'Training load · ACWR'),
-    h('div', { class: 'row gap load-row' },
-      h('div', { class: 'gauge-wrap' }, gauge({ value: Math.min(2, ratio), max: 2, size: 168, label: s.sessions.length ? num(ratio, 2) : '–', sub: 'acute : chronic',
-      })),
+  return h('section', { class: 'load-card' },
+    sectionHead('Training load', h('span', { class: 'lbl' }, 'Acute : chronic'), 3),
+    h('div', { class: 'load-row' },
+      h('div', { class: 'load-fig' }, fig(s.sessions.length ? num(ratio, 2) : '–'), h('span', { class: 'lbl' }, 'ACWR')),
       h('div', { class: 'grow' },
         h('div', { class: 'card-title', style: { color: (tl.chronic > 0 && colors[tl.status]) || 'var(--text)' } }, desc[0]),
-        h('p', { class: 'small dim' }, desc[1]),
-        h('p', { class: 'xs muted mt' }, `7-day ${num(tl.acute)} · 28-day avg ${num(tl.chronic)}`))));
+        h('p', { class: 'small dim' }, desc[1]))),
+    zoneRuler({ value: Math.min(2, ratio), max: 2, label: `ACWR ${num(ratio, 2)}`, sub: desc[0],
+      zones: [{ to: 0.8, color: 'var(--tick-off)', label: 'Low' }, { to: 1.3, color: 'var(--go)', label: 'Sweet spot 0.8–1.3' }, { to: 2, color: 'var(--tick-off)', label: 'High' }],
+      fmt: (v) => num(v, 1) }),
+    h('p', { class: 'data mt' }, `7-day ${num(tl.acute)} · 28-day avg ${num(tl.chronic)} · sweet spot 0.8–1.3`));
 }
 
 function prSection(s) {
   const units = s.profile.units;
   const pr = computePRs(s.sessions);
   const recent = s.sessions.filter((x) => x.prs?.length).slice(-5).reverse();
-  const tiles = [];
-  for (const l of pr.lifts.slice(0, 6)) {
-    tiles.push(h('div', { class: 'pr-tile' },
-      h('div', { class: 'pr-v' }, fmtBell(l.kg), h('small', null, ` × ${l.reps}`)),
-      h('div', { class: 'pr-k' }, safe(() => getExercise(l.exId)?.name, null) || l.exId),
-      h('div', { class: 'pr-d' }, `${bellLb(l.kg)} · ${fmtDate(l.date, { month: 'short', day: 'numeric' })}`)));
-  }
+  const rows = [];
+  const row = (k, v, unit, sub) => h('div', { class: 'pr-row lrow' },
+    h('span', { class: 'pr-k' }, k), h('span', { class: 'pr-d data' }, sub), h('span', { class: 'pr-v' }, fig(v, unit)));
   const special = [
-    pr.mostSwings && ['Most swings', `${num(pr.mostSwings.reps)}`, 'in one session', pr.mostSwings.date],
-    pr.best1k && ['Fastest 1 km', fmtDur(pr.best1k.sec), units === 'metric' ? '' : fmtPace(pr.best1k.sec, units), pr.best1k.date],
-    pr.best5k && ['Fastest 5 km', fmtDur(pr.best5k.sec), fmtPace(pr.best5k.sec / 5, units), pr.best5k.date],
+    pr.mostSwings && ['Most swings', num(pr.mostSwings.reps), 'reps', `one session · ${fmtDate(pr.mostSwings.date, { month: 'short', day: 'numeric' })}`],
+    pr.best1k && ['Fastest 1 km', fmtDur(pr.best1k.sec), '', [units === 'metric' ? '' : fmtPace(pr.best1k.sec, units), fmtDate(pr.best1k.date, { month: 'short', day: 'numeric' })].filter(Boolean).join(' · ')],
+    pr.best5k && ['Fastest 5 km', fmtDur(pr.best5k.sec), '', `${fmtPace(pr.best5k.sec / 5, units)} · ${fmtDate(pr.best5k.date, { month: 'short', day: 'numeric' })}`],
   ].filter(Boolean);
-  for (const [k, v, sub, d] of special) {
-    tiles.unshift(h('div', { class: 'pr-tile hot' }, h('div', { class: 'pr-v' }, v), h('div', { class: 'pr-k' }, k), h('div', { class: 'pr-d' }, [sub, fmtDate(d, { month: 'short', day: 'numeric' })].filter(Boolean).join(' · '))));
+  for (const [k, v, u, sub] of special) rows.push(row(k, v, u, sub));
+  for (const l of pr.lifts.slice(0, 6)) {
+    rows.push(row(safe(() => getExercise(l.exId)?.name, null) || l.exId, num(l.kg, l.kg % 1 ? 1 : 0), `kg × ${l.reps}`, `${bellLb(l.kg)} · ${fmtDate(l.date, { month: 'short', day: 'numeric' })}`));
   }
-  const head = sectionHead('Personal records');
-  if (!tiles.length) {
-    return h('section', null, head, h('div', { class: 'card' }, emptyState('trophy', 'No PRs yet', 'Heaviest bell per lift, most swings, fastest 1 km and 5 km — they land here automatically as you log.')));
+  const head = sectionHead('Personal records', null, 4);
+  if (!rows.length) {
+    return h('section', null, head, emptyState('trophy', 'No PRs yet', 'Heaviest bell per lift, most swings, fastest 1 km and 5 km — they land here automatically as you log.'));
   }
   return h('section', null, head,
-    h('div', { class: 'pr-grid' }, tiles),
-    recent.length ? h('div', { class: 'card tight mt' }, h('div', { class: 'eyebrow mb' }, 'Recent PRs'),
-      h('ul', { class: 'pr-recent' }, recent.flatMap((x) => x.prs.map((p) => h('li', null, icon('trophy', 14), h('span', { class: 'grow' }, p), h('span', { class: 'xs muted' }, fmtDate(x.date, { month: 'short', day: 'numeric' }))))).slice(0, 8))) : null);
+    h('div', { class: 'pr-ledger ledger' }, rows),
+    recent.length ? h('div', { class: 'mt' }, h('div', { class: 'eyebrow mb' }, 'Recent PRs'),
+      h('ul', { class: 'pr-recent' }, recent.flatMap((x) => x.prs.map((p) => h('li', null, h('span', { class: 'stamp go' }, 'PR'), h('span', { class: 'grow' }, p), h('span', { class: 'data' }, fmtDate(x.date, { month: 'short', day: 'numeric' }))))).slice(0, 8))) : null);
 }
 
 function hyroxSection(s, today) {
@@ -220,25 +219,25 @@ function hyroxSection(s, today) {
     }
   }
   const score = Math.round(hr?.score || 0);
-  const color = score >= 75 ? 'var(--go)' : score >= 50 ? 'var(--build)' : 'var(--accent)';
   return h('section', null,
-    sectionHead('HYROX', h('a', { class: 'link-btn', href: '#/hyrox' }, 'Race hub')),
-    h('div', { class: 'card hero' },
-      h('div', { class: 'row gap' },
-        hr ? ring({ value: score, max: 100, size: 92, stroke: 9, color, label: String(score), sub: 'ready' }) : null,
+    sectionHead('HYROX', h('a', { class: 'link-btn', href: '#/hyrox' }, 'Race hub'), 5),
+    h('div', { class: 'hx-card' },
+      h('div', { class: 'hx-top' },
         h('div', { class: 'grow' },
           h('div', { class: 'eyebrow' }, 'Predicted finish'),
-          h('div', { class: 'pred-time num' }, pred?.totalSec ? fmtDur(pred.totalSec) : '–'),
+          h('div', { class: 'pred-time fig' }, pred?.totalSec ? fmtDur(pred.totalSec) : '–'),
           pred ? h('div', { class: 'row wrap' }, h('span', { class: 'pill ' + (pred.confidence === 'high' ? 'go' : pred.confidence === 'med' ? 'build' : '') }, `${pred.confidence || 'low'} confidence`),
-            pred.runSec ? h('span', { class: 'xs muted' }, `Run ${fmtDur(pred.runSec)} · Stations ${fmtDur(pred.stationSec || 0)}`) : null) : null)),
+            pred.runSec ? h('span', { class: 'data' }, `run ${fmtDur(pred.runSec)} · stations ${fmtDur(pred.stationSec || 0)}`) : null) : null),
+        hr ? h('div', { class: 'hx-ready' }, h('span', { class: 'lbl' }, 'Readiness'), fig(score, '/100')) : null),
+      hr ? ticks({ value: score, max: 100, n: 41, label: `HYROX readiness ${score} of 100` }) : null,
       trend.length > 1 ? h('div', { class: 'chart-wrap mt' }, lineChart({
-        series: [{ points: trend, color: 'var(--accent)', dots: true, area: true }], height: 110, yFmt: (v) => fmtDur(v * 60).replace(/:\d\d$/, ''),
+        series: [{ points: trend, color: 'var(--accent)', dots: true }], height: 110, yFmt: (v) => fmtDur(v * 60).replace(/:\d\d$/, ''),
         xLabels: [{ x: trend[0].x, label: `${-trend[0].x / 7}w ago` }, { x: 0, label: 'Now' }], ariaLabel: 'Predicted finish trend' }))
         : h('p', { class: 'xs muted mt' }, pred?.basis?.length ? `Based on: ${pred.basis.slice(0, 3).join(' · ')}` : 'Log benchmark runs and station work to sharpen your prediction and see the trend.'),
       (hr?.parts || []).length ? h('div', { class: 'hr-parts mt' },
         hr.parts.map((p) => h('div', { class: 'hr-part' },
-          h('div', { class: 'row between small' }, h('span', null, p.label), h('span', { class: 'num muted' }, String(Math.round(p.score)))),
-          h('div', { class: 'bar thin' }, h('i', { style: { width: `${Math.max(2, Math.min(100, p.score))}%`, background: p.score >= 70 ? 'var(--go)' : p.score >= 45 ? 'var(--build)' : 'var(--accent)' } })),
+          h('div', { class: 'row between small' }, h('span', null, p.label), h('span', { class: 'num data' }, String(Math.round(p.score)))),
+          ticks({ value: Math.max(0, Math.min(100, p.score)), max: 100, n: 21, label: `${p.label} ${Math.round(p.score)} of 100` }),
           p.tip ? h('div', { class: 'xs muted' }, p.tip) : null))) : null));
 }
 
@@ -254,21 +253,21 @@ function adherenceSection(s, today, repaint) {
     kcal += t.kcal; prot += t.p; tk += dt.kcal; tp += dt.protein;
     if (Math.abs(t.kcal - dt.kcal) <= dt.kcal * 0.1) inRange++;
   }
-  const head = sectionHead('Nutrition adherence', seg([[7, '7 days'], [30, '30 days']], adhDays, (v) => { adhDays = v; repaint(); }, { label: 'Adherence range' }));
+  const head = sectionHead('Fuel adherence', seg([[7, '7D'], [30, '30D']], adhDays, (v) => { adhDays = v; repaint(); }, { label: 'Adherence range' }), 6);
   if (!logged) {
-    return h('section', null, head, h('div', { class: 'card' }, emptyState('fuel', 'Nothing logged yet', `No food logged in the last ${adhDays} days. Log meals in Fuel to see how close you’re tracking to target.`,
+    return h('section', null, head, h('div', null, emptyState('fuel', 'Nothing logged yet', `No food logged in the last ${adhDays} days. Log meals in Fuel to see how close you’re tracking to target.`,
       h('a', { class: 'btn ghost sm', href: '#/fuel?add=auto' }, 'Log food'))));
   }
   const avgK = kcal / logged, avgP = prot / logged, tgK = tk / logged, tgP = tp / logged;
   const row = (label, v, t, unit, color) => {
     const pct = t ? (v / t) * 100 : 0;
     return h('div', { class: 'adh-row' },
-      h('div', { class: 'row between' }, h('span', { class: 'small' }, label), h('span', { class: 'num small' }, h('strong', null, num(v)), ` / ${num(t)} ${unit}`, h('span', { class: 'muted' }, ` · ${num(pct)}%`))),
-      h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, pct)}%`, background: 'var(--text-2)' } })));
+      h('div', { class: 'row between' }, h('span', { class: 'small' }, label), h('span', { class: 'num small' }, h('strong', null, num(v)), h('span', { class: 'data' }, ` / ${num(t)} ${unit} · ${num(pct)}%`))),
+      ticks({ value: v, max: t || 1, n: 41, label: `${label} ${num(pct)}% of target` }));
   };
   return h('section', null, head,
-    h('div', { class: 'card stack' },
-      h('div', { class: 'grid3' },
+    h('div', { class: 'stack' },
+      h('div', { class: 'stat-row' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, `${logged}`, h('small', null, `/${adhDays}`)), h('span', { class: 'k' }, 'days logged')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(inRange)), h('span', { class: 'k' }, 'within ±10 % kcal')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, num(avgP / Math.max(1, sel.latestWeight(s)), 1), h('small', null, 'g/kg')), h('span', { class: 'k' }, 'protein'))),
@@ -280,14 +279,14 @@ function adherenceSection(s, today, repaint) {
 function heatmapSection(s) {
   const byDate = new Map();
   for (const x of s.sessions) byDate.set(x.date, (byDate.get(x.date) || 0) + Math.max(20, (x.durationSec || 0) / 60));
-  const head = sectionHead('Activity', h('a', { class: 'link-btn', href: '#/history' }, 'All sessions'));
+  const head = sectionHead('Activity', h('a', { class: 'link-btn', href: '#/history' }, 'All sessions'), 7);
   const activeDays = byDate.size;
   return h('section', null, head,
     h('div', { class: 'card' },
-      h('div', { class: 'heat-wrap' }, heatmap({ days: [...byDate].map(([date, min]) => ({ date, value: Math.min(1, min / 75) })), weeks: 18, cell: 13, gap: 3 })),
+      h('div', { class: 'heat-wrap' }, heatmap({ days: [...byDate].map(([date, min]) => ({ date, value: Math.min(1, min / 75) })), weeks: 18, cell: 13, gap: 3, color: 'var(--text)' })),
       h('div', { class: 'row between mt' },
         h('span', { class: 'xs muted' }, activeDays ? `${activeDays} active day${activeDays === 1 ? '' : 's'} logged` : 'Every session you finish lights up a square.'),
-        h('span', { class: 'heat-scale xs muted' }, 'Less', h('i', { style: { opacity: 0.25 } }), h('i', { style: { opacity: 0.55 } }), h('i', null), 'More'))));
+        h('span', { class: 'heat-scale data' }, 'less', h('i', { style: { opacity: 0.35 } }), h('i', { style: { opacity: 0.65 } }), h('i', null), 'more'))));
 }
 
 export function render(root) {
@@ -298,7 +297,8 @@ export function render(root) {
     const days = RANGES[rangeKey] ?? Math.max(28, daysBetween(firstData, today));
     const startISO = addDays(today, -days);
     const y = window.scrollY;
-    clear(root).append(h('div', { class: 'progress stack' },
+    clear(root).append(h('div', { class: 'progress' },
+      masthead(fmtDate(today, { weekday: 'short', day: 'numeric', month: 'short' })),
       h('header', { class: 'page-head' }, h('h1', null, 'Progress'),
         h('div', { class: 'range-seg' }, seg([['4w', '4W'], ['12w', '12W'], ['all', 'All']], rangeKey, (v) => { rangeKey = v; paint(); }, { label: 'Range' }))),
       weightSection(s, today, startISO, days),
@@ -308,7 +308,7 @@ export function render(root) {
       hyroxSection(s, today),
       adherenceSection(s, today, paint),
       heatmapSection(s),
-      h('a', { class: 'btn ghost block mt-lg', href: '#/history' }, icon('list', 18), 'Workout history')));
+      h('a', { class: 'btn ghost block mt-lg', href: '#/history' }, h('span', null, 'Workout history'), h('span', { class: 'k' }, '→'))));
     window.scrollTo(0, y);
   };
   paint();

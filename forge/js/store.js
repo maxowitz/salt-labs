@@ -94,6 +94,7 @@ export function isISODate(v) {
 }
 const str = (v, max = 200, dflt = '') => (typeof v === 'string' ? v.slice(0, max) : typeof v === 'number' && Number.isFinite(v) ? String(v) : dflt);
 const fin = (v, lo, hi, dflt) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; };
+const opt = (v, lo, hi) => (v == null || v === '' ? (v ?? null) : fin(v, lo, hi, null)); // optional numbers stay empty
 const oneOf = (v, opts, dflt) => (opts.includes(v) ? v : dflt);
 const objs = (v) => (Array.isArray(v) ? v.filter(isObj) : []);
 
@@ -125,8 +126,8 @@ function sanitizeDeep(out, def) {
     title: str(x.title, 120, 'Session'),
     type: str(x.type, 30, 'strength'),
     durationSec: fin(x.durationSec, 0, 24 * 3600, 0),
-    sets: objs(x.sets).map((st) => ({ ...st, exId: str(st.exId, 80), kg: fin(st.kg, 0, 200, 0), reps: fin(st.reps, 0, 1000, 0), timeSec: fin(st.timeSec, 0, 24 * 3600, 0), distanceM: fin(st.distanceM, 0, 300000, 0) })),
-    cardio: objs(x.cardio).map((c) => ({ ...c, mode: str(c.mode, 20, 'run'), distanceM: fin(c.distanceM, 0, 300000, 0), timeSec: fin(c.timeSec, 0, 24 * 3600, 0), avgHr: c.avgHr == null ? null : fin(c.avgHr, 30, 240, null) })),
+    sets: objs(x.sets).map((st) => ({ ...st, exId: str(st.exId, 80), kg: opt(st.kg, 0, 200), reps: opt(st.reps, 0, 1000), timeSec: opt(st.timeSec, 0, 24 * 3600), distanceM: opt(st.distanceM, 0, 300000) })),
+    cardio: objs(x.cardio).map((c) => ({ ...c, mode: str(c.mode, 20, 'run'), distanceM: opt(c.distanceM, 0, 300000), timeSec: opt(c.timeSec, 0, 24 * 3600), avgHr: c.avgHr == null ? null : fin(c.avgHr, 30, 240, null) })),
     prs: Array.isArray(x.prs) ? x.prs.filter((t) => typeof t === 'string').map((t) => t.slice(0, 200)) : [],
     notes: str(x.notes, 2000),
     rpe: x.rpe == null ? null : fin(x.rpe, 1, 10, null),

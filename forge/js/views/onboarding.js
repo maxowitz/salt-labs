@@ -3,6 +3,7 @@
 import { store, todayISO, addDays, daysBetween, defaultState } from '../store.js';
 import { h, clear, icon, seg, field, toast, navigate, haptic, num, parseDur, fmtDur, fmtDate, fmtPace,
   toDisplayWeight, fromDisplayWeight, KG_PER_LB, bellLb } from '../ui.js';
+import { ribbon } from '../charts.js';
 import * as program from '../engine/program.js';
 import * as nutrition from '../engine/nutrition.js';
 import * as hyrox from '../engine/hyrox.js';
@@ -91,7 +92,7 @@ function choiceCards(options, value, onPick, { name, cols = 1 } = {}) {
       on: { click: () => { haptic(); onPick(o.value); } },
     },
     h('span', { class: 'ob-choice-main' },
-      h('span', { class: 'ob-choice-label' }, o.label, o.tag ? h('span', { class: 'pill go ob-tag' }, o.tag) : null),
+      h('span', { class: 'ob-choice-label' }, o.label, o.tag ? h('span', { class: 'pill ob-tag' }, o.tag) : null),
       o.desc ? h('span', { class: 'ob-choice-desc' }, o.desc) : null),
     h('span', { class: 'ob-radio', 'aria-hidden': 'true' }, o.value === value ? icon('check', 16) : null))));
 }
@@ -169,7 +170,7 @@ export function bellGrid(d, ctx) {
         },
         h('span', { class: 'bell-kg' }, String(kg), h('small', null, 'kg')),
         h('span', { class: 'bell-lb' }, bellLb(kg)),
-        h('span', { class: 'bell-count' }, c === 2 ? '× 2' : c === 1 ? '× 1' : '—'));
+        h('span', { class: 'bell-count' }, c === 2 ? 'Pair ×2' : c === 1 ? 'Single' : '—'));
       })),
     h('p', { class: 'field-hint center' }, 'Tap to cycle: none → single → pair. ',
       owned.length ? `${owned.length} size${owned.length > 1 ? 's' : ''} · ${owned.reduce((a, [, c]) => a + c, 0)} bells` : 'No bells selected yet.'));
@@ -196,7 +197,7 @@ export function equipmentEditor(d, ctx, { showFiveK = true } = {}) {
   showPaces();
   return h('div', { class: 'stack lg' },
     h('div', { class: 'equip-grid' },
-      h('div', { class: 'equip-tile on locked', 'aria-label': 'Running: always included' }, h('span', null, 'Running'), h('small', null, 'Always included')),
+      h('div', { class: 'equip-tile on locked', 'aria-label': 'Running: always included' }, h('span', null, 'Running'), h('small', null, 'Always on')),
       EQUIPMENT.map((e) => h('button', {
         type: 'button', class: 'equip-tile' + (eq[e.key] ? ' on' : ''), 'aria-pressed': String(!!eq[e.key]),
         on: { click: () => { haptic(); eq[e.key] = !eq[e.key]; ctx.refresh(); } },
@@ -216,7 +217,7 @@ export function daysEditor(d, ctx) {
       [3, 4, 5, 6].map((n) => h('button', {
         type: 'button', role: 'radio', 'aria-checked': String(d.daysPerWeek === n), class: 'day-tile' + (d.daysPerWeek === n ? ' on' : ''),
         on: { click: () => { haptic(); d.daysPerWeek = n; d._daysTouched = true; ctx.refresh(); } },
-      }, h('span', { class: 'day-n' }, String(n)), h('span', { class: 'day-k' }, 'days'), n === rec ? h('span', { class: 'pill go' }, 'Recommended') : null))),
+      }, h('span', { class: 'day-n' }, String(n)), h('span', { class: 'day-k' }, 'days'), n === rec ? h('span', { class: 'pill' }, 'Suggested') : null))),
     h('div', { class: 'callout info' }, DAYS_INFO[d.daysPerWeek] || ''));
 }
 
@@ -336,22 +337,21 @@ function summary(d) {
     plan ? h('div', { class: 'card hero ob-plan' },
       h('div', { class: 'row between top' },
         h('div', null, h('div', { class: 'eyebrow' }, 'Training plan'),
-          h('div', { class: 'ob-big' }, String(weeks.length), h('small', null, ' weeks'))),
+          h('div', { class: 'ob-big fig' }, String(weeks.length), h('small', { class: 'unit' }, 'weeks'))),
         h('div', { class: 'right' }, h('div', { class: 'eyebrow' }, profile.raceDate ? 'Race day' : 'Target'), h('div', { class: 'card-title' }, race))),
-      h('div', { class: 'phase-bar', 'aria-label': 'Phases' },
-        phases.map((ph) => h('i', { style: { flexGrow: String(ph.n), background: phaseColor(ph.phase) }, title: `${P[ph.phase]?.label || ph.phase}: ${ph.n} wk` }))),
-      h('div', { class: 'phase-legend' },
-        phases.map((ph) => h('span', null, h('span', { class: 'dot', style: { background: phaseColor(ph.phase) } }), `${P[ph.phase]?.label || ph.phase} · ${ph.n} wk`))),
-      h('div', { class: 'grid3 mt' },
+      ribbon({ weeks, current: 0, ariaLabel: phases.map((ph) => `${P[ph.phase]?.label || ph.phase} ${ph.n} weeks`).join(', ') }),
+      h('div', { class: 'phase-legend data' },
+        phases.map((ph) => h('span', null, `${P[ph.phase]?.label || ph.phase} · ${ph.n} wk`))),
+      h('div', { class: 'stat-row mt' },
         h('div', { class: 'stat' }, h('span', { class: 'v' }, String(profile.daysPerWeek)), h('span', { class: 'k' }, 'days / week')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, (profile.division || 'open').replace(/^./, (c) => c.toUpperCase())), h('span', { class: 'k' }, 'division')),
         h('div', { class: 'stat' }, h('span', { class: 'v' }, String(profile.bells.reduce((a, b) => a + b.count, 0))), h('span', { class: 'k' }, 'bells')))) : null,
     targets ? h('div', { class: 'card' },
       h('div', { class: 'row between' }, h('div', { class: 'eyebrow' }, 'Daily nutrition targets'), h('span', { class: 'pill' }, GOALS.find((g) => g.value === profile.goal)?.label || '')),
       h('div', { class: 'ob-kcal' }, num(targets.kcal), h('small', null, ' kcal')),
-      h('div', { class: 'grid4 ob-macros' },
+      h('div', { class: 'stat-row ob-macros' },
         [['Protein', targets.protein, 'g', '--protein'], ['Carbs', targets.carbs, 'g', '--carbs'], ['Fat', targets.fat, 'g', '--fat'], ['Water', targets.waterMl / 1000, 'L', '--water']]
-          .map(([k, v, u, c]) => h('div', { class: 'stat' }, h('span', { class: 'v', style: { color: `var(${c})` } }, num(v, u === 'L' ? 1 : 0), h('small', null, u)), h('span', { class: 'k' }, k)))),
+          .map(([k, v, u, c]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, num(v, u === 'L' ? 1 : 0), h('small', null, u)), h('span', { class: 'k' }, h('i', { class: 'swatch', style: { background: `var(${c})` } }), k)))),
       h('p', { class: 'field-hint mt' }, 'Carbs flex ±10 % on training vs rest days. Targets adapt to your weight trend after two weeks.')) : null,
     h('div', { class: 'card tight' }, h('div', { class: 'list' },
       [['Athlete', `${profile.name} · ${profile.sex === 'f' ? 'F' : 'M'} · ${profile.age}`],
@@ -435,16 +435,17 @@ export function render(root) {
     }
     paintBody();
     const nextBtn = h('button', { type: 'button', class: 'btn primary xl block', on: { click: (e) => (last ? finish(e.currentTarget) : go(1)) } },
-      last ? [icon('flame', 20), 'Forge my plan'] : stepIdx === 0 ? 'Get started' : ['Continue', icon('chevR', 18)]);
+      last ? [h('span', null, 'Forge my plan'), h('span', { class: 'k' }, '→')] : stepIdx === 0 ? 'Get started' : [h('span', null, 'Continue'), h('span', { class: 'k' }, `${String(stepIdx + 2).padStart(2, '0')} →`)]);
     clear(root).append(h('div', { class: 'ob' },
       h('header', { class: 'ob-top' },
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Back', disabled: stepIdx === 0, style: { visibility: stepIdx === 0 ? 'hidden' : 'visible' }, on: { click: () => go(-1) } }, icon('chevL')),
-        h('div', { class: 'ob-dots', role: 'progressbar', 'aria-valuemin': '1', 'aria-valuemax': String(STEPS.length), 'aria-valuenow': String(stepIdx + 1), 'aria-label': `Step ${stepIdx + 1} of ${STEPS.length}` },
-          STEPS.map((_, i) => h('i', { class: i < stepIdx ? 'done' : i === stepIdx ? 'on' : '' }))),
+        h('div', { class: 'ob-prog', role: 'progressbar', 'aria-valuemin': '1', 'aria-valuemax': String(STEPS.length), 'aria-valuenow': String(stepIdx + 1), 'aria-label': `Step ${stepIdx + 1} of ${STEPS.length}` },
+          h('span', { class: 'lbl ink ob-count' }, `${String(stepIdx + 1).padStart(2, '0')} / ${String(STEPS.length).padStart(2, '0')}`),
+          h('div', { class: 'ob-dots' }, STEPS.map((_, i) => h('i', { class: i < stepIdx ? 'done' : i === stepIdx ? 'on' : '' })))),
         step.skippable ? h('button', { type: 'button', class: 'link-btn ob-skip', on: { click: () => { SKIP_DEFAULTS[step.id]?.(draft, defaultState().profile); error = null; dir = 1; stepIdx++; paint(); } } }, 'Skip') : h('span', { class: 'ob-skip' })),
       h('section', { class: 'ob-step ' + (dir > 0 ? 'in-r' : 'in-l'), 'aria-labelledby': 'ob-title' },
-        stepIdx === 0 ? h('div', { class: 'ob-brand', 'aria-hidden': 'true' }, h('span', { class: 'ob-mark' }, icon('bell', 34)), 'FORGE') : null,
-        h('div', { class: 'eyebrow' }, `${step.eyebrow} · ${stepIdx + 1}/${STEPS.length}`),
+        stepIdx === 0 ? h('div', { class: 'ob-brand wordmark', 'aria-hidden': 'true' }, 'FORGE') : null,
+        h('div', { class: 'eyebrow' }, step.eyebrow),
         h('h1', { id: 'ob-title', class: 'ob-title' }, step.id === 'sexAge' && String(draft.name ?? '').trim() ? `Nice to meet you, ${String(draft.name).trim()}.` : step.title),
         step.sub ? h('p', { class: 'ob-sub' }, step.sub) : null,
         body, errEl),

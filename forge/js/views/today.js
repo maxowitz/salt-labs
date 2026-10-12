@@ -1,8 +1,8 @@
 // FORGE Today — the hero screen (docs/PROMPT.md §3.2).
 import { store, sel, todayISO, addDays, daysBetween } from '../store.js';
 import { h, clear, icon, toast, sheet, navigate, haptic, num, fmtDur, fmtDate, fmtWeight, fmtBell,
-  toDisplayWeight, fromDisplayWeight, stepper, sectionHead } from '../ui.js';
-import { ring } from '../charts.js';
+  toDisplayWeight, fromDisplayWeight, stepper, sectionHead, fig, masthead } from '../ui.js';
+import { ticks, ribbon } from '../charts.js';
 import * as program from '../engine/program.js';
 import * as coach from '../engine/coach.js';
 import * as hyrox from '../engine/hyrox.js';
@@ -172,39 +172,43 @@ function headerBlock(s, today) {
   const days = raceDate ? daysBetween(today, raceDate) : null;
   const P = safe(() => program.PHASES, {}) || {};
   const name = String(s.profile.name ?? '').trim();
-  return h('header', { class: 'today-head' },
-    h('div', { class: 'today-hello' },
-      h('div', { class: 'eyebrow' }, fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' })),
-      h('h1', null, greeting(), name ? ',' : '', name ? h('br') : null, name ? h('span', { class: 'today-name' }, name) : null),
-      ph ? h('div', { class: 'row wrap mt' },
-        h('span', { class: `pill ${ph.phase}` }, P[ph.phase]?.label || ph.phase),
-        h('span', { class: 'pill' }, ph.before ? 'Starts soon' : ph.after ? 'Plan complete' : `Week ${ph.weekNo} of ${ph.total}`),
-        ph.deload ? h('span', { class: 'pill recovery' }, 'Deload') : null) : null),
-    days != null && days >= 0 ? h('div', { class: 'countdown', role: 'img', 'aria-label': `${days} days to ${s.profile.raceDate ? 'race' : 'target date'}` },
-      h('span', { class: 'countdown-n' }, String(days)),
-      h('span', { class: 'countdown-k' }, days === 1 ? 'day to' : 'days to', h('br'), s.profile.raceDate ? 'HYROX' : 'target')) : null);
+  const dateline = fmtDate(today, { weekday: 'short', day: 'numeric', month: 'short' }) + (ph && !ph.before && !ph.after ? ` · Wk ${String(ph.weekNo).padStart(2, '0')}/${String(ph.total).padStart(2, '0')}` : '');
+  const phaseLine = !ph ? null : ph.before ? 'Your plan starts soon.' : ph.after ? 'Plan complete — time to set the next goal.'
+    : `${P[ph.phase]?.label || ph.phase} phase, week ${ph.weekNo} of ${ph.total}${ph.deload ? ' — deload, keep it easy.' : '.'}`;
+  const weeks = s.plan?.weeks || [];
+  const cur = ph && !ph.before && !ph.after ? ph.weekNo - 1 : ph?.after ? weeks.length : -1;
+  return h('div', { class: 'today-top' },
+    masthead(dateline),
+    h('header', { class: 'today-head' + (days != null && days >= 0 ? '' : ' solo') },
+      h('div', { class: 'today-hello' },
+        h('h1', null, greeting(), name ? ',' : '', name ? h('br') : null, name ? h('span', { class: 'today-name' }, name + '.') : null),
+        phaseLine ? h('p', { class: 'today-sub' }, phaseLine) : null),
+      days != null && days >= 0 ? h('div', { class: 'countdown', role: 'img', 'aria-label': `${days} days to ${s.profile.raceDate ? 'race' : 'target date'}` },
+        h('span', { class: 'lbl' }, s.profile.raceDate ? 'HYROX' : 'Target'),
+        h('div', null, h('span', { class: 'countdown-n fig' }, String(days)), h('span', { class: 'countdown-k lbl' }, days === 1 ? 'Day out' : 'Days out'))) : null),
+    weeks.length ? safe(() => ribbon({ weeks, current: cur, ariaLabel: phaseLine || 'Plan weeks' }), null) : null);
 }
 
 function readinessCard(s, today, ui, repaint) {
   const saved = s.readiness[today];
   const score = saved?.score;
-  // Answered → one summary line.
+  // Answered → figure + tick meter + the four answers.
   if (saved && Number.isFinite(score) && !ui.editing) {
     const band = readinessBand(score);
-    return h('section', { class: `card readiness done ${band.key}`, 'aria-label': 'Readiness' },
-      h('div', { class: 'row gap' },
-        ring({ value: score, max: 100, size: 44, stroke: 5, color: band.color, label: String(Math.round(score)) }),
-        h('div', { class: 'grow rd-line' },
-          h('div', { class: 'rd-title' }, `Readiness ${Math.round(score)} · ${band.title}`),
-          h('div', { class: 'xs muted' }, band.short)),
-        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Edit readiness check-in', on: { click: () => { ui.editing = true; ui.open = true; ui.picks = { ...saved }; repaint(); } } }, icon('edit', 18))));
+    return h('section', { class: `readiness done ${band.key}`, 'aria-label': 'Readiness' },
+      h('span', { class: 'rd-score fig' }, String(Math.round(score))),
+      h('div', { class: 'grow rd-line' },
+        h('div', { class: 'row between' },
+          h('div', { class: 'rd-title' }, band.title),
+          h('button', { type: 'button', class: 'icon-btn rd-edit', 'aria-label': 'Edit readiness check-in', on: { click: () => { ui.editing = true; ui.open = true; ui.picks = { ...saved }; repaint(); } } }, icon('edit', 18))),
+        ticks({ value: score, max: 100, n: 41, color: band.color, label: `Readiness ${Math.round(score)} of 100` }),
+        h('div', { class: 'data rd-data' }, `${band.short} sleep ${saved.sleep} · sore ${saved.soreness} · energy ${saved.energy} · stress ${saved.stress}`)));
   }
-  // Collapsed → a single row that expands in place.
+  // Collapsed → a single ruled row that expands in place.
   if (!ui.open) {
-    return h('button', { type: 'button', class: 'card readiness rd-collapsed', 'aria-expanded': 'false', on: { click: () => { ui.open = true; repaint(); } } },
-      h('span', { class: 'rd-ico', 'aria-hidden': 'true' }, icon('heart', 18)),
-      h('span', { class: 'grow rd-line' }, h('span', { class: 'rd-title' }, 'How ready are you?'), h('span', { class: 'xs muted' }, 'Check in (10 s) — today’s session adapts')),
-      icon('chevR', 18));
+    return h('button', { type: 'button', class: 'readiness rd-collapsed', 'aria-expanded': 'false', on: { click: () => { ui.open = true; repaint(); } } },
+      h('span', { class: 'grow rd-line' }, h('span', { class: 'rd-title' }, 'How ready are you?'), h('span', { class: 'data' }, '10-second check-in · today’s session adapts')),
+      h('span', { class: 'lbl acc' }, 'Check in'), icon('chevR', 18));
   }
   const picks = ui.picks || (ui.picks = {});
   const answered = READINESS_Q.filter((q) => picks[q.key]).length;
@@ -215,15 +219,15 @@ function readinessCard(s, today, ui, repaint) {
     ui.editing = false; ui.open = false; ui.picks = null;
     haptic(20);
   };
-  return h('section', { class: 'card readiness rd-open', 'aria-label': 'Readiness check-in' },
+  return h('section', { class: 'readiness rd-open', 'aria-label': 'Readiness check-in' },
     h('div', { class: 'row between' },
       h('div', { class: 'rd-title' }, 'How ready are you?'),
       h('div', { class: 'row' },
-        h('span', { class: 'xs muted num', 'aria-live': 'polite' }, `${answered} of 4`),
+        h('span', { class: 'lbl num', 'aria-live': 'polite' }, `${answered} / 4`),
         h('button', { type: 'button', class: 'link-btn', on: { click: () => { ui.editing = false; ui.open = false; ui.picks = null; repaint(); } } }, ui.editing ? 'Cancel' : 'Later'))),
     h('div', { class: 'rq-list' },
       READINESS_Q.map((q) => h('div', { class: 'rq' },
-        h('div', { class: 'rq-head' }, h('span', { class: 'rq-label' }, q.label), h('span', { class: 'rq-ends' }, `${q.lo} → ${q.hi}`)),
+        h('div', { class: 'rq-head' }, h('span', { class: 'rq-label' }, q.label), h('span', { class: 'rq-ends data' }, `1 ${q.lo.toLowerCase()} → 5 ${q.hi.toLowerCase()}`)),
         h('div', { class: 'rq-picks', role: 'radiogroup', 'aria-label': `${q.label}, 1 ${q.lo} to 5 ${q.hi}` },
           [1, 2, 3, 4, 5].map((n) => h('button', {
             type: 'button', role: 'radio', 'aria-checked': String(picks[q.key] === n), 'aria-label': `${q.label} ${n}${n === 1 ? ' ' + q.lo : n === 5 ? ' ' + q.hi : ''}`,
@@ -245,6 +249,12 @@ function sessionSummary(sess) {
   return { vol, dist, sets: (sess.sets || []).length };
 }
 
+const BLOCK_LETTER = (i) => String.fromCharCode(65 + (i % 26));
+
+function statRow(items) {
+  return h('div', { class: 'stat-row' }, items.filter(Boolean).map(([v, unit, k]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, v, unit ? h('small', null, unit) : null), h('span', { class: 'k' }, k))));
+}
+
 function sessionCard(s, today) {
   const units = s.profile.units;
   const volTxt = (kg) => (units === 'metric' ? num(Math.round(kg)) : num(Math.round(kg / 0.45359237)));
@@ -254,52 +264,52 @@ function sessionCard(s, today) {
   const workout = wfd?.workout || null;
 
   if (!s.plan) {
-    return h('section', { class: 'card hero session-card' },
-      h('div', { class: 'eyebrow' }, 'No plan yet'), h('div', { class: 'card-title' }, 'Build your training plan'),
-      h('p', { class: 'small dim mt' }, 'Your plan was cleared. Regenerate it from Me → Plan.'),
+    return h('section', { class: 'session-card' },
+      h('div', { class: 'eyebrow' }, 'No plan yet'), h('h2', { class: 'session-title' }, 'Build your training plan'),
+      h('p', { class: 'small dim' }, 'Your plan was cleared. Regenerate it from Me → Plan.'),
       h('a', { class: 'btn primary block mt', href: '#/me' }, 'Go to plan settings'));
   }
 
-  const resumeBtn = active ? h('a', { class: 'btn go xl block', href: `#/workout/${encodeURIComponent(active.workoutId || 'free')}` }, icon('play', 20),
-    `Resume ${safe(() => program.getWorkout(s.plan, active.workoutId)?.title, null) || 'workout'}`) : null;
+  const resumeBtn = active ? h('a', { class: 'btn primary xl block', href: `#/workout/${encodeURIComponent(active.workoutId || 'free')}` },
+    h('span', null, `Resume ${safe(() => program.getWorkout(s.plan, active.workoutId)?.title, null) || 'workout'}`), h('span', { class: 'k' }, 'Live →')) : null;
 
   // Done state
   const doneSession = done.find((x) => workout && x.workoutId === workout.id) || done[0];
   if (doneSession) {
     const sm = sessionSummary(doneSession);
-    return h('section', { class: 'card session-card done' },
-      h('div', { class: 'row gap' },
-        h('span', { class: 'done-badge', 'aria-hidden': 'true' }, icon('check', 26)),
-        h('div', { class: 'grow' }, h('div', { class: 'eyebrow go' }, 'Session complete'), h('div', { class: 'card-title' }, doneSession.title || 'Workout'))),
-      h('div', { class: 'grid3 mt' },
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, fmtDur(doneSession.durationSec || 0, { long: true })), h('span', { class: 'k' }, 'time')),
-        sm.vol ? h('div', { class: 'stat' }, h('span', { class: 'v' }, volTxt(sm.vol), h('small', null, units === 'metric' ? 'kg' : 'lb')), h('span', { class: 'k' }, 'volume'))
-          : h('div', { class: 'stat' }, h('span', { class: 'v' }, sm.dist ? (units === 'metric' ? num(sm.dist / 1000, 1) : num(sm.dist / 1609.344, 1)) : String(sm.sets), h('small', null, sm.dist ? (units === 'metric' ? 'km' : 'mi') : 'sets')), h('span', { class: 'k' }, sm.dist ? 'distance' : 'logged')),
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, doneSession.rpe ? String(doneSession.rpe) : '–'), h('span', { class: 'k' }, 'session RPE'))),
-      doneSession.prs?.length ? h('div', { class: 'pr-strip mt' }, icon('trophy', 16), h('span', null, doneSession.prs.slice(0, 2).join(' · '))) : null,
+    return h('section', { class: 'session-card done' },
+      h('div', { class: 'eyebrow' }, h('span', { class: 'go' }, '✓ '), 'Session complete'),
+      h('h2', { class: 'session-title' }, doneSession.title || 'Workout'),
+      statRow([
+        [fmtDur(doneSession.durationSec || 0, { long: true }), null, 'Time'],
+        sm.vol ? [volTxt(sm.vol), units === 'metric' ? 'kg' : 'lb', 'Volume']
+          : [sm.dist ? (units === 'metric' ? num(sm.dist / 1000, 1) : num(sm.dist / 1609.344, 1)) : String(sm.sets), sm.dist ? (units === 'metric' ? 'km' : 'mi') : 'sets', sm.dist ? 'Distance' : 'Logged'],
+        [doneSession.rpe ? String(doneSession.rpe) : '–', null, 'Session RPE'],
+      ]),
+      doneSession.prs?.length ? h('div', { class: 'pr-strip' }, doneSession.prs.slice(0, 3).map((p) => h('span', { class: 'stamp go' }, 'PR · ' + p))) : null,
       h('div', { class: 'row gap mt' },
         h('a', { class: 'btn ghost grow', href: `#/history/${encodeURIComponent(doneSession.id)}` }, 'View summary'),
-        h('a', { class: 'btn subtle grow', href: '#/fuel?add=auto' }, icon('fuel', 18), 'Refuel')),
+        h('a', { class: 'btn subtle grow', href: '#/fuel?add=auto' }, 'Refuel')),
       resumeBtn ? h('div', { class: 'mt' }, resumeBtn) : null);
   }
 
   // Rest day
   if (!workout) {
     const rec = safe(() => (program.TEMPLATES || []).find((t) => t.type === 'recovery' || /mobility|recovery/.test(t.id)), null);
-    return h('section', { class: 'card session-card rest' },
+    return h('section', { class: 'session-card rest' },
       h('div', { class: 'eyebrow' }, 'Rest day'),
-      h('div', { class: 'card-title' }, 'Recover to adapt'),
+      h('h2', { class: 'session-title' }, 'Recover to adapt'),
       h('p', { class: 'small dim' }, 'Fitness is built between sessions. Keep moving gently and eat your protein.'),
       h('div', { class: 'list rest-list mt' },
         rec ? h('a', { class: 'li', href: `#/session/${encodeURIComponent(rec.id)}` },
-          h('span', { class: 'badge recov' }, icon('heart', 18)),
+          h('span', { class: 'badge' }, 'MOB'),
           h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, rec.title || 'Mobility flow'), h('div', { class: 'li-sub' }, `${rec.estMin || 15} min · hips, T-spine, shoulders`)),
           icon('chevR', 18)) : null,
         h('div', { class: 'li' },
-          h('span', { class: 'badge recov' }, icon('run', 18)),
+          h('span', { class: 'badge' }, 'Z1'),
           h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Easy walk'), h('div', { class: 'li-sub' }, '30–45 min outdoors, nasal breathing, Zone 1'))),
         h('a', { class: 'li', href: '#/train' },
-          h('span', { class: 'badge' }, icon('calendar', 18)),
+          h('span', { class: 'badge' }, 'ALT'),
           h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Want to train anyway?'), h('div', { class: 'li-sub' }, 'Pick a session from Train')),
           icon('chevR', 18))),
       resumeBtn ? h('div', { class: 'mt' }, resumeBtn) : null);
@@ -312,23 +322,29 @@ function sessionCard(s, today) {
   const w = scaled?.workout || workout;
   const changes = scaled?.changes || [];
   const tm = TYPE_META[w.type] || TYPE_META.strength;
-  const blocks = (w.blocks || []).filter((b) => b.kind !== 'warmup' && b.kind !== 'cooldown');
-  const sameKind = blocks.length > 1 && blocks.every((b) => b.kind === blocks[0].kind);
-  return h('section', { class: `card hero session-card type-${w.type || 'strength'}` },
-    h('div', { class: 'row between' },
-      h('div', { class: 'row' }, h('span', { class: 'pill' }, icon(tm.icon, 13), tm.label), w.phase ? h('span', { class: `pill ${w.phase}` }, w.phase) : null),
-      h('span', { class: 'muted small num' }, `~${w.estMin || 45} min`)),
+  const P = safe(() => program.PHASES, {}) || {};
+  const blocks = (w.blocks || []);
+  const blockMin = (b) => {
+    const sec = b.durationSec || (b.minutes ? b.minutes * 60 : 0) || (b.rounds && (b.workSec || b.restSec) ? b.rounds * ((b.workSec || 0) + (b.restSec || 0)) : 0);
+    return sec ? `${Math.round(sec / 60)}′` : '';
+  };
+  return h('section', { class: `session-card type-${w.type || 'strength'}` },
+    h('div', { class: 'eyebrow' }, [tm.label, w.phase ? (P[w.phase]?.label || w.phase) : null].filter(Boolean).join(' · ')),
     h('h2', { class: 'session-title' }, w.title || 'Today’s session'),
     w.summary ? h('p', { class: 'small dim' }, w.summary) : null,
-    blocks.length ? h('ol', { class: 'block-peek' },
-      blocks.slice(0, 4).map((b) => h('li', null, sameKind ? null : h('span', { class: 'bk' }, blockKindLabel(b.kind)), h('span', { class: 'bt' }, b.title || '')))) : null,
-    (w.equipment || []).length ? h('p', { class: 'xs muted mt' }, w.equipment.slice(0, 4).join(' · ') + (w.equipment.length > 4 ? ` +${w.equipment.length - 4}` : '')) : null,
+    blocks.length ? h('ol', { class: 'block-peek ledger' },
+      blocks.slice(0, 6).map((b, i) => h('li', { class: 'lrow' },
+        h('span', { class: 'ix' }, BLOCK_LETTER(i)),
+        h('span', { class: 'bk' }, blockKindLabel(b.kind)),
+        h('span', { class: 'bt' }, b.title || ''),
+        h('span', { class: 'bm data' }, blockMin(b))))) : null,
+    (w.equipment || []).length ? h('p', { class: 'data mt' }, w.equipment.slice(0, 4).join(' · ') + (w.equipment.length > 4 ? ` +${w.equipment.length - 4}` : '')) : null,
     changes.length ? h('div', { class: 'callout scaled mt' },
-      h('div', { class: 'row' }, icon('zap', 16), h('strong', null, `Auto-scaled for readiness ${Math.round(score)}`)),
+      h('strong', null, `Auto-scaled for readiness ${Math.round(score)}`),
       h('ul', null, changes.map((c) => h('li', null, c)))) : locked ? h('p', { class: 'xs muted mt' }, workout.fixed ? 'Fixed session — run it as written, whatever the readiness score.' : 'Benchmark — do it fresh. If you feel off, move it to another day rather than scaling it.') : !Number.isFinite(score) ? h('p', { class: 'xs muted mt' }, 'Check in above and FORGE scales this session to how you feel.') : null,
-    h('div', { class: 'stack sm mt' },
-      resumeBtn || h('a', { class: 'btn primary xl block start-btn', href: `#/workout/${encodeURIComponent(w.id)}` }, icon('play', 20), 'Start session'),
-      h('a', { class: 'link-btn center', href: `#/session/${encodeURIComponent(w.id)}` }, 'Session details')));
+    h('div', { class: 'session-cta' },
+      resumeBtn || h('a', { class: 'btn primary xl block start-btn', href: `#/workout/${encodeURIComponent(w.id)}` }, h('span', null, 'Start session'), h('span', { class: 'k' }, `~${w.estMin || 45} min →`)),
+      h('a', { class: 'link-btn', href: `#/session/${encodeURIComponent(w.id)}` }, 'Session details')));
 }
 
 function ringsRow(s, today) {
@@ -339,32 +355,29 @@ function ringsRow(s, today) {
   const tot = sel.totalsFor(s, today);
   const water = sel.waterFor(s, today);
   const done = sel.sessionsOn(s, today).length > 0;
-  const trainingVal = done ? 1 : s.activeWorkout ? 0.5 : 0;
   const items = [
-    { k: 'Training', icon: isTraining || done ? 'bell' : 'heart', color: 'var(--go)', value: isTraining || done ? trainingVal : 1, max: 1,
-      main: done ? 'Done' : isTraining ? (s.activeWorkout ? 'Live' : 'To do') : 'Rest', sub: done ? 'session ✓' : isTraining ? '1 session' : 'recover', href: '#/train' },
-    { k: 'Calories', icon: 'flame', color: 'var(--accent)', value: tot.kcal, max: t.kcal, main: num(tot.kcal), sub: `/ ${num(t.kcal)}`, href: '#/fuel' },
-    { k: 'Protein', icon: 'zap', color: 'var(--protein)', value: tot.p, max: t.protein, main: num(tot.p), sub: `/ ${num(t.protein)} g`, href: '#/fuel' },
-    { k: 'Carbs', icon: 'fuel', color: 'var(--carbs)', value: tot.c, max: t.carbs, main: num(tot.c), sub: `/ ${num(t.carbs)} g`, href: '#/fuel' },
-    { k: 'Water', icon: 'drop', color: 'var(--water)', value: water, max: t.waterMl, main: units === 'metric' ? num(water / 1000, 1) : num(water / 29.5735, 0),
-      sub: units === 'metric' ? `/ ${num(t.waterMl / 1000, 1)} L` : `/ ${num(t.waterMl / 29.5735, 0)} oz`, href: '#/fuel' },
+    { k: 'Train', value: done ? 1 : 0, max: 1, main: done ? '✓' : isTraining ? (s.activeWorkout ? 'Live' : '0') : '—', unit: done || !isTraining || s.activeWorkout ? '' : '/1', sub: done ? 'done' : isTraining ? 'to do' : 'rest day', href: '#/train', n: 9 },
+    { k: 'Kcal', value: tot.kcal, max: t.kcal, main: num(tot.kcal), unit: '', sub: `of ${num(t.kcal)}`, href: '#/fuel' },
+    { k: 'Protein', color: 'var(--protein)', value: tot.p, max: t.protein, main: num(tot.p), unit: 'g', sub: `of ${num(t.protein)} g`, href: '#/fuel' },
+    { k: 'Carbs', color: 'var(--carbs)', value: tot.c, max: t.carbs, main: num(tot.c), unit: 'g', sub: `of ${num(t.carbs)} g`, href: '#/fuel' },
+    { k: 'Water', color: 'var(--water)', value: water, max: t.waterMl, main: units === 'metric' ? num(water / 1000, 1) : num(water / 29.5735, 0), unit: units === 'metric' ? 'L' : 'oz',
+      sub: units === 'metric' ? `of ${num(t.waterMl / 1000, 1)} L` : `of ${num(t.waterMl / 29.5735, 0)} oz`, href: '#/fuel' },
   ];
-  return h('section', { class: 'card rings-card', 'aria-label': 'Daily rings' },
-    h('div', { class: 'rings-row' },
-      items.map((it) => h('a', { class: 'ring-item', href: it.href, 'aria-label': `${it.k}: ${it.main} ${it.sub}` },
-        h('div', { class: 'ring-ico' }, ring({ value: it.value, max: it.max || 1, size: 56, stroke: 6, color: it.color }), h('span', { class: 'ring-glyph', style: { color: it.color } }, icon(it.icon, 17))),
-        h('div', { class: 'ring-v num' }, it.main),
-        h('div', { class: 'ring-k' }, it.sub ? it.sub : it.k),
-        h('div', { class: 'ring-name' }, it.k)))));
+  return h('section', { class: 'daily', 'aria-label': 'Today’s numbers' },
+    items.map((it) => h('a', { class: 'daily-cell', href: it.href, 'aria-label': `${it.k}: ${it.main} ${it.unit} ${it.sub}` },
+      h('span', { class: 'lbl' }, it.k),
+      fig(it.main, it.unit),
+      ticks({ value: it.value, max: it.max || 1, n: 9, color: it.color }),
+      h('span', { class: 'data' }, it.sub))));
 }
 
 function quickActions(units) {
-  const qa = (ic, label, on, cls = '') => h('button', { type: 'button', class: 'qa ' + cls, on: { click: on } }, h('span', { class: 'qa-ico' }, icon(ic, 22)), h('span', null, label));
+  const qa = (label, on, cls = '', plus = false) => h('button', { type: 'button', class: 'qa ' + cls, on: { click: on } }, plus ? h('b', { 'aria-hidden': 'true' }, '+') : null, label);
   return h('section', { class: 'qa-row', 'aria-label': 'Quick actions' },
-    qa('fuel', 'Log food', () => navigate('#/fuel?add=auto'), 'qa-food'),
-    qa('drop', units === 'metric' ? '+250 ml' : '+8 oz', () => addWater(units === 'metric' ? 250 : 237), 'qa-water'),
-    qa('scale', 'Weight', () => openWeightSheet(), 'qa-weight'),
-    qa('timer', 'Timer', () => navigate('#/timer'), 'qa-timer'));
+    qa('Food', () => navigate('#/fuel?add=auto'), 'qa-food', true),
+    qa(units === 'metric' ? '250 ml' : '8 oz', () => addWater(units === 'metric' ? 250 : 237), 'qa-water', true),
+    qa('Weigh-in', () => openWeightSheet(), 'qa-weight'),
+    qa('Timer', () => navigate('#/timer'), 'qa-timer'));
 }
 
 function weekStrip(s, today) {
@@ -386,22 +399,18 @@ function weekStrip(s, today) {
     const tm = TYPE_META[w?.type] || null;
     const label = fmtDate(d.date, { weekday: 'narrow' });
     return h(d.workoutId ? 'a' : 'div', {
-      class: `wk-day ${status}` + (d.date === today ? ' is-today' : ''), href: d.workoutId ? `#/session/${encodeURIComponent(d.workoutId)}` : null,
-      'aria-label': `${fmtDate(d.date)}: ${w?.title || 'Rest'} — ${status}`,
+      class: `wc ${status}` + (d.date === today ? ' is-today' : ''), href: d.workoutId ? `#/session/${encodeURIComponent(d.workoutId)}` : null,
+      'aria-label': `${fmtDate(d.date)}: ${w?.title || 'Rest'} — ${status}`, title: w?.title || 'Rest day',
     },
-    h('span', { class: 'wk-dow' }, label),
-    h('span', { class: 'wk-dot', title: w?.title || 'Rest day' }, done ? icon('check', 14) : status === 'missed' ? icon('x', 12) : tm ? h('span', { 'aria-hidden': 'true' }, icon(tm.icon, 15)) : ''));
+    h('span', { class: 'sq', 'aria-hidden': 'true' }, tm ? tm.short : status === 'rest' ? '' : '·'),
+    h('span', { class: 'lbl' + (d.date === today ? ' ink' : '') }, label));
   });
   const st = safe(() => coach.streak(s.sessions, s.plan, today), null) || {};
-  return h('section', { class: 'card week-card', 'aria-label': 'This week' },
-    h('div', { class: 'row between' },
-      h('div', null, h('div', { class: 'eyebrow' }, 'This week'),
-        h('div', { class: 'week-count num' }, String(doneCount), h('small', null, ` / ${planned || '–'} sessions`))),
-      h('div', { class: 'streak', 'aria-label': `Streak ${st.days || 0} days` },
-        h('span', { class: 'streak-flame' + ((st.days || 0) > 0 ? ' lit' : '') }, icon('flame', 22)),
-        h('div', null, h('div', { class: 'streak-n num' }, String(st.days || 0)), h('div', { class: 'xs muted' }, (st.days || 0) === 1 ? 'day streak' : 'day streak')))),
-    h('div', { class: 'bar go thin mt', 'aria-hidden': 'true' }, h('i', { style: { width: `${planned ? Math.min(100, (doneCount / planned) * 100) : 0}%` } })),
-    h('div', { class: 'wk-strip mt' }, cells));
+  const sd = st.days || 0;
+  return h('section', { class: 'week-card', 'aria-label': 'This week' },
+    sectionHead('This week', h('span', { class: 'lbl' }, `${doneCount}/${planned || '–'} done${sd ? ` · ${sd}-day streak` : ''}`), 3),
+    h('div', { class: 'weekcells' }, cells),
+    h('p', { class: 'data wk-legend' }, 'STR strength · KB conditioning · RUN run · HYB hybrid · HRX race-specific · REC recovery'));
 }
 
 function upNext(s, today) {
@@ -412,18 +421,18 @@ function upNext(s, today) {
   }
   if (!out.length) return null;
   return h('section', null,
-    sectionHead('Up next', h('a', { class: 'link-btn', href: '#/train' }, 'Full plan')),
-    h('div', { class: 'card flush' }, h('div', { class: 'list' },
+    sectionHead('Up next', h('a', { class: 'link-btn', href: '#/train' }, 'Full plan'), 4),
+    h('div', { class: 'list' },
       out.map(({ d }) => {
         const wo = safe(() => program.getWorkout(s.plan, d.workoutId), null);
         const tm = TYPE_META[wo?.type] || TYPE_META.strength;
         const inDays = daysBetween(today, d.date);
         return h('a', { class: 'li', href: `#/session/${encodeURIComponent(d.workoutId)}` },
-          h('span', { class: `badge t-${wo?.type || 'strength'}` }, icon(tm.icon, 18)),
+          h('span', { class: `badge t-${wo?.type || 'strength'}` }, tm.short),
           h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, wo?.title || 'Session'),
             h('div', { class: 'li-sub' }, `${inDays === 1 ? 'Tomorrow' : fmtDate(d.date)} · ${tm.label} · ~${wo?.estMin || 45} min`)),
           icon('chevR', 18));
-      }))));
+      })));
 }
 
 /** Gentle nudge when there's no backup for 7+ days and cloud sync is off. Filled async. */
@@ -436,9 +445,8 @@ function backupNudge(s) {
   import('../sync.js').then((sy) => safe(() => sy.syncStatus(), null)).catch(() => null).then((st) => {
     if (st?.enabled) return;
     const days = Math.floor((Date.now() - last) / DAY);
-    host.append(h('section', { class: 'card nudge', 'aria-label': 'Backup reminder' },
+    host.append(h('section', { class: 'nudge', 'aria-label': 'Backup reminder' },
       h('div', { class: 'row gap top' },
-        h('span', { class: 'badge' }, icon('download', 18)),
         h('div', { class: 'grow' },
           h('div', { class: 'li-title' }, 'Back up your training'),
           h('p', { class: 'small muted' }, `${s.settings.lastBackupAt ? `Last backup ${days} days ago.` : 'No backup yet.'} Your data lives only on this device — turn on encrypted backup so a lost phone doesn’t mean lost progress.`),
@@ -450,8 +458,8 @@ function backupNudge(s) {
 }
 
 function tipCard(today) {
-  return h('section', { class: 'card tip-card', 'aria-label': 'Coach tip of the day' },
-    h('div', { class: 'row' }, h('span', { class: 'tip-ico' }, icon('book', 18)), h('div', { class: 'eyebrow' }, 'Coach tip')),
+  return h('section', { class: 'tip-card', 'aria-label': 'Coach tip of the day' },
+    sectionHead('Coach’s note', null, 5),
     h('p', { class: 'tip-text' }, tipForDate(today)));
 }
 
@@ -461,10 +469,13 @@ export function render(root) {
     const s = store.get();
     const today = todayISO();
     const y = window.scrollY;
-    clear(root).append(h('div', { class: 'today stack' },
+    const wfdNow = s.plan ? safe(() => program.workoutForDate(s.plan, today), null) : null;
+    clear(root).append(h('div', { class: 'today' },
       headerBlock(s, today),
       readinessCard(s, today, ui, paint),
+      sectionHead('Session', h('span', { class: 'lbl' }, wfdNow?.workout ? `~${wfdNow.workout.estMin || 45} min` : 'Today'), 1),
       sessionCard(s, today),
+      sectionHead('Daily', h('span', { class: 'lbl' }, wfdNow?.workout ? 'Training day' : 'Rest day'), 2),
       ringsRow(s, today),
       quickActions(s.profile.units),
       weekStrip(s, today),

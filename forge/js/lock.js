@@ -158,7 +158,7 @@ export function lockNow() {
   } } }, 'Forgot passcode?');
   overlay = h('div', { class: 'lk-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'FORGE is locked' },
     h('div', { class: 'lk-inner' },
-      h('div', { class: 'lk-mark', 'aria-hidden': 'true' }, icon('bell', 26)),
+      h('div', { class: 'lk-mark wordmark', 'aria-hidden': 'true' }, 'FORGE'),
       h('h1', { class: 'lk-title' }, 'FORGE is locked'),
       msg, kp.el, forgot,
       h('p', { class: 'lk-note' }, 'Privacy lock for this device.')));

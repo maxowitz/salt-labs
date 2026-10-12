@@ -8,6 +8,7 @@ import {
 import * as program from '../engine/program.js';
 import * as coach from '../engine/coach.js';
 import * as exdb from '../data/exercises.js';
+import * as sessionApi from './session.js';
 import { IntervalTimer, buildSegments, beep, speak, wakeLock, unlockAudio } from '../engine/timer.js';
 import { timerFace, timerControls, roundCounter, phaseOf, faceTime, fmtClock } from './_timerui.js';
 
@@ -157,6 +158,12 @@ function sanitizeActive(raw, id) {
   aw.log = (Array.isArray(aw.log) ? aw.log : []).filter((l) => isObj(l) && Number.isInteger(l.block) && l.block >= 0 && l.block < n);
   aw.blocks = isObj(aw.blocks) ? aw.blocks : {};
   for (const k of Object.keys(aw.blocks)) if (!isObj(aw.blocks[k]) || !(+k >= 0 && +k < n)) delete aw.blocks[k];
+  for (const bs of Object.values(aw.blocks)) {
+    for (const k of ['draft', 'extra', 'kg', 'items', 'checked']) if (k in bs && !isObj(bs[k])) bs[k] = {};
+    for (const k of ['timer', 'itemTimer']) if (k in bs && !isObj(bs[k])) bs[k] = null;
+    if (isObj(bs.draft)) for (const [i, d] of Object.entries(bs.draft)) if (!isObj(d)) delete bs.draft[i];
+    if (isObj(bs.items)) for (const [i, d] of Object.entries(bs.items)) if (!isObj(d)) delete bs.items[i];
+  }
   aw.elapsed = Math.max(0, finiteOr(aw.elapsed, 0));
   aw.runningSince = Number.isFinite(+aw.runningSince) && aw.runningSince > 0 ? +aw.runningSince : null;
   aw.paused = !!aw.paused || aw.runningSince == null;
@@ -1275,10 +1282,20 @@ function player(ctx, aw, { fresh = false } = {}) {
 
     const save$ = h('button', {
       class: 'btn primary xl block', on: {
-        click: () => {
+        click: (ev) => {
+          if (ev.currentTarget.disabled) return;
+          ev.currentTarget.disabled = true; // no double-submit
           sess.rpe = +rpe.value; sess.notes = notes.value.trim();
           alive = false; clearTimeout(saveTimer);
-          store.update((d) => { d.sessions.push(sess); d.activeWorkout = null; });
+          // Shared saver: recomputes PRs, fills readiness, stamps planGeneratedAt for plan workouts, keeps sessions sorted.
+          if (typeof sessionApi.saveSession === 'function') {
+            sessionApi.saveSession(sess);
+            store.update((d) => { d.activeWorkout = null; });
+          } else {
+            const gen = store.get().plan?.generatedAt;
+            if (sess.workoutId && gen && !String(sess.workoutId).startsWith('t-')) sess.planGeneratedAt = gen;
+            store.update((d) => { d.sessions.push(sess); d.activeWorkout = null; });
+          }
           beep('done'); haptic(40);
           saved(sess, vol);
         },
