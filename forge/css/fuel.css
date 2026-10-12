@@ -159,3 +159,59 @@
 @media (prefers-reduced-motion: reduce) {
   .fu-glass i, .fu-plus { transition: none; }
 }
+
+/* ---------- photo → nutrition estimate ---------- */
+.fu-head-actions { gap: 8px; }
+.fu-head-actions .btn { min-height: 40px; }
+.fu-snap-btn .ico, .fu-photo-entry .fu-photo-ico .ico { color: var(--accent); }
+.fu-photo-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 12px 12px 12px; min-height: 64px;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--text);
+}
+.fu-photo-entry:hover { border-color: var(--accent); }
+.fu-photo-entry > .ico { color: var(--muted); }
+.fu-photo-ico { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent); }
+.fu-photo-ico.lg { width: 56px; height: 56px; }
+.fu-photo-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fu-photo-txt b { font-weight: 700; }
+.fu-photo-txt span { font-size: 12.5px; color: var(--muted); }
+.fu-photo-pick { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 18px 8px 8px; }
+.fu-photo-btns { width: 100%; margin-top: 8px; }
+.fu-honest { display: flex; align-items: flex-start; gap: 4px; }
+.fu-honest .ico { width: 14px; height: 14px; margin-top: 1px; flex: none; }
+.fu-photo-prev { width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); }
+.fu-photo-prev img { width: 100%; height: 100%; object-fit: cover; }
+.fu-photo-prev.sm { width: 72px; height: 72px; aspect-ratio: auto; flex: none; border-radius: var(--radius-sm); }
+.fu-photo-head h3 { font-size: 17px; }
+.fu-photo-loading { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; text-align: center; }
+.fu-spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--surface-3); border-top-color: var(--accent); animation: fuSpin .9s linear infinite; }
+@keyframes fuSpin { to { transform: rotate(360deg); } }
+.fu-sk-row { height: 64px; border-radius: var(--radius-sm); }
+.fu-ai-note { background: var(--surface); border-color: var(--line-2); }
+.fu-item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; transition: opacity .15s; }
+.fu-item.off { opacity: .5; }
+.fu-item-inc { margin-top: 6px; }
+.fu-item-name {
+  flex: 1 1 auto; min-width: 0; min-height: 36px !important; padding: 4px 8px !important; font-weight: 700; font-size: 15px !important;
+  background: transparent !important; border-color: transparent !important;
+}
+.fu-item-name:focus { border-color: var(--line-2) !important; background: var(--surface-2) !important; }
+.fu-conf { flex: none; }
+.fu-conf.high { background: var(--go-soft); color: var(--go); }
+.fu-conf.medium { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.fu-conf.low { background: var(--danger-soft); color: var(--danger); }
+.fu-item-step { display: flex; align-items: center; gap: 2px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); }
+.fu-item-step .icon-btn { width: 40px; height: 40px; }
+.fu-item-gwrap { display: flex; align-items: baseline; gap: 3px; color: var(--muted); font-size: 13px; }
+.fu-item-g {
+  width: 5ch !important; min-height: 38px !important; padding: 0 !important; border: 0 !important; background: transparent !important;
+  text-align: right; font-weight: 700; font-size: 17px !important; font-variant-numeric: tabular-nums;
+}
+.fu-item-kcal { font-size: 18px; font-weight: 700; }
+.fu-swap {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 4px 10px; border-radius: 999px; text-align: left;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line);
+}
+.fu-swap .ico { width: 14px; height: 14px; flex: none; }
+.fu-swap.on { color: var(--go); border-color: color-mix(in srgb, var(--go) 45%, transparent); background: var(--go-soft); }
+@media (prefers-reduced-motion: reduce) { .fu-spinner { animation: none; } }

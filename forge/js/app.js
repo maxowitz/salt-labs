@@ -86,7 +86,7 @@ function updateLiveDot() {
   if (store.get().activeWorkout) a.append(h('span', { class: 'tab-live', 'aria-label': 'Workout in progress' }));
 }
 
-function boot() {
+async function boot() {
   for (const el of tabbar.querySelectorAll('[data-icon]')) el.replaceWith(icon(el.dataset.icon, 22));
   const s = store.get();
   applyTheme(s.settings.theme);
@@ -97,11 +97,28 @@ function boot() {
     updateLiveDot();
   });
   matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => applyTheme(store.get().settings.theme));
-  if (store.loadError) setTimeout(() => toast('Saved data was unreadable — a backup copy was kept and FORGE started fresh.', { kind: 'danger', ms: 6000 }), 400);
+  // Restore from the IndexedDB mirror if it is newer than localStorage (evicted, cleared or over quota).
+  const hydrated = await store.hydrate().catch((e) => { console.warn('FORGE: hydrate failed', e); return 'ok'; });
+  if (hydrated === 'restored') setTimeout(() => toast('Restored your data from this device’s backup copy.', { kind: 'go' }), 400);
+  else if (store.loadError) setTimeout(() => toast('Saved data was unreadable — a copy was kept and FORGE started fresh.', { kind: 'danger', ms: 6000 }), 400);
+  store.onSaveError(() => toast('Storage is full — your data is still kept in this device’s backup copy. Export a backup from Me.', { kind: 'danger', ms: 7000 }));
+  const flush = () => { store.flush(); };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+
   window.addEventListener('hashchange', route);
   window.addEventListener('error', (e) => console.error('FORGE error:', e.error || e.message));
   window.addEventListener('unhandledrejection', (e) => console.error('FORGE rejection:', e.reason));
+  try { const { initLock } = await import('./lock.js'); await initLock?.(); } catch (e) { if (!/Failed to fetch|Importing a module|not found/i.test(String(e?.message))) console.error(e); }
   route();
+
+  import('./sync.js').then(async (m) => {
+    await m.initSync();
+    if (store.get().profile.onboarded) {
+      const st = await m.persistenceStatus();
+      if (!st.persisted) m.requestPersistence();
+    }
+  }).catch((e) => console.warn('FORGE: sync unavailable', e));
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw/.test(location.search)) {
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW registration failed', e));

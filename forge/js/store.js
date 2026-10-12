@@ -1,5 +1,9 @@
 // FORGE store — local-first state with schema versioning, safe persistence and pub/sub.
 // All values are metric (kg, m, sec, ml). See docs/PROMPT.md §6.2.
+// Durability: every save goes to localStorage AND an IndexedDB mirror. On boot, hydrate() restores the
+// newer of the two, so data survives a cleared/evicted/over-quota localStorage. Encrypted cloud backup
+// lives in sync.js.
+import { idbGet, idbSet } from './idb.js';
 
 export const STORAGE_KEY = 'forge:v1';
 export const SCHEMA_VERSION = 1;
@@ -28,6 +32,7 @@ export function defaultState() {
   return {
     version: SCHEMA_VERSION,
     createdAt: new Date().toISOString(),
+    savedAt: 0,
     profile: {
       name: '', sex: 'm', age: 35, heightCm: 178, weightKg: 82, units: 'imperial',
       experience: 'intermediate',
@@ -106,36 +111,75 @@ export function createStore(storage) {
     state = defaultState();
   }
   const subs = new Set();
+  const listeners = { saveError: new Set() };
+  let idbTimer = null;
+  let lastSaveOk = true;
+
+  const notify = () => { for (const s of [...subs]) { try { s(state); } catch (e) { console.error(e); } } };
+
+  function writeIdb() {
+    clearTimeout(idbTimer);
+    idbTimer = null;
+    return idbSet('state', { savedAt: state.savedAt, json: JSON.stringify(state) }).catch((e) => console.warn('FORGE: IndexedDB save failed', e));
+  }
 
   function persist() {
-    try { backing.setItem(STORAGE_KEY, JSON.stringify(state)); return true; }
-    catch (e) { console.warn('FORGE: save failed', e); return false; }
+    state.savedAt = Date.now();
+    let ok = true;
+    try { backing.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch (e) { ok = false; console.warn('FORGE: localStorage save failed', e); }
+    // IndexedDB mirror (debounced; flushed on pagehide/visibilitychange by flush())
+    clearTimeout(idbTimer);
+    idbTimer = setTimeout(writeIdb, 250);
+    if (!ok && lastSaveOk) for (const fn of listeners.saveError) { try { fn(); } catch {} }
+    lastSaveOk = ok;
+    return ok;
   }
 
   return {
     loadError,
     get: () => state,
+    get lastSavedAt() { return state.savedAt; },
     update(fn) {
       const draft = structuredClone(state);
       fn(draft);
       state = normalize(draft);
       persist();
-      for (const s of [...subs]) { try { s(state); } catch (e) { console.error(e); } }
+      notify();
       return state;
     },
     replace(next) {
       state = normalize(next);
       persist();
-      for (const s of [...subs]) { try { s(state); } catch (e) { console.error(e); } }
+      notify();
     },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+    onSaveError(fn) { listeners.saveError.add(fn); return () => listeners.saveError.delete(fn); },
+    /** Restore from the IndexedDB mirror when it is newer than (or localStorage lost) the current state. */
+    async hydrate() {
+      const rec = await idbGet('state');
+      if (rec && typeof rec.json === 'string' && (rec.savedAt || 0) > (state.savedAt || 0)) {
+        try {
+          state = normalize(JSON.parse(rec.json));
+          state.savedAt = rec.savedAt;
+          try { backing.setItem(STORAGE_KEY, rec.json); } catch {}
+          notify();
+          return 'restored';
+        } catch (e) { console.warn('FORGE: IndexedDB copy unreadable', e); }
+      } else if (!rec && state.savedAt) {
+        await writeIdb(); // first run with the mirror: seed it
+      }
+      return 'ok';
+    },
+    /** Write any pending IndexedDB save now (call when the page is being hidden). */
+    flush() { if (idbTimer) return writeIdb(); return Promise.resolve(); },
     exportJSON: () => JSON.stringify(state, null, 2),
     importJSON(txt) {
       const parsed = JSON.parse(txt);
       if (!isObj(parsed) || !isObj(parsed.profile)) throw new Error('Not a FORGE backup file');
       this.replace(parsed);
     },
-    reset() { state = defaultState(); persist(); for (const s of [...subs]) s(state); },
+    reset() { state = defaultState(); persist(); notify(); },
   };
 }
 

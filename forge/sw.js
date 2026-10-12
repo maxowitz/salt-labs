@@ -1,11 +1,11 @@
 // FORGE service worker — precache the app shell, then stale-while-revalidate same-origin GETs.
 // Bump VERSION whenever the precache list changes.
-const VERSION = 'forge-v1';
+const VERSION = 'forge-v2';
 const SHELL = [
   './', 'index.html', 'manifest.json', 'icon.svg',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
   'css/app.css', 'css/train.css', 'css/workout.css', 'css/fuel.css', 'css/dash.css',
-  'js/app.js', 'js/store.js', 'js/ui.js', 'js/charts.js',
+  'js/app.js', 'js/theme.js', 'js/store.js', 'js/idb.js', 'js/api.js', 'js/sync.js', 'js/lock.js', 'js/ui.js', 'js/charts.js',
   'js/data/exercises.js', 'js/data/foods.js',
   'js/engine/program.js', 'js/engine/coach.js', 'js/engine/hyrox.js', 'js/engine/nutrition.js', 'js/engine/timer.js',
   'js/views/today.js', 'js/views/train.js', 'js/views/session.js', 'js/views/workout.js', 'js/views/_timerui.js',
@@ -34,6 +34,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return; // Open Food Facts etc. go straight to network
+  if (url.pathname.includes('/api/')) return; // never cache API traffic (backups, photo estimates)
 
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);

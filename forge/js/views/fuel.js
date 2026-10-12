@@ -28,6 +28,12 @@ export function defaultMeal(d = new Date()) {
   return 'snacks';
 }
 
+// Like ui.field() but a <div role=group>: a <label> wrapper would forward clicks on a segmented control
+// to its first button, so the meal picker could never leave "Breakfast".
+function groupField(label, control) {
+  return h('div', { class: 'field', role: 'group', 'aria-label': label }, h('span', { class: 'field-label' }, label), control);
+}
+
 function allFoods(s) { return [...(s.customFoods || []), ...FOODS]; }
 function foodMap(s) { const m = new Map(); for (const f of allFoods(s)) if (f?.id && !m.has(f.id)) m.set(f.id, f); return m; }
 
@@ -143,7 +149,10 @@ function header(s, ctx) {
         rel !== fmtDate(date) ? h('span', { class: 'fu-date-sub' }, fmtDate(date)) : null,
         picker),
       h('button', { type: 'button', class: 'icon-btn filled', 'aria-label': 'Next day', on: { click: () => go(addDays(date, 1)) } }, icon('chevR')),
-      date !== today ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => go(today) } }, 'Today') : null));
+      date !== today ? h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => go(today) } }, 'Today') : null),
+    h('div', { class: 'row fu-head-actions' },
+      h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => openAddSheet(ctx, defaultMeal()) } }, icon('search', 16), 'Log food'),
+      h('button', { type: 'button', class: 'btn sm subtle grow fu-snap-btn', on: { click: () => openAddSheet(ctx, defaultMeal(), { photo: true }) } }, cameraIcon(16), 'Snap meal')));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,7 +349,7 @@ function openEditSheet(ctx, entry) {
       h('p', { class: 'small muted' }, `${MEAL_LABEL[entry.meal]} · ${fmtDate(ctx.date)}`),
       body,
       mp.el,
-      field('Meal', seg(MEALS, meal, (m) => { meal = m; }, { label: 'Meal' })),
+      groupField('Meal', seg(MEALS, meal, (m) => { meal = m; }, { label: 'Meal' })),
       h('button', { type: 'button', class: 'btn primary block', on: { click: () => {
         if (!next) return close();
         store.update((st) => {
@@ -373,7 +382,7 @@ function deleteEntry(ctx, entry) {
 
 // ---------------------------------------------------------------------------------------------
 // Add-food sheet (full height) with internal pages: browse | detail | quick | create | barcode | template
-function openAddSheet(ctx, initialMeal) {
+function openAddSheet(ctx, initialMeal, opts = {}) {
   const st = { meal: initialMeal, q: '', tab: 'recent', online: null, onlineState: 'idle', pageStack: [] };
   const body = h('div', { class: 'fu-add' });
   const cleanups = new Set();
@@ -406,6 +415,10 @@ function openAddSheet(ctx, initialMeal) {
     listEl = h('div', { class: 'fu-results' });
     const el = h('div', { class: 'stack' },
       seg(MEALS.map(([v, l]) => [v, l === 'Breakfast' ? 'Bkfst' : l]), st.meal, (m) => { st.meal = m; mealTitle(); paintList(); }, { label: 'Meal' }),
+      h('button', { type: 'button', class: 'fu-photo-entry', on: { click: () => photoPage() } },
+        h('span', { class: 'fu-photo-ico' }, cameraIcon(22)),
+        h('span', { class: 'fu-photo-txt' }, h('b', null, 'Snap a photo'), h('span', null, 'AI estimates what’s on the plate — you check portions')),
+        icon('chevR', 18)),
       h('div', { class: 'row' },
         h('label', { class: 'search grow' }, icon('search', 18), searchInput,
           h('button', { type: 'button', class: 'icon-btn fu-clear', 'aria-label': 'Clear search', on: { click: () => { st.q = ''; searchInput.value = ''; paintList(); searchInput.focus(); } } }, icon('x', 16))),
@@ -553,7 +566,7 @@ function openAddSheet(ctx, initialMeal) {
       amt.el,
       mp.el,
       h('p', { class: 'xs muted tabular' }, `Per 100 g: ${num(p.kcal)} kcal · P ${r1(p.p)} · C ${r1(p.c)} · F ${r1(p.f)} · fiber ${r1(p.fiber)}`),
-      field('Meal', mealSeg),
+      groupField('Meal', mealSeg),
       saveBox ? h('label', { class: 'switch fu-save', for: 'fu-save-off' }, h('span', null, 'Save to My Foods'), saveBox) : null,
       addBtn,
       isCustom ? h('button', { type: 'button', class: 'btn ghost block fu-del', on: { click: () => {
@@ -593,7 +606,7 @@ function openAddSheet(ctx, initialMeal) {
       field('Fat', h('div', { class: 'input-unit' }, numIn('f', 'Fat grams'), h('span', null, 'g')))),
     hint,
     field('Name (optional)', f.name),
-    field('Meal', seg(MEALS, st.meal, (m) => { st.meal = m; }, { label: 'Meal' })),
+    groupField('Meal', seg(MEALS, st.meal, (m) => { st.meal = m; }, { label: 'Meal' })),
     h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Quick add'));
     upd();
     show(el, 'Quick add');
@@ -660,7 +673,6 @@ function openAddSheet(ctx, initialMeal) {
       camBox?.classList.remove('live');
     };
     const abort = () => { try { ctrl?.abort(); } catch {} };
-    cleanups.add(stopCam); cleanups.add(abort);
 
     const lookup = async (raw) => {
       const c = String(raw || '').replace(/\D/g, '');
@@ -734,6 +746,7 @@ function openAddSheet(ctx, initialMeal) {
       status, resultEl,
       h('p', { class: 'xs muted' }, 'Lookups use the free Open Food Facts database. Data is community-sourced — check it against the label.'));
     show(el, 'Scan barcode');
+    cleanups.add(stopCam); cleanups.add(abort); // after show(): it runs and clears the previous page's cleanups
     if (hasDetector) startCam(); else setTimeout(() => code.focus(), 60);
   }
 
@@ -780,8 +793,248 @@ function openAddSheet(ctx, initialMeal) {
     }
     if (st.q.trim() === q) paintList();
   }
-  browse();
+  // ---------- photo → nutrition estimate ----------
+  // Flow: pick → preview + hint → "Estimating…" → editable items → log. The photo only lives in memory
+  // (downscaled JPEG from api.prepareImage, EXIF stripped); its object URL is revoked when the page is
+  // left, the sheet closes, or the items are logged.
+  function photoPage() {
+    const ph = { prepared: null, file: null, hint: '', items: [], notes: '', meal: st.meal };
+    const revoke = () => { if (ph.prepared?.previewUrl) { try { URL.revokeObjectURL(ph.prepared.previewUrl); } catch {} } ph.prepared = null; ph.file = null; };
+    let reqId = 0;
+    const root = h('div', { class: 'stack fu-photo' });
+    const fileInput = (capture) => {
+      const inp = h('input', { type: 'file', accept: 'image/*', class: 'sr-only', tabindex: '-1', 'aria-hidden': 'true', ...(capture ? { capture: 'environment' } : {}),
+        on: { change: (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); } } });
+      return inp;
+    };
+    const camIn = fileInput(true), libIn = fileInput(false);
+    const honest = () => h('p', { class: 'xs muted fu-honest' }, icon('info', 14), ' AI estimate — check portions. Hidden oils, sauces and dressings are easy to miss.');
+
+    function pickView(msg) {
+      clear(root).append(backBtn(),
+        h('div', { class: 'fu-photo-pick' },
+          h('span', { class: 'fu-photo-ico lg' }, cameraIcon(28)),
+          h('h3', null, 'Photograph your meal'),
+          h('p', { class: 'small muted' }, 'Shoot from above with the whole plate in frame. A fork or hand helps with scale.'),
+          msg ? h('p', { class: 'small danger-text', role: 'alert' }, msg) : null,
+          h('div', { class: 'stack sm fu-photo-btns' },
+            h('button', { type: 'button', class: 'btn primary block', on: { click: () => camIn.click() } }, cameraIcon(18), 'Take photo'),
+            h('button', { type: 'button', class: 'btn subtle block', on: { click: () => libIn.click() } }, icon('upload', 18), 'Choose from library'))),
+        camIn, libIn, honest());
+      apiCall('apiAvailable').then((ok) => {
+        if (ok === false && root.isConnected && !ph.prepared) root.querySelector('.fu-photo-pick')?.append(h('p', { class: 'xs warn-text' }, 'Photo estimates may not be set up on this server yet — you can still try.'));
+      }).catch(() => {});
+    }
+
+    async function onFile(file) {
+      revoke();
+      clear(root).append(backBtn(), h('div', { class: 'fu-photo-prev skeleton' }), h('p', { class: 'small muted', role: 'status' }, 'Preparing photo…'), camIn, libIn);
+      try {
+        ph.file = file;
+        ph.prepared = await apiCall('prepareImage', file);
+        previewView();
+      } catch (e) {
+        ph.file = null;
+        pickView(e?.message || 'Couldn’t read that image — try another photo.');
+      }
+    }
+
+    const thumb = () => h('div', { class: 'fu-photo-prev' }, ph.prepared?.previewUrl ? h('img', { src: ph.prepared.previewUrl, alt: 'Your meal photo' }) : null);
+
+    function previewView() {
+      const hint = h('input', { type: 'text', maxlength: '140', value: ph.hint, placeholder: 'e.g. large bowl, cooked in olive oil', 'aria-label': 'Hint for the estimate',
+        on: { input: (e) => { ph.hint = e.target.value; } } });
+      clear(root).append(backBtn(), thumb(),
+        h('div', { class: 'row gap' },
+          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => camIn.click() } }, cameraIcon(16), 'Retake'),
+          h('button', { type: 'button', class: 'btn sm subtle grow', on: { click: () => libIn.click() } }, icon('upload', 16), 'Library')),
+        field('Anything we can’t see? (optional)', hint, 'Portion size, cooking fat, sauces, what’s inside a wrap…'),
+        h('form', { on: { submit: (e) => { e.preventDefault(); estimate(); } } },
+          h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Estimate nutrition')),
+        camIn, libIn, honest());
+    }
+
+    async function estimate() {
+      const my = ++reqId;
+      clear(root).append(backBtn(), thumb(),
+        h('div', { class: 'fu-photo-loading', role: 'status', 'aria-live': 'polite' },
+          h('span', { class: 'fu-spinner', 'aria-hidden': 'true' }), h('b', null, 'Estimating…'), h('span', { class: 'small muted' }, 'Identifying foods and portions. Usually a few seconds.')),
+        h('div', { class: 'stack sm' }, [0, 1, 2].map(() => h('div', { class: 'skeleton fu-sk-row' }))));
+      try {
+        const res = await apiCall('analyzeFoodPhoto', ph.file, { hint: ph.hint.trim() || undefined });
+        if (my !== reqId || !root.isConnected) return;
+        ph.notes = cleanText(res?.notes, 300);
+        ph.items = (Array.isArray(res?.items) ? res.items : []).slice(0, 20).map(toItem).filter(Boolean);
+        if (!ph.items.length) { errorView({ code: 'empty', message: 'No food recognised in that photo. Try a clearer, closer shot — or log it by search.' }); return; }
+        resultsView();
+      } catch (e) {
+        if (my !== reqId || !root.isConnected) return;
+        errorView(e);
+      }
+    }
+
+    function toItem(raw) {
+      if (!raw || typeof raw !== 'object') return null;
+      const name = cleanText(raw.name, 80);
+      const grams = nz(raw.grams, 3000);
+      if (!name || !(grams > 0)) return null;
+      const est = { kcal: nz(raw.kcal, 9000), p: nz(raw.p, 1000), c: nz(raw.c, 1000), f: nz(raw.f, 1000), fiber: nz(raw.fiber, 300) };
+      const per100 = Object.fromEntries(Object.entries(est).map(([k, v]) => [k, (v / grams) * 100]));
+      const s2 = store.get();
+      const map = foodMap(s2);
+      let match = raw.foodId && map.get(String(raw.foodId)) || null;
+      if (!match) match = matchFood(name, allFoods(s2));
+      return { name, aiName: name, grams: Math.round(grams), aiPer100: per100, per100, include: true, useDb: false, match,
+        confidence: ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low' };
+    }
+
+    function errorView(e) {
+      const code = e?.code || 'failed';
+      const copy = {
+        offline: ['You’re offline', 'Photo estimates need a connection. Try again when you’re back online, or log by search for now.'],
+        not_configured: ['Photo estimates aren’t set up', 'The FORGE server needs an ANTHROPIC_API_KEY environment variable to analyse photos. Everything else in Fuel works without it.'],
+        rate_limited: ['Too many requests', 'The estimate service is busy. Wait a minute and try again.'],
+        too_large: ['Photo too large', 'Try a different photo or a lower-resolution shot.'],
+        unavailable: ['Service unavailable', 'The estimate service didn’t respond. Try again later.'],
+        empty: ['Nothing recognised', e?.message],
+      }[code] || ['Couldn’t estimate this photo', e?.message || 'Something went wrong. Try again.'];
+      const retryable = !['not_configured', 'too_large'].includes(code);
+      clear(root).append(backBtn(), ph.prepared ? thumb() : null,
+        h('div', { class: 'callout ' + (code === 'not_configured' ? 'info' : 'danger'), role: 'alert' }, h('b', null, copy[0]), h('p', { class: 'small mt' }, copy[1])),
+        h('div', { class: 'row gap' },
+          retryable && ph.prepared ? h('button', { type: 'button', class: 'btn primary grow', on: { click: () => estimate() } }, icon('repeat', 16), 'Try again') : null,
+          h('button', { type: 'button', class: 'btn subtle grow', on: { click: () => { revoke(); pickView(); } } }, cameraIcon(16), 'New photo')),
+        h('div', { class: 'row gap' },
+          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => back() } }, icon('search', 16), 'Search instead'),
+          h('button', { type: 'button', class: 'btn sm ghost grow', on: { click: () => quickPage() } }, icon('zap', 16), 'Quick add')),
+        camIn, libIn);
+    }
+
+    function itemMacros(it) { return scaleFood({ per100: it.per100 }, it.grams); }
+
+    function resultsView() {
+      const totalsEl = h('div', { class: 'fu-mp-wrap' });
+      const addBtn = h('button', { type: 'button', class: 'btn primary block xl' });
+      const mp = macroPanel();
+      totalsEl.append(mp.el);
+      const refresh = () => {
+        const inc = ph.items.filter((i) => i.include && i.grams > 0);
+        mp.set(inc.map(itemMacros).reduce((a, m) => ({ kcal: a.kcal + m.kcal, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f, fiber: a.fiber + m.fiber }), { kcal: 0, p: 0, c: 0, f: 0, fiber: 0 }));
+        clear(addBtn).append(icon('plus', 18), h('span', null, inc.length ? `Add ${inc.length} item${inc.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}` : 'Nothing selected'));
+        addBtn.disabled = !inc.length;
+      };
+      const rows = ph.items.map((it, idx) => itemRow(it, idx, refresh));
+      addBtn.addEventListener('click', () => {
+        const inc = ph.items.filter((i) => i.include && i.grams > 0);
+        if (!inc.length) return;
+        const entries = inc.map((it) => ({
+          id: uid('fe'), meal: ph.meal, foodId: it.useDb && it.match ? it.match.id : null, name: it.name,
+          qty: it.grams, unit: 'g', grams: it.grams, ...itemMacros(it), source: 'photo',
+        }));
+        st.meal = ph.meal;
+        addEntries(ctx.date, entries, { toastMsg: `Added ${entries.length} item${entries.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}` });
+        revoke(); ph.items = [];
+        sh.close();
+      });
+      clear(root).append(backBtn(),
+        h('div', { class: 'row gap fu-photo-head' }, h('div', { class: 'fu-photo-prev sm' }, ph.prepared?.previewUrl ? h('img', { src: ph.prepared.previewUrl, alt: 'Your meal photo' }) : null),
+          h('div', { class: 'grow' }, h('h3', null, `${ph.items.length} item${ph.items.length > 1 ? 's' : ''} found`),
+            h('p', { class: 'xs muted' }, 'Untick anything that’s wrong, and adjust grams.'))),
+        h('div', { class: 'callout fu-ai-note' }, h('b', null, 'AI estimate — check portions.'), ph.notes ? h('p', { class: 'small mt' }, ph.notes) : null),
+        h('div', { class: 'stack sm' }, rows),
+        h('h4', null, 'Total selected'),
+        totalsEl,
+        groupField('Meal', seg(MEALS, ph.meal, (m) => { ph.meal = m; refresh(); }, { label: 'Meal' })),
+        addBtn,
+        h('button', { type: 'button', class: 'btn ghost block', on: { click: () => { revoke(); pickView(); } } }, cameraIcon(16), 'Start over with a new photo'));
+      refresh();
+    }
+
+    function itemRow(it, idx, refresh) {
+      const macroEl = h('div', { class: 'xs muted tabular fu-item-macros' });
+      const kcalEl = h('b', { class: 'tabular fu-item-kcal' });
+      const nameIn = h('input', { type: 'text', value: it.name, maxlength: '80', 'aria-label': `Item ${idx + 1} name`, class: 'fu-item-name', on: { input: (e) => { it.name = e.target.value.trim() || it.aiName; } } });
+      const gIn = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: '1', value: String(it.grams), 'aria-label': `Grams of ${it.name}`, class: 'fu-item-g',
+        on: { input: (e) => { const v = parseFloat(e.target.value); it.grams = Number.isFinite(v) && v >= 0 ? Math.min(5000, v) : 0; upd(); } } });
+      const stepG = (d) => { it.grams = Math.max(0, Math.round(it.grams + d)); gIn.value = String(it.grams); haptic(); upd(); };
+      const inc = h('input', { type: 'checkbox', checked: it.include, 'aria-label': `Include ${it.name}`, on: { change: (e) => { it.include = e.target.checked; card.classList.toggle('off', !it.include); refresh(); } } });
+      const swapEl = h('div');
+      const card = h('div', { class: 'fu-item' + (it.include ? '' : ' off') },
+        h('div', { class: 'row top' },
+          h('label', { class: 'toggle fu-item-inc' }, inc, h('span')),
+          h('div', { class: 'grow stack sm' },
+            h('div', { class: 'row between' }, nameIn, h('span', { class: 'pill fu-conf ' + it.confidence, title: 'Model confidence' }, it.confidence === 'medium' ? 'med' : it.confidence)),
+            h('div', { class: 'row between' },
+              h('div', { class: 'fu-item-step' },
+                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Less ${it.name}`, on: { click: () => stepG(-(it.grams > 100 ? 25 : 10)) } }, icon('minus', 16)),
+                h('label', { class: 'fu-item-gwrap' }, gIn, h('span', null, 'g')),
+                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `More ${it.name}`, on: { click: () => stepG(it.grams >= 100 ? 25 : 10) } }, icon('plus', 16))),
+              h('div', { class: 'right' }, kcalEl, h('span', { class: 'xs muted' }, ' kcal'))),
+            macroEl, swapEl)));
+      function paintSwap() {
+        clear(swapEl);
+        if (!it.match) return;
+        swapEl.append(h('button', { type: 'button', class: 'fu-swap' + (it.useDb ? ' on' : ''), 'aria-pressed': String(it.useDb), on: { click: () => {
+          it.useDb = !it.useDb;
+          it.per100 = it.useDb ? { ...it.match.per100 } : { ...it.aiPer100 };
+          if (it.useDb) { it.name = it.match.name; nameIn.value = it.name; } else { it.name = nameIn.value.trim() || it.aiName; }
+          paintSwap(); upd();
+        } } }, icon(it.useDb ? 'check' : 'repeat', 14),
+        it.useDb ? ` Using database: ${it.match.name}` : ` Use database values: ${it.match.name}`));
+      }
+      function upd() {
+        const m = itemMacros(it);
+        kcalEl.textContent = num(m.kcal);
+        macroEl.textContent = `${macroLine(m)} · fiber ${r0(m.fiber)}`;
+        refresh();
+      }
+      paintSwap();
+      const m0 = itemMacros(it); kcalEl.textContent = num(m0.kcal); macroEl.textContent = `${macroLine(m0)} · fiber ${r0(m0.fiber)}`;
+      return card;
+    }
+
+    show(root, 'Snap meal');
+    cleanups.add(() => { reqId++; revoke(); }); // registered after show(), which runs the previous page's cleanups
+    pickView();
+  }
+
+  if (opts.photo) photoPage(); else browse();
   return sh;
+}
+
+// Lazily load js/api.js so Fuel keeps working when the photo API module is absent.
+let apiMod = null;
+async function apiCall(fn, ...args) {
+  if (!apiMod) {
+    try { apiMod = await import('../api.js'); } catch (e) {
+      const err = new Error('Photo estimates aren’t available in this build.'); err.code = 'unavailable'; throw err;
+    }
+  }
+  if (typeof apiMod[fn] !== 'function') { const err = new Error('Photo estimates aren’t available in this build.'); err.code = 'unavailable'; throw err; }
+  return apiMod[fn](...args);
+}
+
+/** Best local database match for a free-text item name (all words, then progressively fewer). */
+export function matchFood(name, foods) {
+  const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
+  for (let n = toks.length; n >= 1; n--) {
+    const q = toks.slice(0, n).join(' ');
+    const r = searchFoods(q, foods, { limit: 1 })[0];
+    if (r) return r;
+    if (n > 1) { const q2 = toks.slice(-n).join(' '); const r2 = searchFoods(q2, foods, { limit: 1 })[0]; if (r2) return r2; }
+  }
+  return null;
+}
+const STOP = new Set(['and', 'with', 'the', 'small', 'large', 'medium', 'piece', 'pieces', 'slice', 'slices', 'side', 'plate', 'bowl', 'portion', 'some', 'fresh', 'homemade', 'grilled', 'roasted', 'baked', 'steamed', 'boiled', 'pan', 'seared', 'sauteed', 'plain']);
+
+function cameraIcon(size = 20) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = document.createElementNS(NS, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true', class: 'ico' })) sv.setAttribute(k, v);
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', 'M4 8h3l1.5-2h7L17 8h3v11H4zM12 17a3.5 3.5 0 100-7 3.5 3.5 0 000 7z');
+  sv.append(p);
+  return sv;
 }
 
 function saveCustomFood(food) {

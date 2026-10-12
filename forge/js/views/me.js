@@ -227,62 +227,254 @@ function settingsSection(s) {
         toggleRow('Haptics', 'Vibration on taps and timers (where supported)', !!st.haptics, (v) => setS('haptics', v)))));
 }
 
-function storageBytes() {
-  let n = 0;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('forge')) n += (k.length + (localStorage.getItem(k) || '').length) * 2;
-    }
-  } catch { n = store.exportJSON().length * 2; }
-  return n;
+// ---------- Backup & sync ----------
+let syncMod = null; // js/sync.js, loaded lazily so Me still works if it fails
+export async function loadSync() {
+  if (syncMod) return syncMod;
+  try { syncMod = await import('../sync.js'); } catch (e) { console.warn('FORGE: sync unavailable', e); syncMod = null; }
+  return syncMod;
 }
-const fmtBytes = (b) => (b > 1048576 ? `${num(b / 1048576, 1)} MB` : `${num(b / 1024, 0)} KB`);
 
-function exportData() {
-  const blob = new Blob([store.exportJSON()], { type: 'application/json' });
+const fmtBytes = (b) => (!Number.isFinite(+b) ? '–' : b > 1048576 ? `${num(b / 1048576, 1)} MB` : `${num(Math.max(1, b / 1024), 0)} KB`);
+export function ago(ts) {
+  if (!ts) return 'never';
+  const t = typeof ts === 'number' ? ts : Date.parse(ts);
+  if (!Number.isFinite(t)) return 'never';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  const d = Math.round(s / 86400);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+/** Passphrase strength: {score 0..4, label, hint}. */
+export function passStrength(p) {
+  p = p || '';
+  if (p.length < 10) return { score: 0, label: 'Too short', hint: `${10 - p.length} more character${10 - p.length === 1 ? '' : 's'} needed` };
+  let sc = 1;
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(p)).length;
+  if (p.length >= 14) sc++;
+  if (p.length >= 20 || p.trim().split(/\s+/).length >= 4) sc++;
+  if (classes >= 3) sc++;
+  if (/^(.)\1+$/.test(p) || /^(?:password|forge|1234|qwerty)/i.test(p)) sc = 1;
+  sc = Math.min(4, sc);
+  return { score: sc, label: ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][sc], hint: sc < 3 ? 'Tip: four random words are long and easy to remember.' : 'Nice — hard to guess.' };
+}
+
+function markBackup() { store.update((st) => { st.settings.lastBackupAt = new Date().toISOString(); }); }
+
+function download(blob, name) {
   const url = URL.createObjectURL(blob);
-  const a = h('a', { href: url, download: `forge-backup-${todayISO()}.json` });
+  const a = h('a', { href: url, download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('Backup downloaded', { kind: 'go' });
 }
 
+function exportPlain() {
+  download(new Blob([store.exportJSON()], { type: 'application/json' }), `forge-backup-${todayISO()}.json`);
+  markBackup();
+  toast('Unencrypted backup downloaded', { kind: 'go' });
+}
+
+/** Sheet asking for a passphrase. confirm → second field + strength meter + warning. Resolves string|null. */
+function askPassphrase({ title, intro, confirm = false, ok = 'Continue', warning }) {
+  return new Promise((resolve) => {
+    let done = false;
+    sheet({
+      title,
+      onClose: () => { if (!done) resolve(null); },
+      content: ({ close }) => {
+        const p1 = h('input', { type: 'password', autocomplete: confirm ? 'new-password' : 'current-password', 'aria-label': 'Passphrase', placeholder: 'Passphrase' });
+        const p2 = confirm ? h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Confirm passphrase', placeholder: 'Type it again' }) : null;
+        const meter = h('div', { class: 'pw-meter', 'aria-hidden': 'true' }, [0, 1, 2, 3].map(() => h('i')));
+        const meterTxt = h('div', { class: 'xs muted', 'aria-live': 'polite' });
+        const err = h('div', { class: 'small danger-text', role: 'alert' });
+        const ack = confirm ? h('input', { type: 'checkbox', id: 'pw-ack' }) : null;
+        const upd = () => {
+          if (!confirm) return;
+          const st = passStrength(p1.value);
+          meter.dataset.score = String(st.score);
+          meterTxt.textContent = p1.value ? `${st.label} · ${st.hint}` : 'At least 10 characters.';
+        };
+        p1.addEventListener('input', upd); upd();
+        const submit = () => {
+          const v = p1.value;
+          if (confirm) {
+            if (v.length < 10) { err.textContent = 'Use at least 10 characters.'; return; }
+            if (v !== p2.value) { err.textContent = 'The two passphrases don’t match.'; return; }
+            if (!ack.checked) { err.textContent = 'Please tick the box to confirm you’ve saved it.'; return; }
+          } else if (!v) { err.textContent = 'Enter the passphrase.'; return; }
+          done = true; resolve(v); close();
+        };
+        for (const el of [p1, p2].filter(Boolean)) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+        return h('div', { class: 'stack' },
+          intro ? h('p', { class: 'small dim' }, intro) : null,
+          field('Passphrase', p1),
+          confirm ? h('div', { class: 'stack sm' }, meter, meterTxt) : null,
+          confirm ? field('Confirm passphrase', p2) : null,
+          warning ? h('div', { class: 'callout' }, h('strong', null, 'Write it down. '), warning) : null,
+          confirm ? h('label', { class: 'row pw-ack', for: 'pw-ack' }, ack, h('span', { class: 'small' }, 'I’ve saved this passphrase somewhere safe. I understand it can’t be recovered.')) : null,
+          err,
+          h('button', { type: 'button', class: 'btn primary block', on: { click: submit } }, ok));
+      },
+    });
+  });
+}
+
+async function exportEncrypted() {
+  const sy = await loadSync();
+  if (!sy?.exportEncrypted) { toast('Encrypted export isn’t available right now', { kind: 'danger' }); return; }
+  const pass = await askPassphrase({ title: 'Encrypted export', confirm: true, ok: 'Encrypt & download',
+    intro: 'Your backup file is encrypted on this device with AES-GCM. You’ll need the passphrase to import it.',
+    warning: 'Without this passphrase the file can’t be opened — by you or anyone else.' });
+  if (pass == null) return;
+  try {
+    const blob = await sy.exportEncrypted(pass);
+    download(blob, `forge-backup-${todayISO()}.forge`);
+    markBackup();
+    toast('Encrypted backup downloaded', { kind: 'go' });
+  } catch (e) { toast('Export failed: ' + (e.message || e), { kind: 'danger', ms: 5000 }); }
+}
+
+/** One Import button: plain FORGE JSON or an encrypted backup (asks for the passphrase). */
 function importData() {
-  const inp = h('input', { type: 'file', accept: 'application/json,.json', class: 'sr-only', 'aria-hidden': 'true' });
+  const inp = h('input', { type: 'file', accept: '.json,.forge,application/json,text/plain', class: 'sr-only', 'aria-hidden': 'true' });
   inp.addEventListener('change', async () => {
     const f = inp.files?.[0];
     inp.remove();
     if (!f) return;
+    let txt;
+    try { txt = await f.text(); } catch { toast('Could not read that file', { kind: 'danger' }); return; }
+    let parsed = null;
+    try { parsed = JSON.parse(txt); } catch {}
+    const plain = parsed && typeof parsed === 'object' && parsed.profile && typeof parsed.profile === 'object';
+    const ok = await confirmDialog(`Replace everything on this device with “${f.name}”? Export a backup first if unsure.`, { ok: 'Import', danger: true });
+    if (!ok) return;
     try {
-      const txt = await f.text();
-      JSON.parse(txt); // validate before asking
-      const ok = await confirmDialog(`Replace everything on this device with “${f.name}”? Export a backup first if unsure.`, { ok: 'Import', danger: true });
-      if (!ok) return;
-      store.importJSON(txt);
+      if (plain) store.importJSON(txt);
+      else {
+        const sy = await loadSync();
+        if (!sy?.importEncrypted) throw new Error('that file isn’t a FORGE backup.');
+        const pass = await askPassphrase({ title: 'Encrypted backup', intro: 'Enter the passphrase used when this backup was exported.', ok: 'Decrypt & import' });
+        if (pass == null) return;
+        try { await sy.importEncrypted(txt, pass); }
+        catch (e) { throw new Error(/pass|decrypt|operation/i.test(String(e?.message || e?.name)) ? 'wrong passphrase, or the file is damaged.' : e.message || String(e)); }
+      }
       toast('Backup imported', { kind: 'go' });
       navigate(store.get().profile.onboarded ? '#/today' : '#/onboarding');
     } catch (e) {
-      toast('Import failed: ' + (e instanceof SyntaxError ? 'that file isn’t valid JSON.' : e.message || e), { kind: 'danger', ms: 5000 });
+      toast('Import failed: ' + (e.message || e), { kind: 'danger', ms: 5000 });
     }
   });
   document.body.append(inp);
   inp.click();
 }
 
-function dataSection(s) {
-  const sz = storageBytes();
-  const pct = Math.min(100, (sz / (5 * 1048576)) * 100);
-  return h('section', null, sectionHead('Your data'),
-    h('div', { class: 'card stack' },
-      h('div', { class: 'row between small' }, h('span', null, 'Stored on this device'), h('span', { class: 'num muted' }, `${fmtBytes(sz)} of ~5 MB`)),
-      h('div', { class: 'bar thin' }, h('i', { style: { width: `${Math.max(1, pct)}%` } })),
-      h('p', { class: 'xs muted' }, `${s.sessions.length} sessions · ${Object.keys(s.foodLog).length} food days · ${s.bodyweight.length} weigh-ins. Nothing leaves your device unless you export it.`),
+async function enableCloud(sy) {
+  const pass = await askPassphrase({ title: 'Encrypted cloud backup', confirm: true, ok: 'Turn on backup',
+    intro: 'FORGE encrypts your data on this device before it’s uploaded. The server only ever stores ciphertext. Use the same passphrase on another device to restore.',
+    warning: 'Nobody — not even the server owner — can reset or recover this passphrase. Lose it and the cloud copy is unreadable.' });
+  if (pass == null) return;
+  toast('Encrypting and syncing…', { ms: 8000 });
+  try {
+    const r = await sy.enableSync(pass);
+    toast(r?.restored ? 'Backup found and merged into this device' : 'Encrypted backup is on', { kind: 'go' });
+  } catch (e) { toast('Couldn’t turn on backup: ' + (e.message || e), { kind: 'danger', ms: 6000 }); }
+}
+
+function backupCard(host, sy, pers) {
+  const s = store.get();
+  const st = sy ? safe(() => sy.syncStatus(), null) : null;
+  const usage = pers?.usage ?? store.exportJSON().length * 2;
+  const persisted = pers?.persisted;
+  const stor = h('div', { class: 'list' },
+    h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('settings', 18)),
+      h('span', { class: 'li-main' },
+        h('div', { class: 'li-title' }, persisted ? 'Protected storage' : 'Standard storage'),
+        h('div', { class: 'li-sub' }, `${fmtBytes(usage)} used${pers?.quota ? ` of ${fmtBytes(pers.quota)}` : ''} · ${persisted ? 'browser won’t auto-clear it' : 'browser may clear it if space runs low'}`)),
+      persisted ? h('span', { class: 'pill go' }, 'On')
+        : h('button', { type: 'button', class: 'btn sm subtle', disabled: !sy?.requestPersistence, on: { click: async () => {
+          const ok = await sy.requestPersistence().catch(() => false);
+          toast(ok ? 'Storage protected on this device' : 'The browser declined. Installing FORGE to your home screen usually helps.', { kind: ok ? 'go' : undefined, ms: 4500 });
+          paintBackup(host);
+        } } }, 'Protect my data')));
+
+  let cloud;
+  if (!sy || !st) {
+    cloud = h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('upload', 18)),
+      h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'), h('div', { class: 'li-sub' }, 'Unavailable in this build')));
+  } else if (!st.enabled) {
+    cloud = h('div', { class: 'li li-col' },
+      h('div', { class: 'row gap' }, h('span', { class: 'badge' }, icon('upload', 18)),
+        h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup'),
+          h('div', { class: 'li-sub wrap' }, st.serverAvailable === false ? 'Server not reachable right now — FORGE works offline; backup needs the FORGE server.' : 'Off · encrypted on this device with your passphrase'))),
+      h('button', { type: 'button', class: 'btn primary block', disabled: st.serverAvailable === false, on: { click: () => enableCloud(sy) } }, 'Turn on encrypted backup'));
+  } else {
+    const line = st.lastError ? `Last attempt failed: ${st.lastError}` : st.pending ? `Changes waiting · last synced ${ago(st.lastSyncAt)}` : `Last synced ${ago(st.lastSyncAt)}`;
+    cloud = h('div', { class: 'li li-col' },
+      h('div', { class: 'row gap' }, h('span', { class: 'badge' }, icon('check', 18)),
+        h('span', { class: 'li-main' }, h('div', { class: 'li-title' }, 'Encrypted cloud backup', h('span', { class: 'pill go sync-pill' }, 'On')),
+          h('div', { class: 'li-sub wrap' + (st.lastError ? ' danger-text' : '') }, line))),
       h('div', { class: 'grid2' },
-        h('button', { type: 'button', class: 'btn subtle', on: { click: exportData } }, icon('download', 18), 'Export'),
-        h('button', { type: 'button', class: 'btn subtle', on: { click: importData } }, icon('upload', 18), 'Import')),
-      h('button', { type: 'button', class: 'btn ghost danger-text', on: { click: async () => {
-        const ok = await confirmDialog('Erase ALL FORGE data on this device — profile, plan, sessions, food log and settings? This cannot be undone.', { ok: 'Erase everything', danger: true });
+        h('button', { type: 'button', class: 'btn subtle', on: { click: async (e) => {
+          const b = e.currentTarget; b.disabled = true;
+          try { await sy.syncNow(); toast('Synced', { kind: 'go', ms: 1500 }); } catch (err) { toast('Sync failed: ' + (err.message || err), { kind: 'danger', ms: 5000 }); }
+          b.disabled = false;
+        } } }, icon('repeat', 18), 'Sync now'),
+        h('button', { type: 'button', class: 'btn ghost', on: { click: async () => {
+          const ok = await confirmDialog('Stop backing up this device? Your data stays here, and the encrypted copy on the server is kept so you can turn backup on again with the same passphrase.', { ok: 'Turn off' });
+          if (!ok) return;
+          try { await sy.disableSync(); toast('Cloud backup off'); } catch (err) { toast(String(err.message || err), { kind: 'danger' }); }
+        } } }, 'Turn off')),
+      sy.forgetDevice ? h('button', { type: 'button', class: 'link-btn small', on: { click: async () => {
+        const ok = await confirmDialog('Forget this device? Sync stops and the encryption key is removed from this device. Your local data stays; the server copy is untouched.', { ok: 'Forget device' });
+        if (!ok) return;
+        try { await sy.forgetDevice(); toast('Device forgotten'); } catch (err) { toast(String(err.message || err), { kind: 'danger' }); }
+      } } }, 'Forget this device') : null);
+  }
+
+  const files = h('div', { class: 'stack sm me-files' },
+    h('div', { class: 'grid2' },
+      h('button', { type: 'button', class: 'btn subtle', disabled: !sy?.exportEncrypted, on: { click: exportEncrypted } }, icon('download', 18), 'Encrypted export'),
+      h('button', { type: 'button', class: 'btn subtle', on: { click: importData } }, icon('upload', 18), 'Import file')),
+    h('button', { type: 'button', class: 'btn ghost sm', on: { click: exportPlain } }, 'Export unencrypted JSON'),
+    h('p', { class: 'xs muted' }, `Last file backup: ${ago(s.settings.lastBackupAt)}. Unencrypted files are readable by anyone who gets them. ${s.sessions.length} sessions · ${Object.keys(s.foodLog).length} food days · ${s.bodyweight.length} weigh-ins.`));
+
+  clear(host).append(h('div', { class: 'card flush' }, stor, h('div', { class: 'list' }, cloud), files));
+}
+
+async function paintBackup(host) {
+  const sy = await loadSync();
+  const pers = sy?.persistenceStatus ? await sy.persistenceStatus().catch(() => null) : null;
+  backupCard(host, sy, pers);
+}
+
+function backupSection() {
+  const host = h('div', { id: 'backup' }, h('div', { class: 'card' }, h('div', { class: 'skeleton', style: { height: '120px' } })));
+  paintBackup(host);
+  return h('section', { id: 'backup-section' }, sectionHead('Backup & sync'), host);
+}
+
+function lockSection(s) {
+  const l = s.settings.lock || {};
+  const on = !!(l.enabled && l.hash);
+  return h('section', null, sectionHead('App lock'),
+    h('div', { class: 'card flush' }, h('div', { class: 'list' },
+      toggleRow('Passcode lock', on ? `${l.digits || 4}-digit passcode · locks after ${l.timeoutMin === 0 ? 'leaving the app' : `${l.timeoutMin ?? 5} min away`}` : 'Ask for a 4–6 digit code when FORGE opens',
+        on, async (want) => { const m = await import('../lock.js'); if (want) await m.setupFlow(); else await m.disableFlow(); paintAll(); }),
+      on ? row('Change passcode', null, async () => { const m = await import('../lock.js'); await m.setupFlow(); }, 'edit') : null,
+      on ? h('div', { class: 'li li-col' }, h('div', { class: 'li-title' }, 'Lock after'),
+        seg([[0, 'Immediately'], [1, '1 min'], [5, '5 min'], [15, '15 min']], l.timeoutMin ?? 5, async (v) => { const m = await import('../lock.js'); m.setLockTimeout(v); }, { label: 'Lock after' })) : null),
+      h('p', { class: 'xs muted me-note' }, 'A privacy lock for this device: it keeps casual eyes out. It doesn’t encrypt the data stored in this browser — use an encrypted backup for that. A forgotten passcode can only be cleared by erasing this device.')));
+}
+let paintAll = () => {};
+
+function dangerSection() {
+  return h('section', null, sectionHead('Danger zone'),
+    h('div', { class: 'card' },
+      h('button', { type: 'button', class: 'btn ghost danger-text block', on: { click: async () => {
+        const ok = await confirmDialog('Erase ALL FORGE data on this device — profile, plan, sessions, food log and settings? This cannot be undone. Cloud backups (if on) are not deleted.', { ok: 'Erase everything', danger: true });
         if (!ok) return;
         store.reset();
         toast('All data erased');
@@ -313,7 +505,9 @@ function aboutSection() {
     h('p', { class: 'xs muted center mt' }, 'Not medical advice. Listen to your body; consult a professional before starting a new program.'));
 }
 
-export function render(root) {
+export function render(root, params = {}) {
+  let unsubSync = null;
+  let first = true;
   const paint = () => {
     const s = store.get();
     const p = s.profile;
@@ -333,10 +527,22 @@ export function render(root) {
       targetsSection(s, paint),
       planSection(s),
       settingsSection(s),
-      dataSection(s),
+      lockSection(s),
+      backupSection(),
+      dangerSection(),
       aboutSection()));
-    window.scrollTo(0, y);
+    if (first && params.query?.section === 'backup') {
+      first = false;
+      requestAnimationFrame(() => root.querySelector('#backup-section')?.scrollIntoView({ block: 'start' }));
+    } else window.scrollTo(0, y);
+    first = false;
   };
+  paintAll = paint;
   paint();
-  return store.subscribe(() => paint());
+  const unsub = store.subscribe(() => paint());
+  loadSync().then((sy) => {
+    if (!sy?.subscribeSync || !root.isConnected) return;
+    unsubSync = sy.subscribeSync(() => { const host = root.querySelector('#backup'); if (host) paintBackup(host); });
+  });
+  return () => { unsub(); unsubSync?.(); paintAll = () => {}; };
 }

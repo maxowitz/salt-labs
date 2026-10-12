@@ -410,6 +410,29 @@ function upNext(s, today) {
       }))));
 }
 
+/** Gentle nudge when there's no backup for 7+ days and cloud sync is off. Filled async. */
+function backupNudge(s) {
+  const host = h('div', { class: 'nudge-host' });
+  const DAY = 86400000;
+  const last = Date.parse(s.settings.lastBackupAt || s.createdAt || '') || Date.now();
+  const snoozed = Date.parse(s.settings.backupNudgeUntil || '') > Date.now();
+  if (snoozed || Date.now() - last < 7 * DAY) return host;
+  import('../sync.js').then((sy) => safe(() => sy.syncStatus(), null)).catch(() => null).then((st) => {
+    if (st?.enabled) return;
+    const days = Math.floor((Date.now() - last) / DAY);
+    host.append(h('section', { class: 'card nudge', 'aria-label': 'Backup reminder' },
+      h('div', { class: 'row gap top' },
+        h('span', { class: 'badge' }, icon('download', 18)),
+        h('div', { class: 'grow' },
+          h('div', { class: 'li-title' }, 'Back up your training'),
+          h('p', { class: 'small muted' }, `${s.settings.lastBackupAt ? `Last backup ${days} days ago.` : 'No backup yet.'} Your data lives only on this device — turn on encrypted backup so a lost phone doesn’t mean lost progress.`),
+          h('div', { class: 'row gap mt' },
+            h('a', { class: 'btn sm primary', href: '#/me?section=backup' }, 'Set up backup'),
+            h('button', { type: 'button', class: 'btn sm ghost', on: { click: () => store.update((x) => { x.settings.backupNudgeUntil = new Date(Date.now() + 3 * DAY).toISOString(); }) } }, 'Later'))))));
+  });
+  return host;
+}
+
 function tipCard(today) {
   return h('section', { class: 'card tip-card', 'aria-label': 'Coach tip of the day' },
     h('div', { class: 'row' }, h('span', { class: 'tip-ico' }, icon('book', 18)), h('div', { class: 'eyebrow' }, 'Coach tip')),
@@ -430,6 +453,7 @@ export function render(root) {
       quickActions(),
       weekStrip(s, today),
       upNext(s, today),
+      backupNudge(s),
       tipCard(today)));
     window.scrollTo(0, y);
   };

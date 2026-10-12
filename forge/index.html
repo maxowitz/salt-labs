@@ -18,15 +18,7 @@
   <link rel="stylesheet" href="css/workout.css">
   <link rel="stylesheet" href="css/fuel.css">
   <link rel="stylesheet" href="css/dash.css">
-  <script>
-    // apply theme before first paint to avoid a flash
-    try {
-      var s = JSON.parse(localStorage.getItem('forge:v1') || '{}').settings || {};
-      var t = s.theme || 'dark';
-      if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-      document.documentElement.dataset.theme = t;
-    } catch (e) {}
-  </script>
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <div id="app">
