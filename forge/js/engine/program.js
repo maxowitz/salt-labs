@@ -3,12 +3,18 @@
 //
 // Phases: Base → Build → Peak → Taper (deload every 4th Base/Build week). Weekly templates for 3–6 days
 // guarantee: heavy KB strength, KB conditioning, Zone 2 running, quality running and (Build+) compromised
-// run↔station work. Bells come from coach.suggestWeight (owned bells only); progression is reps/sets/density
-// week to week and one bell size up from Build when the athlete owns it (else density/volume instead).
+// run↔station work. The quality run sits on day 1 (fresh after the rest day), never the day after heavy hinging.
+// Bells come from coach.suggestWeight (owned bells only, too-heavy lifts regress to safer variants);
+// progression is reps/sets/density week to week and one bell size up from Build when the athlete owns it.
+// Weekly run volume is capped at +12% over the previous loading week; deloads run ≤ 70% of it.
+//
+// Item extras beyond §6.2: paceSec (target sec/km), step (plan bell step, for coach.liveItemWeight),
+// hold (do not auto-progress: warm-ups, spec-weight station work, deload/taper weeks).
+// Workout extras: fixed (race day / primer — never readiness-scaled), benchmark (tests — postponed, not scaled).
 
 import { addDays, daysBetween, todayISO } from '../store.js';
 import { getExercise } from '../data/exercises.js';
-import { suggestWeight, ownedBells, pairedBells } from './coach.js';
+import { suggestWeight, ownedBells, pairedBells, tooHeavy } from './coach.js';
 import { paces, hrZones, defaultHrMax, estimateFiveK, STATIONS, specKey, predictRace } from './hyrox.js';
 
 export const PHASES = {
@@ -21,12 +27,12 @@ export const PHASES = {
 const SLOTS = { 3: [0, 2, 4], 4: [0, 1, 3, 5], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5] };
 const WEEK = {
   3: { base: ['S:full+z', 'Q', 'C+z'], build: ['S:full+z', 'Q', 'H+e'], peak: ['S:maint+z', 'Q+c', 'X'] },
-  4: { base: ['S:full', 'Q', 'C', 'Z:long'], build: ['S:full+c', 'Q', 'H', 'Z:long'], peak: ['S:maint+c', 'Q', 'Z:easy', 'X'] },
-  5: { base: ['S:lower', 'Q', 'C', 'S:upper', 'Z:long'], build: ['S:full', 'Q', 'C', 'H', 'Z:long'], peak: ['S:maint', 'Q', 'C', 'Z:easy', 'X'] },
+  4: { base: ['Q', 'S:full', 'C', 'Z:long'], build: ['Q', 'S:full+c', 'H', 'Z:long'], peak: ['Q', 'S:maint+c', 'Z:easy', 'X'] },
+  5: { base: ['Q', 'S:lower', 'S:upper+z', 'C', 'Z:long'], build: ['Q', 'S:full+c', 'Z:easy', 'H', 'Z:long'], peak: ['Q', 'S:maint', 'C', 'Z:easy', 'X'] },
   6: {
-    base: ['S:lower', 'Q', 'Z:easy', 'C', 'S:upper', 'Z:long'],
-    build: ['S:full', 'Q', 'Z:strides', 'C', 'H', 'Z:long'],
-    peak: ['S:maint', 'Q', 'Z:easy', 'C', 'Z:strides', 'X'],
+    base: ['Q', 'S:lower', 'Z:easy', 'C', 'S:upper', 'Z:long'],
+    build: ['Q', 'S:full', 'Z:strides', 'H', 'C', 'Z:long'],
+    peak: ['Q', 'S:maint', 'Z:easy', 'C', 'Z:strides', 'X'],
   },
 };
 
@@ -34,6 +40,26 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const rq = (v, q) => Math.max(q, Math.round(v / q) * q);
 const pickV = (arr, i) => arr[((i % arr.length) + arr.length) % arr.length];
 const isISO = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const QF = { beginner: 0.7, intermediate: 1, advanced: 1.15 }; // quality-run volume by experience
+
+// Safer variant when a lift is too heavy with the athlete's bells (else ex.regression, else by pattern).
+const SAFE_DOWN = {
+  'kb-snatch': 'kb-high-pull', 'kb-high-pull': 'kb-swing', 'kb-swing-1h': 'kb-swing', 'kb-swing-double': 'kb-swing', 'kb-swing': 'kb-deadlift',
+  'kb-dead-swing': 'kb-deadlift', 'kb-swing-squat': 'kb-goblet-squat', 'kb-clean': 'kb-deadlift', 'kb-double-clean': 'kb-clean',
+  'kb-clean-press': 'kb-press', 'kb-double-clean-press': 'kb-clean-press', 'kb-clean-jerk': 'kb-clean-press',
+  'kb-press': 'kb-floor-press', 'kb-double-press': 'kb-press', 'kb-push-press': 'bw-pushup', 'kb-double-push-press': 'kb-push-press', 'kb-jerk': 'kb-push-press',
+  'kb-floor-press': 'bw-pushup', 'kb-bottoms-up-press': 'bw-pushup',
+  'kb-thruster': 'kb-goblet-thruster', 'kb-double-thruster': 'kb-goblet-thruster', 'kb-goblet-thruster': 'bw-air-squat',
+  'kb-double-front-squat': 'kb-front-squat', 'kb-front-squat': 'kb-goblet-squat', 'kb-goblet-squat': 'bw-air-squat',
+  'kb-windmill': 'bw-side-plank', 'kb-overhead-carry': 'kb-suitcase-carry', 'kb-rack-carry': 'kb-suitcase-carry', 'kb-farmers-carry': 'kb-suitcase-carry',
+  'kb-suitcase-carry': 'bw-bear-crawl', 'kb-bear-crawl-drag': 'bw-bear-crawl', 'kb-towel-drag': 'kb-row', 'kb-gorilla-row': 'kb-row', 'kb-row': 'mob-ytw',
+  'kb-renegade-row': 'bw-plank', 'kb-sl-rdl': 'kb-rdl', 'kb-rdl': 'kb-deadlift', 'kb-suitcase-deadlift': 'kb-deadlift', 'kb-double-deadlift': 'kb-deadlift',
+  'kb-deadlift': 'mob-glute-bridge', 'kb-rack-walking-lunge': 'kb-goblet-walking-lunge', 'kb-goblet-walking-lunge': 'bw-lunge', 'kb-rack-lunge': 'bw-lunge',
+  'kb-rack-reverse-lunge': 'bw-lunge', 'kb-step-up': 'bw-lunge', 'kb-lateral-lunge': 'bw-lunge', 'kb-around-world': 'bw-dead-bug', 'kb-halo': 'mob-arm-circles',
+  'kb-armbar': 'mob-t-spine',
+};
+const PATTERN_BW = { squat: 'bw-air-squat', lunge: 'bw-lunge', press: 'bw-pushup', pull: 'mob-ytw', hinge: 'mob-glute-bridge', ballistic: 'bw-jump-squat', carry: 'bw-bear-crawl', core: 'bw-plank', mobility: 'mob-cat-cow' };
+const BW_NOTES = { 'bw-pushup': 'Bell too heavy for now — push-ups (or pike push-ups for the press pattern)', 'bw-air-squat': 'Bell too heavy for now — bodyweight, full depth' };
 
 // ---------- Context: everything personal the builders need ----------
 function normProfile(profile) {
@@ -50,7 +76,8 @@ function makeCtx(profile) {
   const p = normProfile(profile || { experience: 'intermediate', sex: 'm', weightKg: 80, bells: [], units: 'metric' });
   const units = p.units === 'metric' ? 'metric' : 'imperial';
   const fiveK = +p.fiveKSec > 600 ? +p.fiveKSec : estimateFiveK(p);
-  const pc = paces(fiveK);
+  const pc = paces(fiveK, { experience: p.experience });
+  pc.raceFresh = Math.round((pc.tempo + pc.race) / 2);
   const zones = hrZones(+p.hrMax > 100 ? +p.hrMax : defaultHrMax(p.age));
   const owned = ownedBells(p), pairs = pairedBells(p);
   const ctx = {
@@ -58,6 +85,7 @@ function makeCtx(profile) {
     pairs: generic ? true : pairs.length > 0,
     exp: p.experience, female: p.sex === 'f', spec: specKey(p),
   };
+  const poolOf = (exId) => (getExercise(exId).double && pairs.length ? pairs : owned);
 
   ctx.pick = (dbl, single) => (ctx.pairs ? dbl : single);
   ctx.bell = (exId, step = 0) => (generic ? undefined : suggestWeight(exId, p, [], { step }) ?? undefined);
@@ -65,28 +93,59 @@ function makeCtx(profile) {
   ctx.capped = (exId, step) => !generic && step > 0 && ctx.bell(exId, step) === ctx.bell(exId, step - 1);
   ctx.light = (exId) => {
     if (generic) return undefined;
-    const ex = getExercise(exId);
-    const pool = ex.double && pairs.length ? pairs : owned;
+    const pool = poolOf(exId);
     return pool.length ? pool[0] : undefined;
   };
   ctx.near = (exId, kg) => {
     if (generic) return undefined;
-    const ex = getExercise(exId);
-    const pool = ex.double && pairs.length ? pairs : owned;
+    const pool = poolOf(exId);
     if (!pool.length) return undefined;
     return pool.reduce((a, b) => (Math.abs(b - kg) < Math.abs(a - kg) || (Math.abs(b - kg) === Math.abs(a - kg) && b < a) ? b : a));
   };
+  // KB item with an owned, safe bell. Explicit o.kg (light / spec bells) marks the item `hold`.
+  // Too heavy → walk SAFE_DOWN / regression until a lift fits, else a bodyweight pattern.
   ctx.kb = (exId, o = {}, step = 0) => {
-    const it = { exId, ...o };
-    const kg = o.kg !== undefined ? o.kg : ctx.bell(exId, step);
-    if (kg != null) it.kg = kg; else delete it.kg;
-    return it;
+    if (generic) { const it = { exId, ...o }; delete it.kg; return it; }
+    const explicit = o.kg !== undefined && o.kg !== null;
+    let id = exId;
+    for (let guard = 0; guard < 8; guard++) {
+      const ex = getExercise(id);
+      if (ex.category !== 'kb') {
+        const it = { ...o, exId: id };
+        delete it.kg; delete it.step; delete it.hold;
+        if (!ex.unilateral && it.perSide) { delete it.perSide; if (it.reps) it.reps *= 2; }
+        if (it.reps && ['squat', 'press', 'lunge'].includes(ex.pattern)) it.reps = Math.max(it.reps, 6);
+        it.note = BW_NOTES[id] || `Bell too heavy for now — ${ex.name.toLowerCase()} instead`;
+        return it;
+      }
+      if (id === 'kb-tgu' && !explicit && ctx.bell(id, 0) == null) {
+        const it = { ...o, exId: id, note: 'No bell yet — balance a shoe on the fist; earn the bell with smooth reps' };
+        delete it.kg; return it;
+      }
+      for (let st = step; st >= 0; st--) {
+        const kg = explicit ? o.kg : ctx.bell(id, st);
+        if (kg != null && !tooHeavy(id, p, kg)) {
+          const it = { ...o, exId: id, kg };
+          if (explicit) it.hold = true;
+          if (st > 0) it.step = st;
+          if (id !== exId && !it.note) it.note = `Safer variant of ${getExercise(exId).name} for your bells`;
+          if (ex.unilateral && !getExercise(exId).unilateral && it.reps) it.perSide = true;
+          return it;
+        }
+        if (explicit) break;
+      }
+      const next = SAFE_DOWN[id] || ex.regression || PATTERN_BW[ex.pattern] || 'bw-air-squat';
+      if (next === id) break;
+      id = next;
+    }
+    return { ...o, exId: 'bw-air-squat', kg: undefined };
   };
 
   const fmtP = (sec) => {
     const s = Math.round(units === 'metric' ? sec : sec * 1.609344);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
+  ctx.fmtP = fmtP;
   const per = units === 'metric' ? '/km' : '/mi';
   const z = (n) => ctx.zones.find((q) => q.z === n);
   ctx.pace = (kind) => {
@@ -98,6 +157,7 @@ function makeCtx(profile) {
       easy: 'Zone 2 — conversational', long: 'Zone 2 — conversational, finish strong not fast', recovery: 'Zone 1 — very easy',
       tempo: 'Comfortably hard, a few words at a time', threshold: 'Threshold — controlled discomfort (RPE 7–8)',
       interval: 'Hard but repeatable (RPE 8–9)', race: 'HYROX race pace — strong but sustainable', strides: '~90% speed, relaxed',
+      raceFresh: 'Race rhythm on fresh legs — a touch quicker than race target',
     }[kind] || '';
     if (generic) return effort;
     const z2 = z(2), z1 = z(1), z3 = z(3), z4 = z(4), z5 = z(5);
@@ -109,11 +169,17 @@ function makeCtx(profile) {
       case 'threshold': return `Threshold ${fmtP(pc.threshold)} ${per} · Zone 4 (${z4.lo}–${z4.hi} bpm)`;
       case 'interval': return `Interval ${fmtP(pc.interval)} ${per} · Zone 5 (${z5.lo}+ bpm)`;
       case 'race': return `HYROX race pace ${fmtP(pc.race)} ${per}`;
+      case 'raceFresh': return `Race rhythm ${fmtP(pc.raceFresh)} ${per} on fresh legs (race target ${fmtP(pc.race)} ${per})`;
       case 'strides': return 'Build to ~90% speed over 20 s, walk back';
       default: return effort;
     }
   };
-  ctx.run = (exId, o, kind) => ({ exId, ...o, note: o.note || ctx.note(kind), paceSec: ctx.pace(kind) });
+  // Run item. Strides and hill sprints are effort-based → no target pace.
+  ctx.run = (exId, o, kind) => {
+    const it = { exId, ...o, note: o.note || ctx.note(kind) };
+    if (kind !== 'strides' && exId !== 'run-hill-sprints' && exId !== 'run-strides') it.paceSec = ctx.pace(kind);
+    return it;
+  };
   return ctx;
 }
 
@@ -172,24 +238,28 @@ function coolRun() {
 }
 
 function z2Tail(ctx, min) {
-  return B('cardio', 'Zone 2 flush run', [ctx.run('run-easy', { timeSec: min * 60 }, 'easy')], {
+  return B('cardio', `${min} min Zone 2 flush run`, [ctx.run('run-easy', { timeSec: min * 60 }, 'easy')], {
     notes: ctx.eq.bike || ctx.eq.row ? 'Easy aerobic work straight after lifting. Bike or row is fine if legs are heavy.' : 'Easy aerobic work straight after lifting — keep it conversational.',
   });
 }
 
 // ---------- Station substitutions (§4) ----------
-function stationItems(ctx, id, frac = 1, race = false) {
+// mode: false = training ids & suggested bells; 'spec' = race-spec bells; true = race-spec bells + race station ids.
+function stationItems(ctx, id, frac = 1, mode = false) {
   const eq = ctx.eq;
-  const spec = STATIONS.find((s) => s.id === id);
-  const specKg = spec?.kg?.[ctx.spec];
+  const race = mode === true, spec = !!mode;
+  const st = STATIONS.find((s) => s.id === id);
+  const specKg = st?.kg?.[ctx.spec];
   const d = (m, q = 5) => rq(m * frac, q);
   const n = (r) => Math.max(3, Math.round(r * frac));
   switch (id) {
     case 'skierg':
       if (eq.ski) return [{ exId: race ? 'hx-ski' : 'erg-ski', distanceM: d(1000, 50), note: 'Strong, long strokes — sustainable race effort' }];
       return [
-        ctx.kb(ctx.pick('kb-swing-double', 'kb-swing'), { reps: n(30), note: 'SkiErg sub: powerful hinge, pull the bells back' }),
-        ctx.kb('kb-snatch', { reps: n(10), perSide: true, kg: ctx.light('kb-snatch') }),
+        ctx.kb(ctx.pick('kb-swing-double', 'kb-swing'), { reps: n(40), note: 'SkiErg sub: powerful hinge, pull the bells back hard' }),
+        ctx.exp === 'beginner'
+          ? ctx.kb('kb-high-pull', { reps: n(16), note: 'SkiErg sub: elbows high, hips drive' })
+          : ctx.kb('kb-snatch', { reps: n(10), perSide: true, kg: ctx.light('kb-snatch') }),
       ];
     case 'sled-push':
       if (ctx.pairs) return [
@@ -213,27 +283,46 @@ function stationItems(ctx, id, frac = 1, race = false) {
         ctx.kb('kb-swing', { reps: n(30), note: 'Row sub: swings + run' }),
         ctx.run('run', { distanceM: d(400, 50) }, 'race'),
       ];
-    case 'farmers':
-      if (ctx.pairs) return [ctx.kb('kb-farmers-carry', { distanceM: d(200, 10), kg: race && specKg ? ctx.near('kb-farmers-carry', specKg) : undefined, note: `Race spec 2 × ${specKg} kg — use it if you own it` })];
-      return [ctx.kb('kb-suitcase-carry', { distanceM: d(100, 10), perSide: true, note: 'One bell, switch hands — resist the lean' })];
-    case 'sandbag-lunges':
-      if (eq.sandbag) return [{ exId: 'hx-sandbag-lunge', distanceM: d(100, 5), note: `Race spec ${specKg} kg` }];
-      if (ctx.pairs) return [ctx.kb('kb-rack-walking-lunge', { distanceM: d(100, 5), kg: ctx.near('kb-rack-walking-lunge', (specKg || 20) / 2), note: 'Sandbag sub: knee touches every step' })];
-      return [ctx.kb('kb-goblet-walking-lunge', { distanceM: d(100, 5), kg: ctx.near('kb-goblet-walking-lunge', specKg || 20), note: 'Sandbag sub: knee touches every step' })];
-    case 'wall-balls':
+    case 'farmers': {
+      const note = `Race spec 2 × ${specKg} kg`;
+      if (ctx.pairs) return [ctx.kb('kb-farmers-carry', { distanceM: d(200, 10), kg: spec && specKg ? ctx.near('kb-farmers-carry', specKg) : undefined, note: `${note} — use it if you own it` })];
+      return [ctx.kb('kb-suitcase-carry', { distanceM: d(100, 10), perSide: true, kg: spec && specKg ? ctx.near('kb-suitcase-carry', specKg) : undefined, note: `${note}. One bell, switch hands — resist the lean` })];
+    }
+    case 'sandbag-lunges': {
+      const sk = specKg || 20;
+      if (eq.sandbag) return [{ exId: 'hx-sandbag-lunge', distanceM: d(100, 5), note: `Race spec ${sk} kg` }];
+      if (ctx.generic) return [ctx.kb(ctx.pick('kb-rack-walking-lunge', 'kb-goblet-walking-lunge'), { distanceM: d(100, 5), note: `Sandbag sub (race ${sk} kg): knee touches every step` })];
+      // Pick the option whose TOTAL load is closest to race spec (ties → lighter).
+      const single = ctx.near('kb-goblet-walking-lunge', sk);
+      const pairKg = ctx.pairs && pairedBells(ctx.p).length ? ctx.near('kb-rack-walking-lunge', sk / 2) : null;
+      const usePair = pairKg != null && Math.abs(pairKg * 2 - sk) < Math.abs(single - sk);
+      const total = usePair ? pairKg * 2 : single;
+      return [ctx.kb(usePair ? 'kb-rack-walking-lunge' : 'kb-goblet-walking-lunge', { distanceM: d(100, 5), kg: usePair ? pairKg : single, note: `Sandbag sub ≈ ${total} kg vs race ${sk} kg — knee touches every step` })];
+    }
+    case 'wall-balls': {
+      const wb = specKg || 6;
       if (eq.wallball) return [{ exId: 'hx-wall-balls', reps: n(100), note: `Race spec ${STATIONS[7].spec[ctx.spec]}` }];
-      return [ctx.kb('kb-goblet-thruster', { reps: n(60), kg: ctx.light('kb-goblet-thruster'), note: 'Wall-ball sub: lightest bell, full squat, smooth rhythm' })];
+      const light = ctx.light('kb-goblet-thruster');
+      const probe = ctx.kb('kb-goblet-thruster', { reps: 1, kg: light });
+      if (probe.exId !== 'kb-goblet-thruster') return [{ exId: 'bw-air-squat', reps: n(80), note: 'Wall-ball sub: full squat + fast arm press-out overhead. Better: a med ball / sandbag at race weight' }];
+      if (light != null && light > wb * 2.5) return [
+        ctx.kb('kb-goblet-thruster', { reps: n(50), kg: light, note: 'Wall-ball sub (part 1): lightest bell, full squat. Or a med ball / sandbag at race weight for all 100' }),
+        { exId: 'bw-air-squat', reps: n(50), note: 'Wall-ball sub (part 2): squat + fast arm press-out overhead' },
+      ];
+      return [ctx.kb('kb-goblet-thruster', { reps: n(60), kg: light, note: 'Wall-ball sub: lightest bell, full squat, smooth rhythm' })];
+    }
     default: return [];
   }
 }
 
 // ---------- Estimation & equipment ----------
-const SEC_PER_M = { 'hx-bbj': 3.4, 'bw-bbj': 3.4, 'hx-sled-push': 4, 'hx-sled-pull': 5, 'hx-sandbag-lunge': 2.8, 'kb-rack-walking-lunge': 2.8, 'kb-goblet-walking-lunge': 2.8, 'kb-bear-crawl-drag': 3, 'kb-towel-drag': 4, 'bw-bear-crawl': 2, 'bw-a-skip': 0.6 };
+const SEC_PER_M = { 'hx-bbj': 3.4, 'bw-bbj': 3.4, 'hx-sled-push': 4, 'hx-sled-pull': 5, 'hx-sandbag-lunge': 2.8, 'kb-rack-walking-lunge': 2.8, 'kb-goblet-walking-lunge': 2.8, 'kb-bear-crawl-drag': 3, 'kb-towel-drag': 4, 'bw-bear-crawl': 2, 'bw-a-skip': 0.6, 'bw-lunge': 2.5 };
 
 function itemSec(ctx, it) {
   const ex = getExercise(it.exId);
   const sides = it.perSide ? 2 : 1;
-  if (it.timeSec) return it.timeSec * sides;
+  const sets = ex.category === 'run' && it.sets ? it.sets : 1;
+  if (it.timeSec) return it.timeSec * sides * sets;
   if (it.distanceM) {
     if (ex.category === 'run') return (it.distanceM / 1000) * (it.paceSec || ctx.pc.easy[0]);
     if (['erg-ski', 'erg-row', 'hx-ski', 'hx-row'].includes(it.exId)) return (it.distanceM / 1000) * 280;
@@ -244,21 +333,18 @@ function itemSec(ctx, it) {
   return 30;
 }
 
-function blockSec(ctx, b) {
+function blockSec(ctx, b, type) {
   const items = b.items || [];
   const sum = items.reduce((a, it) => a + itemSec(ctx, it), 0);
-  const setup = b.kind === 'warmup' || b.kind === 'cooldown' ? 0 : 60; // transitions, chalk, bells
-  return setup + rawBlockSec(ctx, b, items, sum);
-}
-
-function rawBlockSec(ctx, b, items, sum) {
+  const raceLike = type === 'hyrox' && (b.kind === 'cardio' || b.kind === 'station');
+  const setup = b.kind === 'warmup' || b.kind === 'cooldown' || raceLike ? 0 : 60; // transitions, chalk, bells
   switch (b.kind) {
-    case 'strength': return items.reduce((a, it) => a + (it.sets || 1) * (itemSec(ctx, it) + 15 + (it.restSec ?? b.restSec ?? 90)), 0);
-    case 'emom': return (b.minutes || 10) * 60;
-    case 'amrap': return b.durationSec || 600;
-    case 'intervals': return (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
-    case 'circuit': return (b.rounds || 1) * sum + Math.max(0, (b.rounds || 1) - 1) * (b.restSec || 0);
-    default: return sum;
+    case 'strength': return setup + items.reduce((a, it) => a + (it.sets || 1) * (itemSec(ctx, it) + 15 + (it.restSec ?? b.restSec ?? 90)), 0);
+    case 'emom': return setup + (b.minutes || 10) * 60;
+    case 'amrap': return setup + (b.durationSec || 600);
+    case 'intervals': return setup + (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
+    case 'circuit': return setup + (b.rounds || 1) * sum + Math.max(0, (b.rounds || 1) - 1) * (b.restSec || 0);
+    default: return setup + sum + (b.restSec || 0);
   }
 }
 
@@ -268,7 +354,7 @@ function equipmentOf(ctx, w) {
   let running = false;
   for (const b of w.blocks) for (const it of b.items || []) {
     const ex = getExercise(it.exId);
-    if (ex.category === 'kb') {
+    if (ex.category === 'kb' && (it.kg != null || ctx.generic)) {
       const key = it.kg != null ? it.kg : 0;
       const dbl = ex.double && ctx.pairs;
       bells.set(key, Math.max(bells.get(key) || 1, dbl ? 2 : 1));
@@ -281,13 +367,18 @@ function equipmentOf(ctx, w) {
   return [...list, ...out];
 }
 
+const estMinOf = (ctx, w) => Math.max(10, Math.round(w.blocks.reduce((a, b) => a + blockSec(ctx, b, w.type), 0) / 60 / 5) * 5);
+
 function finalize(ctx, w, meta) {
-  const sec = w.blocks.reduce((a, b) => a + blockSec(ctx, b), 0);
-  return {
+  if (meta.hold) for (const b of w.blocks) for (const it of b.items || []) if (getExercise(it.exId).category === 'kb' && it.kg != null) it.hold = true;
+  const out = {
     id: meta.id, title: w.title, type: w.type, phase: meta.phase || null, week: meta.week || null,
-    estMin: Math.max(10, Math.round(sec / 60 / 5) * 5), summary: w.summary || '',
+    estMin: w.estMin || estMinOf(ctx, w), summary: w.summary || '',
     equipment: equipmentOf(ctx, w), blocks: w.blocks,
   };
+  if (w.fixed) out.fixed = true;
+  if (w.benchmark) out.benchmark = true;
+  return out;
 }
 
 // ---------- Session builders ----------
@@ -301,33 +392,47 @@ function strengthSession(ctx, wk, focus, extra) {
   const pressId = ctx.pick('kb-double-press', 'kb-press');
   const rowId = ctx.eq.pullup ? 'bw-pullup' : ctx.pick('kb-gorilla-row', 'kb-row');
   const capped = ctx.capped(squatId, step);
+  const secondCycle = phase === 'build' && pl >= 4;
 
-  // Rep scheme: base = double progression on reps; build = heavier bell, reps rebuild; capped = density.
+  // Squat: base = double progression on reps; build = heavier bell, reps rebuild; capped = density.
   let sets, reps, rest = 120;
   if (taper) { sets = 2; reps = 3; }
   else if (deload) { sets = 3; reps = 5; rest = 90; }
   else if (maint) { sets = 3; reps = 5; }
-  else if (phase === 'build') { sets = 5; reps = capped ? pickV([6, 7, 8, 8], pl) : pickV([3, 4, 5, 6], pl); if (capped) rest = 90 - 15 * Math.min(pl, 2); }
-  else { sets = 4 + Math.min(pl, 1); reps = pickV([5, 6, 7, 8], pl); }
-  const pReps = Math.max(taper ? 2 : 3, reps - 1);
-  // Press jumps are big (e.g. 16→24 kg = +50%): only step up when the next owned bell is ≤ 30% heavier.
-  const pStep = step && ctx.bell(pressId, step) <= (ctx.bell(pressId, 0) || 0) * 1.3 ? step : 0;
+  else if (phase === 'build') {
+    sets = secondCycle ? 6 : 5;
+    reps = capped ? pickV([6, 7, 8, 8], pl) : pickV([3, 4, 5, 6], pl);
+    if (capped) rest = 90 - 15 * Math.min(pl, 2);
+  } else { sets = 4 + Math.min(pl, 1); reps = pickV([5, 6, 7, 8], pl); }
+  // Goblet squats are limited by the upper back — never below 5 reps; add a set instead.
+  if (squatId === 'kb-goblet-squat' && reps < 5) { reps = 5; sets += 1; }
+
+  // Press & row progress on their own: a bell step only when the next owned bell is ≤ 30% heavier; otherwise reps keep climbing.
+  const gentleStep = (id) => (step && ctx.bell(id, step) != null && ctx.bell(id, step) > (ctx.bell(id, 0) || 0) && ctx.bell(id, step) <= (ctx.bell(id, 0) || 0) * 1.3 ? step : 0);
+  const pStep = gentleStep(pressId), rStep = rowId === 'bw-pullup' ? 0 : gentleStep(rowId);
+  let pReps;
+  if (taper) pReps = 2; else if (deload || maint) pReps = 4;
+  else if (phase === 'build') pReps = pStep ? pickV([3, 4, 5, 6], pl) : pickV([6, 7, 8, 8], pl);
+  else pReps = pickV([4, 5, 6, 7], pl);
+  const rReps = taper ? 5 : deload || maint ? 8 : phase === 'build' ? (rStep ? pickV([6, 8, 8, 10], pl) : pickV([10, 10, 12, 12], pl)) : pickV([8, 9, 10, 10], pl);
+  const pSets = phase === 'build' && !pStep && secondCycle ? 6 : sets;
   const rungNote = capped && phase === 'build' ? 'Top bell owned — progress by density: rest shorter than last week.' : '';
+  const sqSide = squatId === 'kb-front-squat';
 
   const blocks = [warmKB(ctx)];
   let title, summary;
   const s = (exId, o, st = step) => ctx.kb(exId, o, st);
   const upper = () => [
-    s(pressId, { sets, reps: pReps, perSide: pressId === 'kb-press', restSec: rest, note: 'Strict — glutes and abs locked' }, pStep),
+    s(pressId, { sets: pSets, reps: pReps, perSide: pressId === 'kb-press', restSec: rest, note: 'Strict — glutes and abs locked' }, pStep),
     rowId === 'bw-pullup'
       ? { exId: 'bw-pullup', sets, reps: clamp(pReps, 3, 8), restSec: 60, note: 'Leave 1–2 reps in the tank' }
-      : s(rowId, { sets, reps: reps + 3, perSide: true, restSec: 60 }, 0),
+      : s(rowId, { sets, reps: rReps, perSide: true, restSec: 60 }, rStep),
   ];
 
   if (focus === 'lower') {
     title = pickV(['Squat & Hinge Foundations', 'Heavy Legs, Strong Hips', 'Hinge Power'], v);
     summary = 'Lower-body strength: heavy squats, single-leg hinge, power swings and a loaded carry.';
-    blocks.push(B('strength', 'A · Squat', [s(squatId, { sets, reps, restSec: rest, note: rungNote || 'Own the bottom position; drive up hard' })], { notes: 'Stop every set with 1–2 reps in reserve (RPE 7–8).' }));
+    blocks.push(B('strength', 'A · Squat', [s(squatId, { sets, reps, perSide: sqSide, restSec: rest, note: rungNote || 'Own the bottom position; drive up hard' })], { notes: 'Stop every set with 1–2 reps in reserve (RPE 7–8).' }));
     blocks.push(B('strength', 'B · Single-leg hinge', [s('kb-sl-rdl', { sets: 3, reps: 8, perSide: true, restSec: 60 }, 0)], { notes: 'Slow and balanced — 3 s lowering.' }));
     const swId = ctx.pick('kb-swing-double', 'kb-swing');
     blocks.push(B('strength', 'C · Power swings', [s(swId, { sets: deload || taper ? 5 : 8 + Math.min(pl, 2), reps: 10, restSec: 45, note: 'Every rep crisp and explosive — park the bell if speed drops' })], { notes: 'Heavy, fast, recover fully — quality over fatigue.' }));
@@ -350,10 +455,10 @@ function strengthSession(ctx, wk, focus, extra) {
     summary = maint || taper
       ? 'Keep strength while running and race prep dominate: few sets, crisp reps, heavy bells.'
       : 'Full-body heavy kettlebell strength: squat, press, pull, get-up. Reps first, then bell size.';
-    blocks.push(B('strength', 'A · Squat', [s(squatId, { sets, reps, restSec: rest, note: rungNote || 'RPE 7–8 — leave a rep or two' })]));
+    blocks.push(B('strength', 'A · Squat', [s(squatId, { sets, reps, perSide: sqSide, restSec: rest, note: rungNote || 'RPE 7–8 — leave a rep or two' })]));
     blocks.push(B('strength', 'B · Press + pull superset', upper(), { notes: 'Alternate press and pull; rest after the pair.' }));
     if (v % 2 === 0) blocks.push(B('strength', 'C · Turkish get-up', [s('kb-tgu', { sets: maint || taper || deload || extra === 'z' ? 2 : 3, reps: 1, perSide: true, restSec: 30 }, 0)]));
-    else blocks.push(B('strength', 'C · Hinge', [s(ctx.pick('kb-double-deadlift', 'kb-suitcase-deadlift'), { sets: 3, reps: 6, perSide: !ctx.pairs, restSec: 60 })]));
+    else blocks.push(B('strength', 'C · Hinge', [s(ctx.pick('kb-double-deadlift', 'kb-suitcase-deadlift'), { sets: taper || deload || maint ? 2 : 3, reps: 6, perSide: !ctx.pairs, restSec: 60 })]));
     if (!maint && !taper && extra !== 'z') blocks.push(B('strength', 'D · Carry', [s(ctx.pick('kb-farmers-carry', 'kb-suitcase-carry'), { sets: deload ? 2 : 3, distanceM: 40, perSide: !ctx.pairs, restSec: 60 })]));
   }
 
@@ -384,10 +489,10 @@ function conditioningSession(ctx, wk, extra) {
     title = 'Iron Engine EMOM';
     summary = 'Every-minute-on-the-minute KB conditioning: power, strength-endurance and an aerobic engine.';
     blocks.push(B('emom', `${minutes}-min EMOM`, [
-      ctx.kb(swing1, { reps: swing1 === 'kb-swing' ? 15 : 10, perSide: swing1 !== 'kb-swing' }),
+      swing1 === 'kb-swing' ? ctx.kb('kb-swing', { reps: 15 }) : ctx.kb(swing1, { reps: 5, perSide: true, note: '5 left + 5 right' }),
       ctx.kb(ctx.pick('kb-double-front-squat', 'kb-goblet-squat'), { reps: 6 + Math.min(pl, 2) }, 0),
       { exId: 'bw-pushup', reps: 8 + Math.min(pl, 4) },
-      ctx.kb(ctx.pick('kb-double-clean-press', 'kb-clean-press'), { reps: 4, perSide: !ctx.pairs }, 0),
+      ctx.kb(ctx.pick('kb-double-clean-press', 'kb-clean-press'), { reps: ctx.pairs ? 4 : 3, perSide: !ctx.pairs }, 0),
     ], { minutes, alternate: true, notes: 'One station per minute, rotate in order. Work should take 25–35 s.' }));
   } else if (kind === 'complex') {
     const rounds = Math.max(2, Math.round(clamp(4 + pl, 3, 7) * vol));
@@ -429,7 +534,7 @@ function conditioningSession(ctx, wk, extra) {
       ...stationItems(ctx, 'farmers', 0.5),
       ...stationItems(ctx, 'sandbag-lunges', 0.25),
       ...stationItems(ctx, 'wall-balls', 0.25),
-      ...stationItems(ctx, eq(ctx, 'ski') ? 'skierg' : 'row', 0.25),
+      ...stationItems(ctx, ctx.eq.ski ? 'skierg' : 'row', 0.25),
     ], { rounds, restSec: 90, notes: 'Race-like rhythm, not a sprint. Note the bell sizes for next time.' }));
   }
   if (extra === 'z') blocks.push(z2Tail(ctx, Math.round(clamp(20 + 2 * wk.L, 20, 35) * (vol < 1 ? 0.75 : 1))));
@@ -437,37 +542,39 @@ function conditioningSession(ctx, wk, extra) {
   if (extra === 'z') title = `Iron & Engine: ${title}`;
   return { title: deload ? `Deload · ${title}` : taper ? `Taper · ${title}` : title, type: 'conditioning', summary, blocks };
 }
-const eq = (ctx, k) => !!ctx.eq[k];
 
 function qualityRun(ctx, wk, extra) {
   const { phase, deload, taper, pl, v } = wk;
+  const qf = QF[ctx.exp];
+  const sc = (n, lo, hi) => clamp(Math.round(n * qf), lo, hi);
   const blocks = [warmRun(ctx, 10)];
   let title, summary;
   if (taper || wk.kind === 'openers') {
+    const reps = ctx.exp === 'beginner' ? 2 : 3;
     title = 'Race Openers';
     summary = 'Short race-pace reps to stay sharp without adding fatigue.';
-    blocks.push(B('intervals', '3 × 1 km race pace', [ctx.run('run-1k', { distanceM: 1000 }, 'race')], { rounds: 3, workSec: ctx.pc.race, restSec: 120, notes: 'Smooth and controlled — you should finish wanting more.' }));
+    blocks.push(B('intervals', `${reps} × 1 km race pace`, [ctx.run('run-1k', { distanceM: 1000 }, 'race')], { rounds: reps, workSec: ctx.pc.race, restSec: 120, notes: 'Smooth and controlled — you should finish wanting more.' }));
     blocks.push(B('cardio', 'Strides', [ctx.run('run-strides', { timeSec: 20, sets: 4 }, 'strides')], { notes: '4 × 20 s, walk back recovery.' }));
   } else if (deload) {
     title = 'Easy Run + Strides';
     summary = 'Deload week: easy aerobic running with a few strides to keep the legs snappy.';
-    blocks.push(B('cardio', 'Easy run', [ctx.run('run-easy', { timeSec: 25 * 60 }, 'easy')]));
+    blocks.push(B('cardio', '25 min easy', [ctx.run('run-easy', { timeSec: 25 * 60 }, 'easy')]));
     blocks.push(B('cardio', 'Strides', [ctx.run('run-strides', { timeSec: 20, sets: 4 }, 'strides')], { notes: '4 × 20 s, full walk-back recovery.' }));
   } else if (phase === 'base') {
     const k = pickV(['hills', 'tempo', 'fartlek'], v);
     if (k === 'hills') {
-      const reps = clamp(6 + pl, 6, 10);
+      const reps = sc(6 + pl, 4, 10);
       title = 'Hill Sprint Power';
       summary = 'Short hill sprints build power and running economy (and train the sled-push drive), then steady tempo.';
       blocks.push(B('intervals', `${reps} × 10 s hill sprints`, [ctx.run('run-hill-sprints', { timeSec: 10, note: 'Max power uphill — drive like pushing a sled' }, 'interval')], { rounds: reps, workSec: 10, restSec: 90, notes: 'Steep hill, max power, walk down. No hill? Strides on the flat.' }));
-      blocks.push(B('cardio', 'Tempo', [ctx.run('run-tempo', { timeSec: clamp(10 + 2 * pl, 10, 20) * 60 }, 'tempo')]));
+      blocks.push(B('cardio', 'Tempo', [ctx.run('run-tempo', { timeSec: sc(10 + 2 * pl, 8, 20) * 60 }, 'tempo')]));
     } else if (k === 'tempo') {
-      const min = clamp(15 + 3 * pl, 15, 30);
+      const min = sc(15 + 3 * pl, 12, ctx.exp === 'beginner' ? 20 : 30);
       title = 'Tempo Builder';
       summary = 'Continuous tempo running raises the pace you can hold aerobically — the bedrock of HYROX running.';
       blocks.push(B('cardio', `${min} min tempo`, [ctx.run('run-tempo', { timeSec: min * 60 }, 'tempo')], { notes: 'Even splits. Last km should feel like the first.' }));
     } else {
-      const rounds = clamp(6 + pl, 6, 10);
+      const rounds = sc(6 + pl, 5, 10);
       title = 'Fartlek Surges';
       summary = 'Unstructured speed: surges at 5–10 km effort with jog floats.';
       blocks.push(B('intervals', `${rounds} × 1 min on / 1 min float`, [ctx.run('run-fartlek', { timeSec: 60 }, 'interval')], { rounds, workSec: 60, restSec: 60, notes: 'Floats are a real jog, not a walk.' }));
@@ -475,36 +582,38 @@ function qualityRun(ctx, wk, extra) {
   } else if (phase === 'build') {
     const k = pickV(['1k', 'vo2', 'cruise'], v);
     if (k === '1k') {
-      const reps = clamp(4 + pl, 4, 7);
+      const reps = sc(4 + pl, 3, 7);
       title = 'Threshold 1K Repeats';
       summary = 'The HYROX unit: 1 km reps at threshold teach you to hold a strong, repeatable pace.';
       blocks.push(B('intervals', `${reps} × 1 km threshold`, [ctx.run('run-1k', { distanceM: 1000 }, 'threshold')], { rounds: reps, workSec: ctx.pc.threshold, restSec: 90, notes: '90 s jog recovery. Hit the pace, don’t beat it.' }));
     } else if (k === 'vo2') {
-      const reps = clamp(4 + pl, 4, 6);
+      const reps = sc(4 + pl, 3, 6);
       title = 'VO2 Intervals';
       summary = '3-minute reps at interval pace lift your aerobic ceiling.';
       blocks.push(B('intervals', `${reps} × 3 min`, [ctx.run('run-intervals', { timeSec: 180 }, 'interval')], { rounds: reps, workSec: 180, restSec: 120, notes: '2 min jog between reps.' }));
     } else {
       const min = clamp(8 + 2 * pl, 8, 12);
+      const rounds = ctx.exp === 'beginner' ? 2 : 3;
       title = 'Cruise Intervals';
       summary = 'Long threshold reps with short rests — big aerobic stimulus, controlled fatigue.';
-      blocks.push(B('intervals', `3 × ${min} min threshold`, [ctx.run('run-threshold', { timeSec: min * 60 }, 'threshold')], { rounds: 3, workSec: min * 60, restSec: 90 }));
+      blocks.push(B('intervals', `${rounds} × ${min} min threshold`, [ctx.run('run-threshold', { timeSec: min * 60 }, 'threshold')], { rounds, workSec: min * 60, restSec: 90 }));
     }
   } else {
     const k = pickV(['race1k', 'cruise'], v);
     if (k === 'race1k') {
-      const reps = clamp(6 + pl, 6, 8);
+      const reps = sc(6 + pl, 4, 8);
       title = 'Race-Pace 1K Repeats';
-      summary = 'Lock in race rhythm: 1 km reps at HYROX pace with roxzone-length recoveries.';
-      blocks.push(B('intervals', `${reps} × 1 km race pace`, [ctx.run('run-1k', { distanceM: 1000 }, 'race')], { rounds: reps, workSec: ctx.pc.race, restSec: 60, notes: '60 s recovery ≈ a station transition. Every rep the same split.' }));
+      summary = 'Lock in race rhythm: 1 km reps with roxzone-length recoveries. Fresh legs, so a touch quicker than race target.';
+      blocks.push(B('intervals', `${reps} × 1 km race rhythm`, [ctx.run('run-1k', { distanceM: 1000 }, 'raceFresh')], { rounds: reps, workSec: ctx.pc.raceFresh, restSec: 60, notes: '60 s recovery ≈ a station transition. Every rep the same split.' }));
     } else {
+      const min = ctx.exp === 'beginner' ? 10 : 15;
       title = 'Threshold Cruise';
       summary = 'Sustained threshold running to sharpen the engine before race week.';
-      blocks.push(B('intervals', '2 × 15 min threshold', [ctx.run('run-threshold', { timeSec: 900 }, 'threshold')], { rounds: 2, workSec: 900, restSec: 120 }));
+      blocks.push(B('intervals', `2 × ${min} min threshold`, [ctx.run('run-threshold', { timeSec: min * 60 }, 'threshold')], { rounds: 2, workSec: min * 60, restSec: 120 }));
     }
   }
   if (extra === 'c') {
-    blocks.push(B('emom', 'Compromised finisher · 8-min EMOM', [
+    blocks.push(B('emom', `Compromised finisher · ${deload || taper ? 6 : 8}-min EMOM`, [
       ctx.kb('kb-swing', { reps: 15 }),
       ...stationItems(ctx, 'wall-balls', 0.12),
     ], { minutes: deload || taper ? 6 : 8, alternate: true, notes: 'Straight from the run: practise working on tired legs.' }));
@@ -522,7 +631,7 @@ function zoneRun(ctx, wk, kind) {
   let title, summary, min;
   if (kind === 'long') {
     min = clamp(40 + 5 * L, 40, wk.phase === 'peak' ? Math.min(capLong, 70) : capLong);
-    title = pickV(['Long Aerobic Run', 'Sunday Long Run', 'Engine Builder Long Run'], wk.v);
+    title = pickV(['Long Aerobic Run', 'Long Run', 'Engine Builder Long Run'], wk.v);
     summary = 'The cornerstone of HYROX fitness: long, easy, Zone 2. Builds the aerobic base everything else sits on.';
   } else if (kind === 'shake') {
     min = 20; title = 'Shakeout Run'; summary = 'Easy legs, a few strides. Stay loose.';
@@ -532,7 +641,7 @@ function zoneRun(ctx, wk, kind) {
     summary = 'Easy Zone 2 running. Conversational pace builds capillaries, mitochondria and durability.';
   }
   if (deload) min *= 0.7;
-  if (taper) min = Math.min(min * 0.55, 30);
+  if (taper) min = Math.min(min * 0.55, ctx.p.daysPerWeek === 3 ? 20 : 30);
   min = Math.max(15, Math.round(min / 5) * 5);
   blocks.push(B('warmup', 'Mobility primer', [
     { exId: 'mob-leg-swings', reps: 10, perSide: true },
@@ -547,36 +656,43 @@ function zoneRun(ctx, wk, kind) {
   return { title: deload ? `Deload · ${title}` : title, type: 'run', summary, blocks };
 }
 
-const STATION_PAIRS = [['skierg', 'sled-push'], ['sled-pull', 'bbj'], ['row', 'farmers'], ['sandbag-lunges', 'wall-balls']];
+const STATION_PAIRS = [['skierg', 'sled-push'], ['sandbag-lunges', 'wall-balls'], ['sled-pull', 'bbj'], ['row', 'farmers']];
+const stationName = (id) => STATIONS.find((s) => s.id === id)?.name || id;
 
 function hybridSession(ctx, wk, extra) {
-  const { deload, pl, v } = wk;
-  const [a, b] = pickV(STATION_PAIRS, v);
+  const { deload, pl } = wk;
+  // Indexed by loading weeks (not calendar weeks) so a deload never "uses up" a station pair.
+  const [a, b] = pickV(STATION_PAIRS, pl);
   const rounds = deload ? 2 : clamp(3 + pl, 3, 5);
   const blocks = [warmHybrid(ctx)];
-  if (extra === 'e') blocks.push(B('emom', 'Pre-fatigue EMOM', [
+  if (extra === 'e') blocks.push(B('emom', `Pre-fatigue · ${deload ? 6 : 10}-min EMOM`, [
     ctx.kb(ctx.pick('kb-swing-double', 'kb-swing'), { reps: 12 }),
     ctx.kb('kb-goblet-thruster', { reps: 8 }, 0),
   ], { minutes: deload ? 6 : 10, alternate: true, notes: 'KB conditioning first — then run on loaded legs.' }));
-  const title = pickV(['Compromised 1K Repeats', 'Roxzone Grinder', 'Station Stack', 'Run–Station Ladder'], v);
+  const title = pickV(['Compromised 1K Repeats', 'Roxzone Grinder', 'Station Stack', 'Run–Station Ladder'], pl);
   blocks.push(B('circuit', `${rounds} rounds: 1 km + ${stationName(a)} + ${stationName(b)}`, [
     ctx.run('run-1k', { distanceM: 1000 }, 'race'),
     ...stationItems(ctx, a, 0.5),
     ...stationItems(ctx, b, 0.5),
   ], { rounds, restSec: 90, notes: 'Run straight into the stations. Hold the same 1 km split every round — that is the skill.' }));
+  // Lunges and wall balls cost the most race time → practise them every hybrid session.
+  if (a !== 'sandbag-lunges') blocks.push(B('circuit', `Lunge & wall-ball finisher × ${deload ? 1 : 2}`, [
+    ...stationItems(ctx, 'sandbag-lunges', 0.25),
+    ...stationItems(ctx, 'wall-balls', 0.3),
+  ], { rounds: deload ? 1 : 2, restSec: 60, notes: 'Unbroken if you can — these two stations decide most races.' }));
   blocks.push(B('circuit', 'Core', [{ exId: 'bw-plank', timeSec: 40 }, { exId: 'bw-side-plank', timeSec: 25, perSide: true }], { rounds: 2, restSec: 20 }));
   blocks.push(coolRun());
-  return { title: deload ? `Deload · ${title}` : title, type: 'hybrid', summary: `Compromised running: race-pace 1 km reps straight into ${stationName(a)} and ${stationName(b)} work. Learn to run well on tired legs.`, blocks };
+  return { title: deload ? `Deload · ${title}` : title, type: 'hybrid', summary: `Compromised running: race-pace 1 km reps straight into ${stationName(a)} and ${stationName(b)} work, then lunges and wall balls. Learn to run well on tired legs.`, blocks };
 }
-const stationName = (id) => STATIONS.find((s) => s.id === id)?.name || id;
 
 function simulation(ctx, full, opts = {}) {
   const runM = full ? 1000 : 500;
   const frac = full ? 1 : 0.5;
+  const mode = opts.race ? true : 'spec';
   const blocks = [warmHybrid(ctx)];
   STATIONS.forEach((st, i) => {
     blocks.push(B('cardio', `Run ${i + 1} · ${runM === 1000 ? '1 km' : '500 m'}`, [ctx.run(runM === 1000 ? 'run-1k' : 'run', { distanceM: runM }, 'race')], { notes: i === 0 ? 'Start controlled — the first km should feel easy.' : 'Settle into race pace within 200 m.' }));
-    blocks.push(B('station', `${st.name}${full ? '' : ' (half)'}`, stationItems(ctx, st.id, frac, opts.race), { notes: st.tips[0] }));
+    blocks.push(B('station', `${st.name}${full ? '' : ' (half)'}`, stationItems(ctx, st.id, frac, mode), { notes: st.tips[0] }));
   });
   blocks.push(coolRun());
   const title = opts.title || (full ? 'Full HYROX Simulation' : 'HYROX Half Simulation');
@@ -588,6 +704,7 @@ function simulation(ctx, full, opts = {}) {
 
 function raceDay(ctx) {
   const pred = ctx.generic ? null : predictRace({ profile: ctx.p, sessions: [] });
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
   const blocks = [B('warmup', 'Race warm-up', [
     ctx.run('run-easy', { timeSec: 600 }, 'easy'),
     { exId: 'mob-wgs', reps: 3, perSide: true },
@@ -598,17 +715,20 @@ function raceDay(ctx) {
   STATIONS.forEach((st, i) => {
     const runTarget = pred ? pred.splits[i * 2].sec : null;
     const stTarget = pred ? pred.splits[i * 2 + 1].sec : null;
-    const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-    blocks.push(B('cardio', `Run ${i + 1}`, [{ exId: 'run-1k', distanceM: 1000, paceSec: ctx.pc.race, note: runTarget ? `Target ~${mmss(runTarget)}` : 'Race pace' }]));
+    blocks.push(B('cardio', `Run ${i + 1}`, [{ exId: 'run-1k', distanceM: 1000, paceSec: runTarget || ctx.pc.race, note: runTarget ? `Target ~${mmss(runTarget)} (${ctx.fmtP(runTarget)} ${ctx.units === 'metric' ? '/km' : '/mi'})` : 'Race pace' }]));
     blocks.push(B('station', st.name, [{ exId: st.exId, ...(st.reps ? { reps: st.reps } : { distanceM: st.distanceM }), note: `${st.spec[ctx.spec]}${stTarget ? ` · target ~${mmss(stTarget)}` : ''}` }], { notes: st.tips[0] }));
   });
   blocks.push(B('cooldown', 'After the finish', [{ exId: 'mob-walk', timeSec: 600 }, { exId: 'mob-breathing', timeSec: 120 }], { notes: 'Walk, refuel (carbs + protein), hydrate. Celebrate.' }));
-  return { title: 'HYROX Race Day', type: 'hyrox', summary: pred ? `Race day. Predicted finish ~${Math.round(pred.totalSec / 60)} min. Run the first km easy, hold pace, trust the training.` : 'Race day. Run the first km easy, hold pace, trust the training.', blocks };
+  return {
+    title: 'HYROX Race Day', type: 'hyrox', fixed: true, blocks,
+    estMin: pred ? Math.round(pred.totalSec / 60) + 20 : undefined,
+    summary: pred ? `Race day. Predicted finish ~${Math.round(pred.totalSec / 60)} min. Run the first km easy, hold pace, trust the training.` : 'Race day. Run the first km easy, hold pace, trust the training.',
+  };
 }
 
 function primer(ctx) {
   return {
-    title: 'Race Primer', type: 'run', summary: 'Day before the race: 15 min easy, strides and a few race movements. Then feet up, carbs in.',
+    title: 'Race Primer', type: 'run', fixed: true, summary: 'Day before the race: 15 min easy, strides and a few race movements. Then feet up, carbs in.',
     blocks: [
       warmRun(ctx, 8),
       B('cardio', 'Strides', [ctx.run('run-strides', { timeSec: 20, sets: 4 }, 'strides')]),
@@ -641,20 +761,20 @@ export function buildTemplates(profile) {
   const testBell = ctx.generic ? undefined : ctx.near('kb-swing', ctx.female ? 16 : 24);
   return [
     fin('t-1k-tt', {
-      title: '1 km Time Trial', type: 'run', summary: 'Benchmark: your best 1 km. Feeds race prediction and paces.',
+      title: '1 km Time Trial', type: 'run', benchmark: true, summary: 'Benchmark: your best 1 km. Feeds race prediction and paces.',
       blocks: [warmRun(ctx, 12), B('cardio', 'Strides', [ctx.run('run-strides', { timeSec: 20, sets: 3 }, 'strides')]),
-        B('cardio', '1 km all-out', [{ exId: 'run-1k', distanceM: 1000, note: 'Even effort: controlled first 400 m, empty the tank in the last 300 m. Log your time.' }]), coolRun()],
+        B('cardio', '1 km all-out', [{ exId: 'run-1k', distanceM: 1000, benchmark: true, note: 'Even effort: controlled first 400 m, empty the tank in the last 300 m. Log your time.' }]), coolRun()],
     }),
     fin('t-5k-tt', {
-      title: '5 km Time Trial', type: 'run', summary: 'Benchmark: 5 km for time. Re-sets every training pace in the app.',
-      blocks: [warmRun(ctx, 12), B('cardio', '5 km for time', [{ exId: 'run', distanceM: 5000, note: 'Start at goal pace, settle by 1 km, push the last 1 km. Log your time.' }]), coolRun()],
+      title: '5 km Time Trial', type: 'run', benchmark: true, summary: 'Benchmark: 5 km for time. Re-sets every training pace in the app.',
+      blocks: [warmRun(ctx, 12), B('cardio', '5 km for time', [{ exId: 'run', distanceM: 5000, benchmark: true, note: 'Start at goal pace, settle by 1 km, push the last 1 km. Log your time.' }]), coolRun()],
     }),
     fin('t-swing-test', {
-      title: '10-Min Swing Test', type: 'conditioning', summary: 'Benchmark: max two-hand swings in 10 minutes with one bell. Feeds strength-endurance scores.',
+      title: '10-Min Swing Test', type: 'conditioning', benchmark: true, summary: 'Benchmark: max two-hand swings in 10 minutes with one bell. Feeds strength-endurance scores.',
       blocks: [warmKB(ctx), B('amrap', '10 min max swings', [ctx.kb('kb-swing', { reps: 10, kg: testBell, note: 'Same bell every test (Open M 24 / W 16 kg). Park when form slips. Log total reps.' })], { durationSec: 600 }), coolKB()],
     }),
     fin('t-station-benchmark', {
-      title: 'Station Benchmark', type: 'hyrox', summary: 'Time each HYROX station (or its substitute) fresh, with full rest. Log each time.',
+      title: 'Station Benchmark', type: 'hyrox', benchmark: true, summary: 'Time each HYROX station (or its substitute) fresh, with full rest. Log each time.',
       blocks: [warmHybrid(ctx), ...STATIONS.map((st) => B('station', st.name, stationItems(ctx, st.id, 1, true), { restSec: 180, notes: 'For time. Rest 3 min after.' })), coolRun()],
     }),
     fin('t-full-sim', simulation(ctx, true, { race: true, title: 'Full HYROX Simulation (KB-substituted)' })),
@@ -714,13 +834,68 @@ function buildSession(ctx, code, wk) {
     case 'Q': return sub === 'openers' ? qualityRun(ctx, { ...wk, kind: 'openers' }, extra) : qualityRun(ctx, wk, extra);
     case 'Z': return zoneRun(ctx, wk, sub || 'easy');
     case 'H': return hybridSession(ctx, wk, extra);
-    case 'X': return simulation(ctx, !!wk.fullSim);
+    case 'X': return wk.fullSim ? simulation(ctx, true, { race: true }) : simulation(ctx, false);
     case 'R': return recoveryFlow();
     case 'PRIMER': return primer(ctx);
     case 'RACE': return raceDay(ctx);
-    case 'GRAD': return { ...simulation(ctx, true, { race: true }), title: 'Graduation Simulation', summary: 'End of block: a full HYROX simulation to measure how far you have come. Log every split.' };
+    case 'GRAD': return { ...simulation(ctx, true, { race: true }), title: 'Graduation Simulation', benchmark: true, summary: 'End of block: a full HYROX simulation to measure how far you have come. Log every split.' };
     default: return recoveryFlow();
   }
+}
+
+// ---------- Run volume (km) & ramp guard ----------
+function runKmOf(ctx, raws) {
+  let m = 0;
+  for (const w of raws) for (const b of w.blocks) {
+    const mult = b.kind === 'circuit' || b.kind === 'intervals' ? b.rounds || 1 : 1;
+    for (const it of b.items || []) {
+      if (getExercise(it.exId).category !== 'run') continue;
+      const one = it.distanceM ? it.distanceM : ((it.timeSec || 0) / (it.paceSec || ctx.pc.easy[0])) * 1000;
+      m += one * (it.sets || 1) * mult;
+    }
+  }
+  return m / 1000;
+}
+
+// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 15 min), hybrid rounds (floor 2),
+// quality-interval rounds (floor 3), and only then long runs (floor 30 min) — the long run is protected longest.
+function capRunVolume(ctx, raws, targetKm) {
+  const over = () => runKmOf(ctx, raws) > targetKm + 0.05;
+  const blocks = raws.flatMap((w) => w.blocks);
+  const shrink = (ids, floorSec) => {
+    const adj = [];
+    for (const b of blocks) if (b.kind === 'cardio') for (const it of b.items) if (ids.includes(it.exId) && it.timeSec > floorSec) adj.push({ b, it });
+    const adjKm = adj.reduce((a, { it }) => a + it.timeSec / (it.paceSec || ctx.pc.easy[0]), 0);
+    if (adjKm < 0.2) return;
+    const f = clamp((targetKm - (runKmOf(ctx, raws) - adjKm)) / adjKm, 0, 1);
+    for (const { b, it } of adj) {
+      it.timeSec = Math.max(floorSec, Math.round((it.timeSec * f) / 300) * 300);
+      b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
+    }
+  };
+  if (over()) shrink(['run-easy'], 900);
+  for (let i = 0; i < 3 && over(); i++) {
+    const hyb = blocks.find((b) => b.kind === 'circuit' && b.rounds > 2 && b.items.some((it) => it.exId === 'run-1k'));
+    if (!hyb) break;
+    hyb.rounds -= 1;
+    hyb.title = hyb.title.replace(/^\d+ rounds/, `${hyb.rounds} rounds`);
+  }
+  for (let i = 0; i < 3 && over(); i++) {
+    const q = blocks.find((b) => b.kind === 'intervals' && b.rounds > 3 && b.items.some((it) => getExercise(it.exId).category === 'run' && it.paceSec));
+    if (!q) break;
+    q.rounds -= 1;
+    q.title = q.title.replace(/^\d+ ×/, `${q.rounds} ×`);
+  }
+  // Long time-based reps (cruise/tempo): shorten each rep, never below 60%.
+  for (const q of blocks) {
+    if (!over()) break;
+    const it = q.items?.find((x) => getExercise(x.exId).category === 'run' && x.paceSec && x.timeSec >= 480);
+    if (!it || !['intervals', 'cardio'].includes(q.kind)) continue;
+    const t = Math.max(Math.round((it.timeSec * 0.6) / 60) * 60, Math.round((it.timeSec * 0.8) / 60) * 60);
+    q.title = q.title.replace(`${Math.round(it.timeSec / 60)} min`, `${Math.round(t / 60)} min`);
+    it.timeSec = t; if (q.kind === 'intervals') q.workSec = t;
+  }
+  if (over()) shrink(['run-long'], 1800);
 }
 
 export function generatePlan(profile, startISO) {
@@ -756,7 +931,7 @@ export function generatePlan(profile, startISO) {
 
   const slots = SLOTS[p.daysPerWeek];
   const weeks = [], workouts = {};
-  let L = 0;
+  let L = 0, prevKm = null;
   const phaseLoad = {};
 
   for (let w = 0; w < nWeeks; w++) {
@@ -772,11 +947,13 @@ export function generatePlan(profile, startISO) {
     const codes = Array(7).fill(null);
     const isRaceWeek = raceInPlan && w === raceWeeks - 1;
     if (isRaceWeek) {
-      const avail = slots.filter((i) => i <= raceIdx - 3);
-      const k = Math.min(avail.length, p.daysPerWeek - 2, 3);
-      const seq = { 0: [], 1: ['Q:openers'], 2: ['S:taper', 'Q:openers'], 3: ['S:taper', 'Q:openers', 'Z:easy'] }[Math.max(0, k)];
-      // spread chosen sessions across available slots
-      seq.forEach((c, j) => { codes[avail[Math.floor((j * avail.length) / seq.length)]] = c; });
+      // Latest-first: openers 3 days out, strength early in the week, easy run between; primer the day before.
+      const avail = Array.from({ length: Math.max(0, raceIdx - 2) }, (_, i) => i);
+      const k = Math.min(Math.max(p.daysPerWeek - 2, 2), 3, avail.length);
+      const seq = k === 1 ? ['Q:openers'] : k === 2 ? (p.daysPerWeek === 3 ? ['Z:easy', 'Q:openers'] : ['S:taper', 'Q:openers']) : k === 3 ? ['S:taper', 'Z:easy', 'Q:openers'] : [];
+      const last = avail.length - 1;
+      const pos = k === 1 ? [last] : k === 2 ? [0, last] : k === 3 ? [0, Math.max(1, Math.floor(last / 2)), last] : [];
+      seq.forEach((c, j) => { codes[avail[pos[j]]] = c; });
       if (raceIdx >= 1) codes[raceIdx - 1] = 'PRIMER';
       codes[raceIdx] = hasRace ? 'RACE' : 'GRAD';
     } else if (lay.post) {
@@ -788,14 +965,21 @@ export function generatePlan(profile, startISO) {
       if (phase === 'taper') for (let d = 0; d < 7; d++) if (codes[d] === 'X') codes[d] = 'Q:openers';
     }
 
+    const raws = codes.map((code) => (code ? buildSession(ctx, code, wk) : null));
+    const list = raws.filter(Boolean);
+    // Ramp guard: ≤ +12% run km over the last loading week; deloads ≤ 70% of it. Sim, taper and race weeks exempt.
+    // Simulation weeks may reach +25% (the sim itself is race-specific running); they don't reset the baseline.
+    const hasSim = codes.some((c) => c === 'X');
+    const guarded = !taper && !isRaceWeek && !lay.post;
+    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : 1.12));
+    if (guarded && !deload && !hasSim) prevKm = runKmOf(ctx, list);
+
     const days = [];
     for (let d = 0; d < 7; d++) {
       const date = addDays(start, w * 7 + d);
-      const code = codes[d];
-      if (!code) { days.push({ date, workoutId: null, rest: true }); continue; }
+      if (!raws[d]) { days.push({ date, workoutId: null, rest: true }); continue; }
       const id = `w${w + 1}-d${d + 1}`;
-      const raw = buildSession(ctx, code, wk);
-      workouts[id] = finalize(ctx, raw, { id, phase, week: w + 1 });
+      workouts[id] = finalize(ctx, raws[d], { id, phase, week: w + 1, hold: deload || taper });
       days.push({ date, workoutId: id, rest: false });
     }
     weeks.push({ index: w, phase, deload, focus: focusFor(lay, deload), days });

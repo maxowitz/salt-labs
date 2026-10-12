@@ -9,21 +9,21 @@ function s(tag, attrs = {}, ...kids) {
 const txt = (str, attrs) => { const t = s('text', attrs); t.textContent = str; return t; };
 
 /** Progress ring. value/max may exceed 1 (overflow drawn as second lap tint). */
-export function ring({ value = 0, max = 1, size = 88, stroke = 9, color = 'var(--accent)', label, sub, track = 'var(--surface-3)' }) {
+export function ring({ value = 0, max = 1, size = 88, stroke = 9, color = 'var(--accent)', label, sub, track = 'var(--tick-off)' }) {
   const r = (size - stroke) / 2, c = 2 * Math.PI * r;
   const pct = max > 0 ? value / max : 0;
   const p1 = Math.max(0, Math.min(1, pct));
   const svg = s('svg', { viewBox: `0 0 ${size} ${size}`, width: size, height: size, role: 'img', 'aria-label': `${label ?? ''} ${sub ?? ''}`.trim() });
   svg.append(s('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: track, 'stroke-width': stroke }));
   svg.append(s('circle', {
-    cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': stroke, 'stroke-linecap': p1 > 0 ? 'round' : 'butt',
+    cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': stroke, 'stroke-linecap': 'butt',
     'stroke-dasharray': `${c * p1} ${c}`, transform: `rotate(-90 ${size / 2} ${size / 2})`,
     style: 'transition: stroke-dasharray .6s cubic-bezier(.22,1,.36,1)',
   }));
   if (pct > 1) {
     const over = Math.min(1, pct - 1);
     svg.append(s('circle', {
-      cx: size / 2, cy: size / 2, r, fill: 'none', stroke: 'var(--danger)', 'stroke-width': stroke, 'stroke-linecap': 'round', opacity: 0.85,
+      cx: size / 2, cy: size / 2, r, fill: 'none', stroke: 'var(--danger)', 'stroke-width': stroke, 'stroke-linecap': 'butt', opacity: 0.85,
       'stroke-dasharray': `${c * over} ${c}`, transform: `rotate(-90 ${size / 2} ${size / 2})`,
     }));
   }
@@ -78,8 +78,8 @@ export function lineChart({ series, width = 340, height = 160, xLabels = [], yFm
     if (se.area) {
       svg.append(s('path', { d: `${d}L${X(pts.at(-1).x)},${Y(y0)}L${X(pts[0].x)},${Y(y0)}Z`, fill: se.color || 'var(--accent)', opacity: 0.12 }));
     }
-    svg.append(s('path', { d, fill: 'none', stroke: se.color || 'var(--accent)', 'stroke-width': se.width || 2.2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': se.dashed ? '4 4' : null, 'vector-effect': 'non-scaling-stroke' }));
-    if (se.dots) for (const p of pts) svg.append(s('circle', { cx: X(p.x), cy: Y(p.y), r: 2.4, fill: se.color || 'var(--accent)', opacity: se.dotOpacity ?? 1 }));
+    svg.append(s('path', { d, fill: 'none', stroke: se.color || 'var(--accent)', 'stroke-width': se.width || 1.6, 'stroke-linejoin': 'miter', 'stroke-linecap': 'square', 'stroke-dasharray': se.dashed ? '4 4' : null, 'vector-effect': 'non-scaling-stroke' }));
+    if (se.dots) for (const p of pts) svg.append(s('circle', { cx: X(p.x), cy: Y(p.y), r: 2, fill: se.color || 'var(--accent)', opacity: se.dotOpacity ?? 1 }));
   }
   return svg;
 }
@@ -99,10 +99,10 @@ export function barChart({ bars, width = 340, height = 140, yFmt = (v) => Math.r
   bars.forEach((b, i) => {
     const x = pad.l + i * bw + bw * 0.18, w = bw * 0.64;
     const y = Y(b.value || 0);
-    svg.append(s('rect', { x, y, width: w, height: Math.max(0, Y(0) - y), rx: Math.min(5, w / 3), fill: b.color || 'var(--accent)', opacity: b.dim ? 0.4 : 1 }));
+    svg.append(s('rect', { x, y, width: w, height: Math.max(0, Y(0) - y), rx: 0, fill: b.color || 'var(--accent)', opacity: b.dim ? 0.4 : 1 }));
     svg.append(txt(b.label, { x: x + w / 2, y: height - 5, 'text-anchor': 'middle' }));
   });
-  if (target) svg.append(s('line', { x1: pad.l, x2: width - pad.r, y1: Y(target), y2: Y(target), stroke: 'var(--go)', 'stroke-dasharray': '4 4' }));
+  if (target) svg.append(s('line', { x1: pad.l, x2: width - pad.r, y1: Y(target), y2: Y(target), stroke: 'var(--text-2)', 'stroke-dasharray': '3 3' }));
   return svg;
 }
 
@@ -121,8 +121,8 @@ export function heatmap({ days, weeks = 12, cell = 14, gap = 3, color = 'var(--g
     const v = map.get(iso) || 0;
     const col = Math.floor(i / 7), row = i % 7;
     svg.append(s('rect', {
-      x: col * (cell + gap), y: row * (cell + gap), width: cell, height: cell, rx: 3,
-      fill: v > 0 ? color : 'var(--surface-3)', opacity: v > 0 ? 0.35 + 0.65 * Math.min(1, v) : 1,
+      x: col * (cell + gap), y: row * (cell + gap), width: cell, height: cell, rx: 0,
+      fill: v > 0 ? color : 'var(--tick-off, var(--surface-3))', opacity: v > 0 ? 0.35 + 0.65 * Math.min(1, v) : 1,
     }, s('title', {}, document.createTextNode(`${iso}${v ? ' • active' : ''}`))));
   }
   return svg;
@@ -137,15 +137,15 @@ export function gauge({ value, max = 100, size = 180, zones, label, sub }) {
     const [x0, y0] = p(a0), [x1, y1] = p(a1);
     return `M${x0},${y0}A${r},${r} 0 0 1 ${x1},${y1}`;
   };
-  svg.append(s('path', { d: arc(0, 1), fill: 'none', stroke: 'var(--surface-3)', 'stroke-width': st, 'stroke-linecap': 'round' }));
+  svg.append(s('path', { d: arc(0, 1), fill: 'none', stroke: 'var(--surface-3)', 'stroke-width': st, 'stroke-linecap': 'butt' }));
   let prev = 0;
   for (const z of zones || []) {
     svg.append(s('path', { d: arc(prev, Math.min(1, z.to / max)), fill: 'none', stroke: z.color, 'stroke-width': st * 0.35, opacity: 0.55 }));
     prev = Math.min(1, z.to / max);
   }
   const f = Math.max(0.001, Math.min(1, (value || 0) / max));
-  svg.append(s('path', { d: arc(0, f), fill: 'none', stroke: 'var(--accent)', 'stroke-width': st, 'stroke-linecap': 'round' }));
-  svg.append(txt(label ?? String(Math.round(value)), { x: cx, y: cy - 4, 'text-anchor': 'middle', style: `font-size:${size * 0.17}px;font-weight:800;fill:var(--text)` }));
+  svg.append(s('path', { d: arc(0, f), fill: 'none', stroke: 'var(--accent)', 'stroke-width': st, 'stroke-linecap': 'butt' }));
+  svg.append(txt(label ?? String(Math.round(value)), { x: cx, y: cy - 4, 'text-anchor': 'middle', style: `font-size:${size * 0.17}px;font-weight:600;font-stretch:72%;fill:var(--text)` }));
   if (sub) svg.append(txt(sub, { x: cx, y: cy + size * 0.08, 'text-anchor': 'middle', style: `font-size:${size * 0.065}px` }));
   return svg;
 }
@@ -154,12 +154,119 @@ export function gauge({ value, max = 100, size = 180, zones, label, sub }) {
 export function stackBar(parts, { height = 10 } = {}) {
   const total = parts.reduce((a, p) => a + (p.value || 0), 0) || 1;
   const wrap = document.createElement('div');
-  wrap.style.cssText = `display:flex;height:${height}px;border-radius:99px;overflow:hidden;background:var(--surface-3)`;
+  wrap.style.cssText = `display:flex;height:${height}px;border-radius:0;overflow:hidden;background:var(--surface-3)`;
   for (const p of parts) {
     const i = document.createElement('i');
     i.style.cssText = `display:block;width:${(100 * (p.value || 0)) / total}%;background:${p.color}`;
     i.title = p.label || '';
     wrap.append(i);
   }
+  return wrap;
+}
+
+
+// ---------- Field Ledger primitives (docs/DESIGN.md §5) ----------
+
+/**
+ * Tick meter: a row of 2px ticks, `n` of them, filled to value/max.
+ * Overflow (value > max) marks the last ticks `.over` (brick). `now` (0-based index) marks one tick in the accent.
+ * Returns <div class="ticks …" role="meter">.
+ */
+export function ticks({ value = 0, max = 1, n = 40, color, ruler = false, size = 'sm', label, now = null, cls = '' } = {}) {
+  const pct = max > 0 ? Math.max(0, value) / max : 0;
+  const on = Math.round(n * Math.min(1, pct));
+  const over = pct > 1 ? Math.min(n, Math.max(1, Math.round(n * Math.min(1, pct - 1)))) : 0;
+  const el = document.createElement('div');
+  el.className = `ticks ${size || ''}${ruler ? ' ruler' : ''}${color ? ' c' : ''}${cls ? ' ' + cls : ''}`;
+  if (color) el.style.setProperty('--c', color);
+  el.setAttribute('role', 'meter');
+  el.setAttribute('aria-valuemin', '0');
+  el.setAttribute('aria-valuemax', String(Math.round(max)));
+  el.setAttribute('aria-valuenow', String(Math.round(value)));
+  if (label) el.setAttribute('aria-label', label);
+  for (let i = 0; i < n; i++) {
+    const t = document.createElement('i');
+    if (i === now) t.className = 'now';
+    else if (over && i >= n - over) t.className = 'over';
+    else if (i < on) t.className = 'on';
+    el.append(t);
+  }
+  return el;
+}
+
+/**
+ * Phase ribbon: numbered week cells with a phase-colour underline.
+ * weeks: [{ index, phase, deload }], current: index of the current week (0-based), onPick(i)? makes cells buttons.
+ * Phase colours come from tokens var(--base|--build|--peak|--taper).
+ */
+export function ribbon({ weeks = [], current = -1, onPick, selected = null, labels = true, ariaLabel = 'Plan weeks' } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ribbon';
+  const cells = document.createElement('div');
+  cells.className = 'rb-cells';
+  cells.style.gridTemplateColumns = `repeat(${Math.max(1, weeks.length)}, minmax(0, 1fr))`;
+  cells.setAttribute('role', onPick ? 'group' : 'img');
+  cells.setAttribute('aria-label', ariaLabel);
+  weeks.forEach((w, i) => {
+    const c = document.createElement(onPick ? 'button' : 'span');
+    if (onPick) { c.type = 'button'; c.addEventListener('click', () => onPick(i)); c.setAttribute('aria-label', `Week ${i + 1}, ${w.phase}${w.deload ? ', deload' : ''}`); }
+    c.className = ['rb-cell', i < current ? 'past' : '', i === current ? 'now' : '', i === selected ? 'sel' : '', w.deload ? 'dl' : ''].filter(Boolean).join(' ');
+    c.style.setProperty('--pc', `var(--${w.phase || 'base'})`);
+    c.textContent = String(i + 1).padStart(2, '0');
+    if (i === current) c.setAttribute('aria-current', 'step');
+    cells.append(c);
+  });
+  wrap.append(cells);
+  if (labels && weeks.length) {
+    const groups = [];
+    for (const w of weeks) { const g = groups.at(-1); if (g && g.phase === w.phase) g.n++; else groups.push({ phase: w.phase, n: 1 }); }
+    const leg = document.createElement('div');
+    leg.className = 'rb-legend';
+    leg.style.gridTemplateColumns = groups.map((g) => `${g.n}fr`).join(' ');
+    const curPhase = weeks[current]?.phase;
+    for (const g of groups) {
+      const l = document.createElement('span');
+      l.className = 'lbl' + (g.phase === curPhase ? ' ink' : '');
+      l.textContent = g.n === 1 ? String(g.phase || '').charAt(0).toUpperCase() : String(g.phase || '');
+      leg.append(l);
+    }
+    wrap.append(leg);
+  }
+  return wrap;
+}
+
+/**
+ * Horizontal zone ruler (replaces the semicircle gauge): tick scale 0..max, zones as 3px underlines,
+ * the value as an accent needle. zones: [{to, color, label?}].
+ */
+export function zoneRuler({ value = 0, max = 2, zones = [], n = 41, label, sub, fmt = (v) => String(Math.round(v * 100) / 100) } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'zone-ruler';
+  wrap.setAttribute('role', 'meter');
+  wrap.setAttribute('aria-valuemin', '0');
+  wrap.setAttribute('aria-valuemax', String(max));
+  wrap.setAttribute('aria-valuenow', String(value));
+  wrap.setAttribute('aria-label', `${label ?? fmt(value)} ${sub ?? ''}`.trim());
+  const idx = Math.max(0, Math.min(n - 1, Math.round(((value || 0) / max) * (n - 1))));
+  const t = ticks({ value: 0, max: 1, n, ruler: true, size: 'lg', now: idx });
+  t.removeAttribute('role');
+  wrap.append(t);
+  const band = document.createElement('div');
+  band.className = 'zr-zones';
+  let prev = 0;
+  for (const z of zones) {
+    const to = Math.min(max, z.to);
+    const seg = document.createElement('i');
+    seg.style.flexGrow = String(Math.max(0, to - prev));
+    seg.style.background = z.color;
+    if (z.label) seg.title = z.label;
+    band.append(seg);
+    prev = to;
+  }
+  wrap.append(band);
+  const scale = document.createElement('div');
+  scale.className = 'zr-scale';
+  for (const v of [0, max / 2, max]) { const l = document.createElement('span'); l.className = 'lbl'; l.textContent = fmt(v); scale.append(l); }
+  wrap.append(scale);
   return wrap;
 }

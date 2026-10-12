@@ -19,7 +19,8 @@ export const ADAPTIVE_WINDOW = 28;        // look-back window for the energy bal
 export const ADAPTIVE_MAX_STEP = 150;     // max kcal change per weekly check-in
 export const FIBER_PER_1000 = 14;         // g fibre per 1000 kcal (Dietary Guidelines)
 export const FIBER_CAP = 40;              // g — more causes GI distress on hard days
-export const DEFAULT_SESSION_MIN = 55;
+export const DEFAULT_SESSION_MIN = 60;
+export const ASSUMED_RATE = 0.11;           // mixed KB / run / hybrid week, kcal/kg/min
 /** Net (above-NEAT) training cost, kcal per kg per minute, by workout type. */
 export const TRAINING_RATE = { strength: 0.08, conditioning: 0.11, run: 0.10, hybrid: 0.12, hyrox: 0.12, recovery: 0.04, cardio: 0.10, other: 0.08 };
 const HARD_KINDS = new Set(['intervals', 'emom', 'amrap', 'station', 'circuit', 'tabata']);
@@ -91,11 +92,11 @@ export function trainingKcal(w, profile) {
   return Math.round(kcal);
 }
 
-/** Assumed average daily training kcal when no plan is available (profile.daysPerWeek × 55 min). */
+/** Assumed average daily training kcal when no plan is available (profile.daysPerWeek × 60 min, mixed training). */
 export function assumedDailyTraining(profile = {}) {
   const { kg } = profileNums(profile);
   const days = Math.min(7, Math.max(0, n(profile.daysPerWeek, 4)));
-  return { kcal: Math.round((days * DEFAULT_SESSION_MIN * kg * 0.10) / 7), hours: (days * DEFAULT_SESSION_MIN) / 60 / 7 };
+  return { kcal: Math.round((days * DEFAULT_SESSION_MIN * kg * ASSUMED_RATE) / 7), hours: (days * DEFAULT_SESSION_MIN) / 60 / 7 };
 }
 
 /** Average daily training kcal/hours across a whole plan (all weeks). */
@@ -174,7 +175,7 @@ export function computeTargets(profile = {}, opts = {}) {
   const kcal = goalKcal(maintenance, profile);
   const m = macrosForKcal(profile, kcal);
   const notes = [...m.notes];
-  if (kcal <= kcalFloor(profile)) notes.push('kcal-floor');
+  if (kcal <= kcalFloor(profile) + 10) notes.push('kcal-floor');
   return {
     kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat,
     waterMl: round(35 * kg + 500 * hours, 50),
@@ -526,7 +527,7 @@ export function searchFoods(query, foods = [], opts = {}) {
       if (!s) return;
       score += s;
     }
-    if (ix.primary.includes(q)) score += 40;
+    if (ix.primary.includes(q)) score += 60; // curated alias is explicit intent: beats any name-prefix bonus
     if (ix.full === q) score += 50;
     else if (qRe.test(ix.full)) score += 25;
     if (ix.name[0] && singular(ix.name[0]) === singular(toks[0])) score += 8;

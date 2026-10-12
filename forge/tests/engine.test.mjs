@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { addDays, daysBetween } from '../js/store.js';
 import { EXERCISES, getExercise, hasExercise } from '../js/data/exercises.js';
 import { PHASES, generatePlan, getWorkout, workoutForDate, TEMPLATES } from '../js/engine/program.js';
-import { ownedBells, pairedBells, suggestWeight, lastPerformance, scaleWorkout, detectPRs, trainingLoad, weekSummary, streak } from '../js/engine/coach.js';
+import { ownedBells, pairedBells, suggestWeight, tooHeavy, liveItemWeight, liveItemAdvice, lastPerformance, scaleWorkout, detectPRs, trainingLoad, weekSummary, streak } from '../js/engine/coach.js';
 import { STATIONS, paces, hrZones, defaultHrMax, readinessScore, predictRace, hyroxReadiness } from '../js/engine/hyrox.js';
 
 const START = '2026-10-12';
@@ -81,7 +81,8 @@ test('plan: progressive overload from week 1 to late build (run volume, bell or 
   const minutes = (wk, ids) => plan.weeks[wk].days.filter((d) => d.workoutId).flatMap((d) => allItems(plan.workouts[d.workoutId]))
     .filter((it) => ids.includes(it.exId)).reduce((a, it) => a + (it.timeSec || 0) * (it.sets || 1), 0);
   assert.ok(minutes(8, ['run-long']) > minutes(0, ['run-long']), 'long run grows');
-  const sq = (wk) => allItems(plan.workouts[plan.weeks[wk].days[0].workoutId]).find((it) => /front-squat|goblet-squat/.test(it.exId) && it.sets);
+  const sq = (wk) => plan.weeks[wk].days.filter((d) => d.workoutId).map((d) => plan.workouts[d.workoutId]).filter((w) => w.type === 'strength')
+    .flatMap(allItems).find((it) => /front-squat|goblet-squat/.test(it.exId) && it.sets);
   assert.ok(sq(8).kg > sq(0).kg || sq(8).reps * sq(8).sets > sq(0).reps * sq(0).sets, 'squat progresses');
   const titles = new Set(planWorkouts(plan).map((w) => w.title));
   assert.ok(titles.size >= 25, `varied titles (${titles.size})`);
@@ -193,7 +194,9 @@ test('suggestWeight: always an owned bell; pairs for double lifts; null for non-
   assert.deepEqual(pairedBells(PROFILE), [16, 24]);
   for (const e of EXERCISES.filter((x) => x.category === 'kb')) {
     for (const exp of ['beginner', 'intermediate', 'advanced']) for (const sex of ['m', 'f']) {
-      const kg = suggestWeight(e.id, { ...PROFILE, experience: exp, sex }, []);
+      const prof = { ...PROFILE, experience: exp, sex };
+      const kg = suggestWeight(e.id, prof, []);
+      if (kg === null) { assert.ok(tooHeavy(e.id, prof), `${e.id} ${exp} ${sex}: null only when too heavy`); continue; }
       assert.ok(ownedBells(PROFILE).includes(kg), `${e.id} ${exp} ${sex} → ${kg}`);
       if (e.double) assert.ok(pairedBells(PROFILE).includes(kg), `${e.id} must be a pair`);
     }
@@ -201,7 +204,7 @@ test('suggestWeight: always an owned bell; pairs for double lifts; null for non-
   assert.equal(suggestWeight('run-easy', PROFILE, []), null);
   assert.equal(suggestWeight('bw-pushup', PROFILE, []), null);
   assert.equal(suggestWeight('kb-swing', { ...PROFILE, bells: [] }, []), null);
-  assert.equal(suggestWeight('kb-double-front-squat', MINIMAL, []), 16, 'falls back to the single bell');
+  assert.equal(suggestWeight('kb-double-front-squat', { ...MINIMAL, sex: 'm', experience: 'intermediate', weightKg: 80 }, []), 16, 'falls back to the single bell');
   assert.equal(suggestWeight('kb-swing', { ...PROFILE, bells: [{ kg: 20, count: 1 }, { kg: 12, count: 1 }] }, []) % 4, 0);
 });
 
@@ -250,7 +253,10 @@ test('scaleWorkout: readiness tiers', () => {
 test('readinessScore: bounds and direction', () => {
   assert.equal(readinessScore({ sleep: 5, energy: 5, soreness: 1, stress: 1 }), 100);
   assert.equal(readinessScore({ sleep: 1, energy: 1, soreness: 5, stress: 5 }), 0);
-  assert.equal(readinessScore({}), 50);
+  assert.equal(readinessScore({}), 70, 'unanswered = neutral');
+  assert.equal(readinessScore({ sleep: 3, energy: 3, soreness: 3, stress: 3 }), 70, 'a normal day trains as planned (> 60)');
+  assert.equal(readinessScore({ sleep: 2, energy: 2, soreness: 4, stress: 4 }), 40, 'all-bad-ish → reduced tier');
+  assert.ok(readinessScore({ sleep: 2, energy: 3, soreness: 3, stress: 3 }) > 60);
   assert.ok(readinessScore({ sleep: 4, energy: 4, soreness: 2, stress: 2 }) > 60);
   for (let i = 0; i < 200; i++) {
     const r = () => Math.floor(Math.random() * 7) - 1;
@@ -368,4 +374,195 @@ test('trainingLoad, weekSummary, streak', () => {
   assert.equal(st.weeksOnPlan, 1);
   assert.deepEqual(streak([], null, today), { days: 0, weeksOnPlan: 0 });
   assert.ok(daysBetween('2026-10-05', addDays('2026-10-05', 9)) === 9);
+});
+
+// ---------- Review round 1 regressions ----------
+const BEGINNER_F = { ...PROFILE, sex: 'f', weightKg: 58, experience: 'beginner', bells: [{ kg: 24, count: 1 }], equipment: {}, daysPerWeek: 4 };
+const SWINGISH = /swing|snatch/;
+
+test('P0-1: neutral check-in never downgrades the session', () => {
+  const plan = generatePlan(PROFILE, START);
+  const q = planWorkouts(plan).find((w) => w.title.includes('Threshold 1K'));
+  const r = scaleWorkout(q, readinessScore({ sleep: 3, energy: 3, soreness: 3, stress: 3 }));
+  assert.deepEqual(r.changes, []);
+  assert.deepEqual(r.workout.blocks, q.blocks);
+});
+
+test('P0-2: race day, primer and benchmarks are never readiness-scaled', () => {
+  const plan = generatePlan({ ...PROFILE, raceDate: addDays(START, 55) }, START);
+  const race = workoutForDate(plan, addDays(START, 55)).workout;
+  const primer = workoutForDate(plan, addDays(START, 54)).workout;
+  assert.equal(race.fixed, true);
+  assert.equal(primer.fixed, true);
+  for (const score of [10, 35, 50]) {
+    for (const w of [race, primer]) {
+      const r = scaleWorkout(w, score);
+      assert.deepEqual(r.workout.blocks, w.blocks, `${w.title} @${score}`);
+      assert.equal(r.workout.title, w.title);
+      assert.equal(r.changes.length, 1);
+    }
+    for (const id of ['t-1k-tt', 't-5k-tt', 't-swing-test', 't-station-benchmark']) {
+      const t = getWorkout(plan, id);
+      const r = scaleWorkout(t, score);
+      assert.deepEqual(r.workout.blocks, t.blocks, id);
+      assert.match(r.changes[0], /postpone/i);
+    }
+  }
+  assert.match(scaleWorkout(race, 30).changes[0], /Race day — no changes/);
+});
+
+test('P0-3: only benchmark efforts feed predictRace and 1k/5k PRs', () => {
+  const profile = { ...PROFILE, fiveKSec: 1440 };
+  const base = predictRace({ profile, sessions: [] }, '2026-11-01').totalSec;
+  const hybrid = { id: 'h', date: '2026-10-30', type: 'hybrid', workoutId: 'w3-d5', cardio: [{ mode: 'run', distanceM: 1000, timeSec: 540 }], sets: [{ exId: 'run-1k', distanceM: 1000, timeSec: 540 }] };
+  const reps = { id: 'r', date: '2026-10-28', type: 'run', workoutId: 'w3-d1', sets: [{ exId: 'run-1k', distanceM: 1000, timeSec: 305 }, { exId: 'run-1k', distanceM: 1000, timeSec: 303 }], cardio: [] };
+  assert.ok(Math.abs(predictRace({ profile, sessions: [hybrid] }, '2026-11-01').totalSec - base) < 120, 'compromised 1 km is not a benchmark');
+  assert.ok(predictRace({ profile, sessions: [reps] }, '2026-11-01').totalSec <= base + 30, 'training reps never worsen the prediction');
+  const slowTT = { id: 't', date: '2026-10-29', workoutId: 't-5k-tt', sets: [], cardio: [{ mode: 'run', distanceM: 5000, timeSec: 1800 }] };
+  assert.ok(predictRace({ profile, sessions: [slowTT] }, '2026-11-01').totalSec <= base + 1, 'slower TT than profile → profile wins (min)');
+  const fastTT = { id: 'f', date: '2026-10-29', workoutId: 't-5k-tt', sets: [], cardio: [{ mode: 'run', distanceM: 5000, timeSec: 1260 }] };
+  assert.ok(predictRace({ profile, sessions: [fastTT] }, '2026-11-01').totalSec < base - 120, 'faster TT improves prediction');
+  assert.deepEqual(detectPRs(hybrid, []), [], 'no fake first-1 km benchmark from a hybrid round');
+  assert.deepEqual(detectPRs(reps, []), []);
+  const reps2 = { ...reps, id: 'r2', sets: [{ exId: 'run-1k', distanceM: 1000, timeSec: 298 }] };
+  assert.deepEqual(detectPRs(reps2, [reps]), ['Fastest 1 km rep: 4:58']);
+  const tt1 = { id: 'k', date: '2026-10-31', workoutId: 't-1k-tt', sets: [{ exId: 'run-1k', distanceM: 1000, timeSec: 250, benchmark: true }] };
+  assert.deepEqual(detectPRs(tt1, [hybrid, reps]), ['First 1 km benchmark: 4:10']);
+  const manual = { id: 'm', date: '2026-10-31', workoutId: null, cardio: [{ mode: 'run', distanceM: 5000, timeSec: 1400 }] };
+  assert.deepEqual(detectPRs(manual, [fastTT]), []);
+});
+
+test('P0-4: no unsafe bells for an athlete who owns only heavy bells; beginners never snatch', () => {
+  assert.equal(suggestWeight('kb-press', BEGINNER_F, []), null);
+  assert.equal(suggestWeight('kb-snatch', BEGINNER_F, []), null);
+  assert.ok(tooHeavy('kb-tgu', BEGINNER_F));
+  assert.equal(suggestWeight('kb-deadlift', BEGINNER_F, []), 24, 'a 24 kg deadlift is fine');
+  // history overrides the guard: she has proven the bell
+  assert.equal(suggestWeight('kb-press', BEGINNER_F, [{ id: 'x', date: '2026-10-01', sets: [{ exId: 'kb-press', kg: 24, reps: 2, rpe: 9 }] }]), 24);
+  const plan = generatePlan(BEGINNER_F, START);
+  checkPlan(plan, BEGINNER_F);
+  const risky = /press|jerk|tgu|snatch|thruster|clean|windmill|overhead|halo|bottoms/;
+  for (const w of planWorkouts(plan)) for (const it of allItems(w)) {
+    if (it.kg == null) continue;
+    assert.ok(!risky.test(it.exId), `${w.id}: ${it.exId} @${it.kg}`);
+    assert.ok(!tooHeavy(it.exId, BEGINNER_F, it.kg), `${w.id}: ${it.exId} @${it.kg} too heavy`);
+  }
+  const beginners = generatePlan({ ...PROFILE, experience: 'beginner', daysPerWeek: 5 }, START);
+  for (const w of planWorkouts(beginners)) for (const it of allItems(w)) assert.notEqual(it.exId, 'kb-snatch', `${w.id} beginner snatch`);
+  for (const prof of [PROFILE, MINIMAL, { ...PROFILE, sex: 'f', weightKg: 65, experience: 'beginner', bells: [{ kg: 12, count: 1 }, { kg: 16, count: 1 }] }]) {
+    for (const w of planWorkouts(generatePlan(prof, START))) for (const it of allItems(w)) if (it.kg != null) assert.ok(!tooHeavy(it.exId, prof, it.kg), `${w.id}: ${it.exId} @${it.kg}`);
+  }
+});
+
+const swingReps = (w) => allItems(w).filter((it) => SWINGISH.test(it.exId)).reduce((a, it) => a + (it.reps || 0) * (it.perSide ? 2 : 1) * (it.sets || 1), 0)
+  + w.blocks.filter((b) => b.kind === 'emom' && b.items.some((it) => SWINGISH.test(it.exId))).reduce((a, b) => a + b.minutes * 12, 0);
+
+test('P1-1/P1-3: hard runs never follow heavy hinge days; enough runs per week', () => {
+  for (const days of [3, 4, 5, 6]) {
+    const plan = generatePlan({ ...PROFILE, daysPerWeek: days }, START);
+    const flat = plan.weeks.flatMap((w) => w.days);
+    for (let i = 1; i < flat.length; i++) {
+      const prev = flat[i - 1].workoutId && plan.workouts[flat[i - 1].workoutId];
+      const cur = flat[i].workoutId && plan.workouts[flat[i].workoutId];
+      if (!prev || !cur) continue;
+      const heavyHinge = /Squat & Hinge|Heavy Legs|Hinge Power/.test(prev.title) || swingReps(prev) >= 60;
+      const hard = cur.type === 'hybrid' || cur.type === 'hyrox' || cur.blocks.some((b) => b.kind === 'intervals' && b.items.some((it) => getExercise(it.exId).category === 'run'));
+      assert.ok(!(heavyHinge && hard && !cur.fixed), `${days}d: ${prev.id} ${prev.title} → ${cur.id} ${cur.title}`);
+    }
+    for (const wk of plan.weeks.filter((w) => w.phase === 'base' && !w.deload)) {
+      const runs = wk.days.filter((d) => d.workoutId).map((d) => plan.workouts[d.workoutId]).filter((w) => allItems(w).some((it) => ['run-easy', 'run-long', 'run-tempo', 'run-1k', 'run-intervals', 'run-fartlek', 'run-hill-sprints', 'run-threshold'].includes(it.exId) && (it.timeSec >= 600 || it.distanceM >= 1000 || it.exId === 'run-hill-sprints')));
+      assert.ok(runs.length >= (days >= 5 ? 3 : 2), `${days}d week ${wk.index + 1}: ${runs.length} runs`);
+    }
+  }
+});
+
+function weekRunKm(plan, wk) {
+  let m = 0;
+  for (const d of wk.days) if (d.workoutId) for (const b of plan.workouts[d.workoutId].blocks) {
+    const mult = b.kind === 'circuit' || b.kind === 'intervals' ? b.rounds || 1 : 1;
+    for (const it of b.items) if (getExercise(it.exId).category === 'run') m += (it.distanceM || ((it.timeSec || 0) / (it.paceSec || 360)) * 1000) * (it.sets || 1) * mult;
+  }
+  return m / 1000;
+}
+
+test('P1-2: weekly run volume ramps ≤ 12% (simulation weeks exempt) and deloads run less', () => {
+  for (const profile of [PROFILE, { ...PROFILE, daysPerWeek: 6, experience: 'advanced', raceDate: addDays(START, 20 * 7 - 1) }, { ...MINIMAL, daysPerWeek: 3 }, { ...PROFILE, daysPerWeek: 4, raceDate: addDays(START, 30 * 7 - 1) }]) {
+    const plan = generatePlan(profile, START);
+    let prev = null;
+    for (const wk of plan.weeks) {
+      if (wk.phase === 'taper') continue;
+      const km = weekRunKm(plan, wk);
+      const sim = wk.days.some((d) => d.workoutId && plan.workouts[d.workoutId].type === 'hyrox');
+      if (prev != null) {
+        if (wk.deload) assert.ok(km < prev, `week ${wk.index + 1} deload ${km.toFixed(1)} vs ${prev.toFixed(1)}`);
+        else if (!sim) assert.ok(km <= prev * 1.12 + 0.3, `week ${wk.index + 1}: ${km.toFixed(1)} km vs ${prev.toFixed(1)}`);
+      }
+      if (!wk.deload && !sim) prev = km;
+    }
+  }
+});
+
+test('P1-5/P1-6: press reps never drop on the same bell; single front squat is per side', () => {
+  const plan = generatePlan(PROFILE, START);
+  const press = planWorkouts(plan).filter((w) => !w.title.startsWith('Deload') && w.type === 'strength' && ['base', 'build'].includes(w.phase))
+    .flatMap((w) => allItems(w).filter((it) => it.exId === 'kb-double-press').map((it) => ({ ...it, week: w.week })));
+  const lastBase = press.filter((p) => p.week <= 3).pop();
+  for (const p of press.filter((x) => x.week >= 5)) if (p.kg === lastBase.kg) assert.ok(p.reps * p.sets >= lastBase.reps * lastBase.sets, `week ${p.week}: ${p.sets}×${p.reps} @${p.kg}`);
+  const single = generatePlan({ ...PROFILE, bells: [{ kg: 16, count: 1 }, { kg: 20, count: 1 }, { kg: 24, count: 1 }] }, START);
+  const fs = planWorkouts(single).flatMap(allItems).filter((it) => it.exId === 'kb-front-squat' && it.sets);
+  assert.ok(fs.length && fs.every((it) => it.perSide));
+});
+
+test('P1-7: mid readiness gives coherent, concise scaled sessions', () => {
+  const plan = generatePlan(PROFILE, START);
+  const ws = planWorkouts(plan);
+  for (const w of ws.filter((x) => !x.fixed && !x.benchmark)) {
+    const r = scaleWorkout(w, 50);
+    assert.ok(r.changes.length <= 5, `${w.title}: ${r.changes.length} lines`);
+    for (const b of r.workout.blocks) {
+      if (b.kind === 'circuit' && /^\d+ rounds/.test(b.title)) assert.equal(+b.title.match(/^\d+/)[0], b.rounds, b.title);
+      if (b.kind === 'warmup' || b.kind === 'cooldown') continue;
+      for (const it of b.items) if (getExercise(it.exId).category === 'run' && it.paceSec) assert.ok(!/race|threshold|interval/i.test(it.note || ''), `${w.title}: ${it.exId} still ${it.note}`);
+    }
+  }
+  const sim = ws.find((w) => w.title === 'Full HYROX Simulation');
+  const r = scaleWorkout(sim, 50);
+  assert.match(r.workout.title, /Half Simulation/);
+  assert.ok(r.changes.some((c) => /Full sim moved/.test(c)));
+});
+
+test('P1-8: sandbag-lunge substitute approximates race spec', () => {
+  for (const [prof, spec] of [[PROFILE, 20], [{ ...PROFILE, division: 'pro', bells: [{ kg: 24, count: 2 }, { kg: 28, count: 2 }, { kg: 32, count: 2 }] }, 30]]) {
+    const plan = generatePlan(prof, START);
+    const it = getWorkout(plan, 't-full-sim').blocks.find((b) => b.title === 'Sandbag Lunges').items[0];
+    const total = it.kg * (it.exId === 'kb-rack-walking-lunge' ? 2 : 1);
+    assert.ok(Math.abs(total - spec) <= 8, `${it.exId} total ${total} vs ${spec}`);
+  }
+});
+
+test('liveItemWeight: applies logged double progression to planned items', () => {
+  const item = { exId: 'kb-double-front-squat', sets: 4, reps: 8, kg: 16 };
+  const log = (reps, rpe, kg = 16) => [{ id: 'l', date: '2026-10-20', sets: [1, 2, 3, 4].map(() => ({ exId: 'kb-double-front-squat', kg, reps, rpe })) }];
+  assert.equal(liveItemWeight(item, PROFILE, []), 16, 'no history → planned');
+  assert.equal(liveItemWeight(item, PROFILE, log(8, 7)), 24, 'hit top at RPE 7 → next pair');
+  assert.equal(liveItemAdvice(item, PROFILE, log(8, 7)).earned, true);
+  assert.equal(liveItemWeight(item, PROFILE, log(8, 9.5)), 16, 'grinder → repeat');
+  assert.match(liveItemAdvice(item, PROFILE, log(6, 9)).reason, /Repeat/);
+  assert.equal(liveItemWeight(item, PROFILE, log(6, 7)), 16, 'reps first');
+  assert.equal(liveItemWeight({ ...item, kg: 24 }, PROFILE, log(6, 7)), 24, 'never below the planned bell unless struggling');
+  assert.equal(liveItemWeight({ ...item, hold: true }, PROFILE, log(8, 7)), 16, 'held items (warm-up/deload) do not progress');
+  assert.equal(liveItemWeight({ exId: 'run-easy', timeSec: 600 }, PROFILE, []), null);
+  assert.ok(pairedBells(PROFILE).includes(liveItemWeight(item, PROFILE, log(8, 7, 24))), 'stays owned at the top');
+});
+
+test('P1-11: race-week openers sit ~3 days out, primer the day before', () => {
+  for (const days of [3, 4, 5]) {
+    const race = addDays(START, 83);
+    const plan = generatePlan({ ...PROFILE, daysPerWeek: days, raceDate: race }, START);
+    const last = plan.weeks[plan.weeks.length - 1];
+    const titleOn = (i) => (last.days[i].workoutId ? plan.workouts[last.days[i].workoutId].title : 'rest');
+    assert.equal(titleOn(6), 'HYROX Race Day');
+    assert.equal(titleOn(5), 'Race Primer');
+    assert.equal(titleOn(3), 'Race Openers', `${days}d`);
+  }
 });

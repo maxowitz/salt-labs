@@ -392,7 +392,7 @@ function backupCard(host, sy, pers) {
     h('div', { class: 'li' }, h('span', { class: 'badge' }, icon('settings', 18)),
       h('span', { class: 'li-main' },
         h('div', { class: 'li-title' }, persisted ? 'Protected storage' : 'Standard storage'),
-        h('div', { class: 'li-sub' }, `${fmtBytes(usage)} used${pers?.quota ? ` of ${fmtBytes(pers.quota)}` : ''} · ${persisted ? 'browser won’t auto-clear it' : 'browser may clear it if space runs low'}`)),
+        h('div', { class: 'li-sub wrap' }, `${fmtBytes(usage)} used${pers?.quota ? ` of ${fmtBytes(pers.quota)}` : ''} · ${persisted ? 'browser won’t auto-clear it' : 'browser may clear it if space runs low'}`)),
       persisted ? h('span', { class: 'pill go' }, 'On')
         : h('button', { type: 'button', class: 'btn sm subtle', disabled: !sy?.requestPersistence, on: { click: async () => {
           const ok = await sy.requestPersistence().catch(() => false);

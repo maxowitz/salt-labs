@@ -1,6 +1,6 @@
 // FORGE boot + hash router. Views live in js/views/*.js and export render(root, params) → cleanup?
 import { store } from './store.js';
-import { h, icon, clear, toast } from './ui.js';
+import { h, clear, toast } from './ui.js';
 
 // route segment → [module, tab]
 const ROUTES = {

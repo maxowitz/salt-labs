@@ -10,11 +10,11 @@ export const FOODS = [
   // ---------------- Proteins: poultry ----------------
   F('chicken-breast-cooked', 'Chicken breast, cooked (skinless)', '4 oz', 112, [165, 31, 0, 3.6], ['protein', 'meat', 'poultry', 'grilled', 'roasted']),
   F('chicken-breast-raw', 'Chicken breast, raw (skinless)', '4 oz raw', 112, [120, 22.5, 0, 2.6], ['protein', 'meat', 'poultry']),
-  F('chicken-thigh-cooked', 'Chicken thigh, cooked (skinless)', '1 thigh', 85, [209, 26, 0, 10.9], ['protein', 'meat', 'poultry']),
+  F('chicken-thigh-cooked', 'Chicken thigh, cooked (skinless)', '1 boneless thigh', 85, [209, 26, 0, 10.9], ['protein', 'meat', 'poultry']),
   F('chicken-thigh-raw', 'Chicken thigh, raw (skinless)', '4 oz raw', 112, [121, 19.9, 0, 4.1], ['protein', 'meat', 'poultry']),
-  F('chicken-drumstick-cooked', 'Chicken drumstick, cooked (skinless)', '1 drumstick', 72, [172, 28.3, 0, 5.7], ['protein', 'meat', 'poultry']),
-  F('chicken-wings-cooked', 'Chicken wings, cooked (with skin)', '4 wings', 128, [290, 27, 0, 19.5], ['protein', 'meat', 'poultry']),
-  F('rotisserie-chicken', 'Rotisserie chicken (meat & skin)', '4 oz', 112, [223, 26, 0, 13], ['protein', 'meat', 'poultry']),
+  F('chicken-drumstick-cooked', 'Chicken drumstick, cooked (skinless)', '1 drumstick (meat only)', 44, [172, 28.3, 0, 5.7], ['protein', 'meat', 'poultry']),
+  F('chicken-wings-cooked', 'Chicken wings, cooked (with skin)', '4 wings (meat & skin, no bone)', 128, [290, 27, 0, 19.5], ['protein', 'meat', 'poultry']),
+  F('rotisserie-chicken', 'Rotisserie chicken (meat & skin, no bone)', '4 oz', 112, [223, 26, 0, 13], ['protein', 'meat', 'poultry']),
   F('ground-chicken-cooked', 'Ground chicken, cooked', '4 oz', 112, [189, 23.3, 0, 10.9], ['protein', 'meat', 'poultry', 'mince']),
   F('chicken-sausage', 'Chicken sausage, cooked', '1 link', 85, [200, 16.5, 3.5, 12.9], ['protein', 'meat', 'poultry']),
   F('ground-turkey-93-cooked', 'Ground turkey 93/7, cooked', '4 oz', 112, [213, 27.1, 0, 11.6], ['protein', 'meat', 'poultry', 'mince']),
@@ -33,7 +33,7 @@ export const FOODS = [
   F('bison-ground-cooked', 'Bison, ground, cooked', '4 oz', 112, [179, 25.5, 0, 8.6], ['protein', 'meat', 'buffalo']),
   F('lamb-leg-roasted', 'Lamb leg, roasted', '4 oz', 112, [191, 28.3, 0, 7.7], ['protein', 'meat']),
   F('pork-tenderloin-cooked', 'Pork tenderloin, roasted', '4 oz', 112, [143, 26.2, 0, 3.5], ['protein', 'meat', 'pork']),
-  F('pork-chop-cooked', 'Pork chop, boneless, cooked', '1 chop', 140, [197, 27.3, 0, 9], ['protein', 'meat', 'pork']),
+  F('pork-chop-cooked', 'Pork chop, boneless, cooked', '1 boneless chop', 140, [197, 27.3, 0, 9], ['protein', 'meat', 'pork']),
   F('bacon-cooked', 'Bacon, pan-fried', '2 slices', 16, [541, 37, 1.4, 42], ['protein', 'meat', 'pork', 'breakfast']),
   F('breakfast-sausage', 'Breakfast sausage (pork), cooked', '1 patty', 27, [325, 18.5, 1.4, 27.3], ['protein', 'meat', 'pork', 'breakfast']),
   F('deli-ham', 'Ham, deli sliced', '2 oz', 56, [113, 16.7, 2.6, 3.7], ['protein', 'meat', 'pork', 'lunch meat', 'cold cuts']),
@@ -44,14 +44,14 @@ export const FOODS = [
   F('salmon-raw', 'Salmon, Atlantic (farmed), raw', '4 oz raw', 112, [208, 20.4, 0, 13.4], ['protein', 'fish', 'seafood']),
   F('salmon-sockeye-cooked', 'Salmon, wild sockeye, cooked', '5 oz fillet', 140, [169, 26.5, 0, 6.3], ['protein', 'fish', 'seafood', 'wild']),
   F('smoked-salmon', 'Smoked salmon (lox)', '2 oz', 56, [117, 18.3, 0, 4.3], ['protein', 'fish', 'seafood', 'breakfast']),
-  F('tuna-canned-water', 'Tuna, canned in water, drained', '1 can (drained)', 142, [116, 25.5, 0, 0.8], ['protein', 'fish', 'seafood', 'canned']),
-  F('tuna-canned-oil', 'Tuna, canned in oil, drained', '1 can (drained)', 142, [198, 29.1, 0, 8.2], ['protein', 'fish', 'seafood', 'canned']),
+  F('tuna-canned-water', 'Tuna, canned in water, drained', '1 can (5 oz), drained', 116, [116, 25.5, 0, 0.8], ['protein', 'fish', 'seafood', 'canned']),
+  F('tuna-canned-oil', 'Tuna, canned in oil, drained', '1 can (5 oz), drained', 116, [198, 29.1, 0, 8.2], ['protein', 'fish', 'seafood', 'canned']),
   F('tuna-steak-cooked', 'Tuna steak (yellowfin/ahi), cooked', '5 oz', 140, [130, 29.2, 0, 0.6], ['protein', 'fish', 'seafood', 'ahi']),
   F('shrimp-cooked', 'Shrimp, cooked', '4 oz', 112, [99, 24, 0.2, 0.3], ['protein', 'seafood', 'prawns', 'shellfish']),
   F('cod-cooked', 'Cod, cooked', '5 oz fillet', 140, [105, 22.8, 0, 0.9], ['protein', 'fish', 'seafood', 'white fish']),
   F('tilapia-cooked', 'Tilapia, cooked', '1 fillet', 87, [128, 26.2, 0, 2.7], ['protein', 'fish', 'seafood', 'white fish']),
   F('halibut-cooked', 'Halibut, cooked', '5 oz fillet', 140, [111, 22.5, 0, 2.3], ['protein', 'fish', 'seafood', 'white fish']),
-  F('sardines-oil', 'Sardines, canned in oil, drained', '1 can', 92, [208, 24.6, 0, 11.5], ['protein', 'fish', 'seafood', 'canned', 'omega 3']),
+  F('sardines-oil', 'Sardines, canned in oil, drained', '1 can (3.75 oz), drained', 92, [208, 24.6, 0, 11.5], ['protein', 'fish', 'seafood', 'canned', 'omega 3']),
   F('scallops-cooked', 'Scallops, cooked', '4 oz', 112, [111, 20.5, 5.4, 0.8], ['protein', 'seafood', 'shellfish']),
   // ---------------- Proteins: eggs ----------------
   F('egg-whole', 'Egg, whole, large', '1 large egg', 50, [143, 12.6, 0.7, 9.5], ['protein', 'eggs', 'breakfast', 'raw']),
@@ -130,7 +130,7 @@ export const FOODS = [
 
   // ---------------- Fruit ----------------
   F('banana', 'Banana', '1 medium', 118, [89, 1.1, 22.8, 0.3, 2.6], ['fruit', 'carbs', 'snack', 'fuel']),
-  F('apple', 'Apple', '1 medium', 182, [52, 0.3, 13.8, 0.2, 2.4], ['fruit', 'snack']),
+  F('apple', 'Apple', '1 medium (cored)', 167, [52, 0.3, 13.8, 0.2, 2.4], ['fruit', 'snack']),
   F('orange', 'Orange', '1 medium', 131, [47, 0.9, 11.8, 0.1, 2.4], ['fruit', 'citrus']),
   F('strawberries', 'Strawberries', '1 cup sliced', 166, [32, 0.7, 7.7, 0.3, 2], ['fruit', 'berries']),
   F('blueberries', 'Blueberries', '1 cup', 148, [57, 0.7, 14.5, 0.3, 2.4], ['fruit', 'berries']),
@@ -144,11 +144,11 @@ export const FOODS = [
   F('pineapple', 'Pineapple', '1 cup chunks', 165, [50, 0.5, 13.1, 0.1, 1.4], ['fruit', 'tropical']),
   F('mango', 'Mango', '1 cup sliced', 165, [60, 0.8, 15, 0.4, 1.6], ['fruit', 'tropical']),
   F('papaya', 'Papaya', '1 cup cubed', 145, [43, 0.5, 10.8, 0.3, 1.7], ['fruit', 'tropical']),
-  F('pear', 'Pear', '1 medium', 178, [57, 0.4, 15.2, 0.1, 3.1], ['fruit']),
-  F('peach', 'Peach', '1 medium', 150, [39, 0.9, 9.5, 0.3, 1.5], ['fruit']),
-  F('plum', 'Plum', '1 fruit', 66, [46, 0.7, 11.4, 0.3, 1.4], ['fruit']),
+  F('pear', 'Pear', '1 medium (cored)', 166, [57, 0.4, 15.2, 0.1, 3.1], ['fruit']),
+  F('peach', 'Peach', '1 medium (pitted)', 147, [39, 0.9, 9.5, 0.3, 1.5], ['fruit']),
+  F('plum', 'Plum', '1 fruit (pitted)', 62, [46, 0.7, 11.4, 0.3, 1.4], ['fruit']),
   F('kiwi', 'Kiwifruit', '1 fruit', 69, [61, 1.1, 14.7, 0.5, 3], ['fruit']),
-  F('cherries', 'Cherries, sweet', '1 cup', 138, [63, 1.1, 16, 0.2, 2.1], ['fruit']),
+  F('cherries', 'Cherries, sweet', '1 cup (pitted)', 154, [63, 1.1, 16, 0.2, 2.1], ['fruit']),
   F('grapefruit', 'Grapefruit', '½ fruit', 123, [42, 0.8, 10.7, 0.1, 1.6], ['fruit', 'citrus']),
   F('clementine', 'Clementine / mandarin', '1 fruit', 74, [53, 0.8, 13.3, 0.3, 1.8], ['fruit', 'citrus', 'tangerine']),
   F('pomegranate-arils', 'Pomegranate seeds (arils)', '½ cup', 87, [83, 1.7, 18.7, 1.2, 4], ['fruit']),
@@ -439,7 +439,7 @@ export const FOODS = [
 // Extra staples to round out common logging (kept separate for readability).
 FOODS.push(
   F('chicken-breast-grilled-strips', 'Chicken breast strips, grilled (pre-cooked)', '3 oz', 84, [119, 22.6, 1.2, 2.4], ['protein', 'meat', 'poultry', 'chicken', 'meal prep']),
-  F('canned-chicken', 'Chicken breast, canned (drained)', '½ can', 70, [128, 25, 0, 2.9], ['protein', 'meat', 'poultry', 'chicken']),
+  F('canned-chicken', 'Chicken breast, canned (drained)', '3 oz drained', 85, [128, 25, 0, 2.9], ['protein', 'meat', 'poultry', 'chicken']),
   F('turkey-bacon', 'Turkey bacon, cooked', '2 slices', 16, [382, 29.6, 4.2, 27.8], ['protein', 'meat', 'breakfast']),
   F('salami', 'Salami (hard)', '1 oz', 28, [407, 22.6, 1.6, 33.7], ['protein', 'meat', 'cold cuts', 'pork']),
   F('pepperoni', 'Pepperoni', '1 oz (14 slices)', 28, [504, 19.3, 1.2, 46.3], ['meat', 'pork', 'pizza']),
@@ -537,3 +537,43 @@ FOODS.push(
   F('marshmallows', 'Marshmallows', '4 large', 28, [318, 1.8, 81.3, 0.2, 0.1], ['candy', 'sweet']),
   F('whipped-cream', 'Whipped cream (aerosol)', '2 tbsp', 8, [257, 3.2, 12.5, 22.2], ['dessert', 'dairy', 'topping']),
 );
+
+// ---------- curated search aliases (R1 P1-4): the food a bare query most likely means ----------
+const PRIMARY = {
+  'white-rice-cooked': ['rice'], 'coffee-black': ['coffee'], 'peanut-butter': ['pb', 'peanut butter'], 'egg-whole': ['egg', 'eggs'],
+  'sirloin-steak-cooked': ['steak'], 'burrito-chicken': ['burrito'], 'energy-gel': ['gel', 'gels'], 'mixed-veg-frozen': ['veg', 'vegetables'],
+  'chicken-breast-cooked': ['chicken', 'chicken breast'], 'oatmeal-cooked': ['oatmeal', 'porridge'], 'oats-rolled-dry': ['oats'],
+  'greek-yogurt-nonfat': ['greek yogurt', 'yogurt', 'yoghurt'], 'whey-protein': ['whey', 'protein powder'], 'protein-shake-rtd': ['protein shake'],
+  'salmon-cooked': ['salmon'], 'bagel-plain': ['bagel'], 'burrito-bowl-chicken': ['chipotle bowl', 'burrito bowl'], 'latte-2': ['latte'],
+  'beer-regular': ['beer'], 'electrolyte-mix-sugar-free': ['electrolyte', 'electrolytes'], 'sweet-potato-baked': ['sweet potato'],
+  'pizza-cheese': ['pizza'], 'almonds': ['almonds', 'almond'], 'cottage-cheese-2': ['cottage cheese'], 'tuna-canned-water': ['tuna'],
+  'bread-white': ['bread', 'toast'], 'pasta-cooked': ['pasta'], 'apple': ['apple'], 'banana': ['banana'], 'potato-baked': ['potato'],
+  'milk-2': ['milk'], 'wine-red': ['wine'], 'sports-drink': ['gatorade', 'sports drink'], 'protein-bar-low-sugar': ['protein bar'],
+  'egg-whites': ['egg whites', 'egg white'], 'avocado': ['avocado'], 'broccoli-cooked': ['broccoli'], 'french-fries': ['fries'],
+  'turkey-breast-roasted': ['turkey'], 'tortilla-flour': ['wrap', 'tortilla'], 'rice-cakes': ['rice cakes', 'rice cake'], 'honey': ['honey'],
+};
+
+// ---------- sodium, mg per 100 g (R1 P2-7: optional field; label/USDA values for salty & fuel items) ----------
+const SODIUM = {
+  'sports-drink': 46, 'sports-drink-zero': 46, 'electrolyte-mix-sugar-free': 16667, 'electrolyte-mix': 3125, 'carb-drink-mix': 1130,
+  'energy-gel': 188, 'energy-gel-caffeine': 188, 'hydrogel': 50, 'isotonic-gel': 17, 'energy-chews': 167, 'energy-waffle': 183,
+  'coconut-water': 105, 'salt-tabs': 21500, 'recovery-shake': 60, 'pretzels': 1240, 'potato-chips': 525, 'tortilla-chips': 420,
+  'saltine-crackers': 1100, 'pickles': 809, 'sauerkraut': 661, 'kimchi': 498, 'soy-sauce': 5493, 'teriyaki-sauce': 3833, 'ketchup': 907,
+  'mustard': 1104, 'salsa': 430, 'bbq-sauce': 1027, 'hot-sauce': 2643, 'sriracha': 2133, 'ranch-dressing': 901, 'caesar-dressing': 1150,
+  'bacon-cooked': 1717, 'deli-turkey': 1015, 'deli-ham': 1203, 'beef-jerky': 1785, 'meat-stick': 1500, 'salami': 1890, 'pepperoni': 1750,
+  'breakfast-sausage': 749, 'hot-dog': 760, 'pizza-cheese': 598, 'pizza-pepperoni': 683, 'french-fries': 210, 'cheeseburger-small': 610,
+  'chicken-nuggets': 600, 'ramen-instant': 380, 'ramen-restaurant': 300, 'pho-beef': 250, 'chicken-noodle-soup': 343, 'burrito-bowl-chicken': 330,
+  'burrito-chicken': 340, 'cheddar': 621, 'feta': 1116, 'parmesan-grated': 1804, 'american-cheese': 1500, 'cottage-cheese-2': 308,
+  'tuna-canned-water': 247, 'smoked-salmon': 672, 'olives': 735, 'hummus': 426, 'bread-white': 477, 'bagel-plain': 439, 'tortilla-flour': 630,
+  'mixed-nuts': 304, 'popcorn-air': 8, 'banana': 1, 'white-rice-cooked': 1, 'chicken-breast-cooked': 74, 'egg-whole': 142, 'milk-2': 41,
+};
+
+for (const f of FOODS) {
+  if (PRIMARY[f.id]) f.primary = PRIMARY[f.id];
+  if (SODIUM[f.id] != null) f.per100.na = SODIUM[f.id];
+  // Alcohol (R1 P2-8): grams of ethanol = the energy P/C/F don't explain, at 7 kcal/g.
+  if (f.tags.includes('alcohol')) {
+    const { kcal, p, c, f: fat } = f.per100;
+    f.per100.alc = Math.max(0, Math.round(((kcal - 4 * p - 4 * c - 9 * fat) / 7) * 10) / 10);
+  }
+}

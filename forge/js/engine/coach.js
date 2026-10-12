@@ -78,7 +78,7 @@ export function targetKg(exId, profile) {
 // How far above target a bell may be before it is unsafe for a first exposure.
 function heavyLimit(ex) {
   if (ex.pattern === 'press' || STRICT.has(ex.id)) return 1.35;
-  if (ex.pattern === 'carry') return 2;
+  if (ex.pattern === 'carry' || ex.id === 'kb-bear-crawl-drag' || ex.id === 'kb-towel-drag') return ex.pattern === 'carry' ? 2 : 2.5; // drags slide on the floor
   if (ex.pattern === 'hinge') return 1.8;
   return 1.6;
 }

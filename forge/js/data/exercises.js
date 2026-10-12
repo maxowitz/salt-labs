@@ -62,14 +62,14 @@ export const EXERCISES = [
     faults: ['Bells crashing on the forearms', 'Upper back collapsing in the rack', 'Using the arms to curl the bells up'],
   }),
   E('kb-snatch', 'Snatch', 'kb', 'ballistic', {
-    uni: true, muscles: [...POST, 'shoulders', 'traps', 'grip'], lr: [0.14, 0.2, 0.28], reg: 'kb-high-pull', prog: 'kb-swing-double',
+    uni: true, muscles: [...POST, 'shoulders', 'traps', 'grip'], lr: [0.14, 0.2, 0.28], reg: 'kb-high-pull',
     cues: ['Swing, high pull, then punch through the handle at the top', 'Lock out overhead with biceps by the ear, wrist straight', 'Drop it over the top and hike back — keep the elbow close'],
     faults: ['Bell arcing wide and flipping onto the forearm', 'Pressing out the last few inches', 'Torn hands from a death grip — hook and relax'],
   }),
 
   // ---------------- Kettlebell: grinds ----------------
   E('kb-deadlift', 'Kettlebell Deadlift', 'kb', 'hinge', {
-    muscles: POST, lr: [0.25, 0.38, 0.48], prog: 'kb-swing',
+    muscles: POST, lr: [0.35, 0.5, 0.6], prog: 'kb-swing',
     cues: ['Bell between the mid-feet, shins near vertical', 'Push hips back, flat back, grab and pull the slack out', 'Drive the floor away and finish with glutes, not the low back'],
     faults: ['Squatting the bell up', 'Rounded lumbar spine', 'Bell too far in front of the feet'],
   }),
@@ -89,7 +89,7 @@ export const EXERCISES = [
     faults: ['Turning it into a squat', 'Rounding to chase depth'],
   }),
   E('kb-sl-rdl', 'Single-Leg RDL', 'kb', 'hinge', {
-    uni: true, muscles: ['hamstrings', 'glutes', 'adductors', 'feet'], lr: [0.12, 0.2, 0.28], reg: 'kb-rdl', prog: 'kb-suitcase-deadlift',
+    uni: true, muscles: ['hamstrings', 'glutes', 'adductors', 'feet'], lr: [0.12, 0.2, 0.28], reg: 'kb-rdl', prog: 'kb-swing-1h',
     cues: ['Bell in the hand opposite the standing leg', 'Reach the back heel to the wall; hips stay square', 'Long line head to heel, tripod foot grips the floor'],
     faults: ['Hip opening toward the ceiling', 'Rushing the balance — slow down'],
   }),
@@ -104,12 +104,12 @@ export const EXERCISES = [
     faults: ['Rack elbow drifting off the ribs', 'Leaning toward the free side'],
   }),
   E('kb-double-front-squat', 'Double Front Squat', 'kb', 'squat', {
-    dbl: true, muscles: ['quads', 'glutes', 'upper back', 'core'], lr: [0.14, 0.22, 0.3], reg: 'kb-front-squat', prog: 'kb-double-thruster',
+    dbl: true, muscles: ['quads', 'glutes', 'upper back', 'core'], lr: [0.16, 0.26, 0.32], reg: 'kb-front-squat', prog: 'kb-double-thruster',
     cues: ['Clean both bells, elbows tucked, forearms vertical', 'Big breath to the belt, descend under control', 'Drive up chest-first, power exhale at the top'],
     faults: ['Upper back rounding under the bells', 'Elbows flaring and bells sliding off the rack'],
   }),
   E('kb-press', 'Strict Press', 'kb', 'press', {
-    uni: true, muscles: ['shoulders', 'triceps', 'lats', 'core'], lr: [0.12, 0.2, 0.28], reg: 'kb-bottoms-up-press', prog: 'kb-double-press',
+    uni: true, muscles: ['shoulders', 'triceps', 'lats', 'core'], lr: [0.12, 0.2, 0.28], reg: 'kb-floor-press', prog: 'kb-double-press',
     cues: ['Start from a perfect rack; squeeze glutes, quads and the fist', 'Press the bell up and slightly out, forearm vertical', 'Lockout with biceps by the ear; pull it back down with the lat'],
     faults: ['Leaning back to finish', 'Soft wrist bent back', 'Dropping the bell instead of pulling it down'],
   }),
@@ -119,7 +119,7 @@ export const EXERCISES = [
     faults: ['Excessive layback', 'One arm racing ahead'],
   }),
   E('kb-bottoms-up-press', 'Bottoms-Up Press', 'kb', 'press', {
-    uni: true, muscles: ['shoulders', 'rotator cuff', 'grip', 'core'], lr: [0.06, 0.1, 0.14], prog: 'kb-press',
+    uni: true, muscles: ['shoulders', 'rotator cuff', 'grip', 'core'], lr: [0.06, 0.1, 0.14], reg: 'kb-press', prog: 'kb-double-press',
     cues: ['Crush grip, bell balanced upside down', 'Wrist straight, elbow under the bell', 'Press slowly — if it wobbles you are rushing'],
     faults: ['Loose grip so the bell topples', 'Elbow flaring wide'],
   }),
@@ -154,7 +154,7 @@ export const EXERCISES = [
     faults: ['Bell arm drifting off vertical', 'Rushing the roll'],
   }),
   E('kb-windmill', 'Windmill', 'kb', 'core', {
-    uni: true, muscles: ['obliques', 'hamstrings', 'shoulders', 'glutes'], lr: [0.1, 0.16, 0.24], reg: 'kb-tgu', prog: 'kb-bottoms-up-press',
+    uni: true, muscles: ['obliques', 'hamstrings', 'shoulders', 'glutes'], lr: [0.1, 0.16, 0.24], reg: 'kb-tgu',
     cues: ['Bell locked overhead, feet turned 45° away from it', 'Push the hip toward the bell and hinge sideways', 'Free hand slides down the inside of the leg; eyes on the bell'],
     faults: ['Bending the overhead arm', 'Squatting instead of hinging'],
   }),
@@ -164,12 +164,12 @@ export const EXERCISES = [
     faults: ['Twisting the torso to cheat the bell up', 'Shrugging toward the ear'],
   }),
   E('kb-gorilla-row', 'Gorilla Row', 'kb', 'pull', {
-    dbl: true, muscles: ['lats', 'upper back', 'core', 'hamstrings'], lr: [0.16, 0.24, 0.32], reg: 'kb-row', prog: 'kb-renegade-row',
+    dbl: true, muscles: ['lats', 'upper back', 'core', 'hamstrings'], lr: [0.18, 0.28, 0.34], reg: 'kb-row', prog: 'kb-renegade-row',
     cues: ['Wide stance, deep hinge, bells between the feet', 'Row one while pushing the other into the floor', 'Hips stay square and still'],
     faults: ['Rotating the hips', 'Standing up out of the hinge'],
   }),
   E('kb-renegade-row', 'Renegade Row', 'kb', 'pull', {
-    dbl: true, muscles: ['lats', 'core', 'chest', 'shoulders'], lr: [0.1, 0.16, 0.22], reg: 'kb-gorilla-row', prog: 'kb-row',
+    dbl: true, muscles: ['lats', 'core', 'chest', 'shoulders'], lr: [0.1, 0.16, 0.22], reg: 'kb-gorilla-row',
     cues: ['High plank on two bells, feet wide', 'Row without the hips moving — squeeze glutes', 'Optional push-up between reps'],
     faults: ['Hips rotating open', 'Feet too narrow'],
   }),
@@ -253,12 +253,12 @@ export const EXERCISES = [
 
   // ---------------- Kettlebell: carries & crawls ----------------
   E('kb-farmers-carry', 'Farmers Carry', 'kb', 'carry', {
-    dbl: true, track: 'distance', muscles: ['grip', 'traps', 'core', 'glutes'], lr: [0.2, 0.3, 0.4], reg: 'kb-suitcase-carry', hyrox: 'farmers',
+    dbl: true, track: 'distance', muscles: ['grip', 'traps', 'core', 'glutes'], lr: [0.25, 0.3, 0.4], reg: 'kb-suitcase-carry', hyrox: 'farmers',
     cues: ['Deadlift the bells, stand tall, shoulders packed', 'Short quick steps, eyes forward', 'Breathe behind the brace; put them down before the grip fails'],
     faults: ['Shrugging shoulders to ears', 'Over-striding so the bells swing'],
   }),
   E('kb-suitcase-carry', 'Suitcase Carry', 'kb', 'carry', {
-    uni: true, track: 'distance', muscles: ['obliques', 'grip', 'glutes'], lr: [0.2, 0.3, 0.4], prog: 'kb-farmers-carry', hyrox: 'farmers',
+    uni: true, track: 'distance', muscles: ['obliques', 'grip', 'glutes'], lr: [0.25, 0.3, 0.4], prog: 'kb-farmers-carry', hyrox: 'farmers',
     cues: ['One bell, stand perfectly upright', 'Resist the lean — the obliques do the work', 'Switch hands at halfway'],
     faults: ['Leaning away or toward the bell', 'Swinging the bell'],
   }),
@@ -311,7 +311,7 @@ export const EXERCISES = [
     faults: ['First rep too fast', 'Standing still in recoveries'],
   }),
   E('run-1k', '1 km Run', 'run', 'cardio', {
-    muscles: ['legs', 'heart & lungs'], reg: 'run-intervals', prog: 'hx-ski',
+    muscles: ['legs', 'heart & lungs'], reg: 'run-intervals',
     cues: ['The HYROX unit: every race run is 1 km', 'Lock in pace by 200 m and hold it', 'Practise running smoothly off fatigue'],
     faults: ['Sprinting the first 200 m', 'Letting pace drift late in the rep'],
   }),

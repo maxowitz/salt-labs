@@ -211,7 +211,7 @@ export function icon(name, size = 20) {
   s.setAttribute('viewBox', '0 0 24 24');
   s.setAttribute('width', size); s.setAttribute('height', size);
   s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor');
-  s.setAttribute('stroke-width', '1.9'); s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round');
+  s.setAttribute('stroke-width', '1.6'); s.setAttribute('stroke-linecap', 'square'); s.setAttribute('stroke-linejoin', 'miter');
   s.setAttribute('aria-hidden', 'true'); s.setAttribute('class', 'ico');
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   p.setAttribute('d', ICONS[name] || ICONS.info);
@@ -256,10 +256,26 @@ export function field(label, input, hint) {
     h('span', { class: 'field-label', id }, label), input, hint ? h('span', { class: 'field-hint' }, hint) : null);
 }
 
+// Field Ledger (docs/DESIGN.md §10): empty states are left-aligned text, no pictogram. iconName is kept for API compatibility.
 export function emptyState(iconName, title, text, action) {
-  return h('div', { class: 'empty' }, icon(iconName, 32), h('h3', null, title), text ? h('p', { class: 'muted' }, text) : null, action || null);
+  return h('div', { class: 'empty' }, h('h3', null, title), text ? h('p', { class: 'muted' }, text) : null, action || null);
 }
 
-export function sectionHead(title, right) {
-  return h('div', { class: 'section-head' }, h('h2', null, title), right || null);
+/** Numbered section rule: `01  TITLE ───────── right`. index is optional (number or string). */
+export function sectionHead(title, right, index) {
+  return h('div', { class: 'section-head' + (index != null ? ' has-ix' : '') },
+    index != null ? h('span', { class: 'ix', 'aria-hidden': 'true' }, typeof index === 'number' ? String(index).padStart(2, '0') : String(index)) : null,
+    h('h2', null, title),
+    right || null);
+}
+
+/** Condensed figure with a mono unit: fig('16', 'kg') → <span class="fig">16<span class="unit">kg</span></span>. */
+export function fig(value, unit, cls = '') {
+  return h('span', { class: 'fig' + (cls ? ' ' + cls : '') }, String(value ?? '–'), unit ? h('span', { class: 'unit' }, unit) : null);
+}
+
+/** Page masthead: expanded wordmark + mono dateline over an ink rule. right: string | Node. */
+export function masthead(right) {
+  return h('header', { class: 'masthead' }, h('span', { class: 'wordmark', 'aria-hidden': 'true' }, 'FORGE'),
+    right != null ? h('span', { class: 'lbl' }, right) : null);
 }
