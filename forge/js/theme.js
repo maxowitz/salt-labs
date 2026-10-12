@@ -4,4 +4,6 @@ try {
   var t = s.theme || 'dark';
   if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   document.documentElement.dataset.theme = t;
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', t === 'light' ? '#F1EDE4' : '#13120F');
 } catch (e) {}

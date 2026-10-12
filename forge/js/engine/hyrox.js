@@ -66,14 +66,17 @@ export const specKey = (profile = {}) => `${profile.division === 'pro' ? 'pro' :
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const fmt = (sec) => { sec = Math.round(sec); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? `${h}:${String(m).padStart(2, '0')}` : `${m}`) + ':' + String(s).padStart(2, '0'); };
 
+// Race-run pace ÷ 5 km pace with no compromised-running history (shared with predictRace).
+export const RACE_RUN_FACTOR = 1.24;
+
 // Typical 5 km by experience when the athlete has no benchmark (sec).
 export function estimateFiveK(profile = {}) {
   const base = { beginner: 1920, intermediate: 1500, advanced: 1260 }[profile.experience] || 1500;
   return Math.round(base * (profile.sex === 'f' ? 1.1 : 1));
 }
 
-// Daniels-style training paces (sec/km) from a 5 km time.
-export function paces(fiveKSec) {
+// Daniels-style training paces (sec/km) from a 5 km time. opts.experience refines HYROX race pace.
+export function paces(fiveKSec, opts = {}) {
   const t = Number.isFinite(+fiveKSec) && +fiveKSec > 600 ? +fiveKSec : 1500;
   const r = t / 5;
   const R = (x) => Math.round(r * x);
@@ -82,7 +85,7 @@ export function paces(fiveKSec) {
     interval: R(0.97),         // VO2max reps (~3 km pace)
     threshold: R(1.06),        // ~ 1-hour race pace
     tempo: R(1.12),            // steady / comfortably hard
-    race: R(1.18),             // HYROX compromised 1 km pace
+    race: R(RACE_RUN_FACTOR + (opts.experience === 'advanced' ? -0.03 : 0)), // HYROX compromised 1 km pace (= predictor)
     easy: [R(1.25), R(1.4)],
     z2: [R(1.28), R(1.45)],
     long: [R(1.3), R(1.45)],
@@ -93,16 +96,18 @@ export const defaultHrMax = (age) => Math.round(208 - 0.7 * (Number.isFinite(+ag
 
 export function hrZones(hrMax) {
   const m = Number.isFinite(+hrMax) && +hrMax > 100 ? +hrMax : defaultHrMax(35);
-  const z = [[1, 0.5, 0.6, 'Recovery'], [2, 0.6, 0.7, 'Aerobic (Zone 2)'], [3, 0.7, 0.8, 'Tempo'], [4, 0.8, 0.9, 'Threshold'], [5, 0.9, 1, 'VO2 max']];
+  const z = [[1, 0.5, 0.65, 'Recovery'], [2, 0.65, 0.78, 'Aerobic (Zone 2)'], [3, 0.78, 0.85, 'Tempo'], [4, 0.85, 0.92, 'Threshold'], [5, 0.92, 1, 'VO2 max']];
   return z.map(([n, lo, hi, label]) => ({ z: n, lo: Math.round(m * lo), hi: Math.round(m * hi), label }));
 }
 
-// Check-in 1..5 each → 0..100. Soreness and stress are inverted (5 = very sore / very stressed).
+// Check-in 1..5 each → 0..100. Answers map to points so a "normal" day (all 3s) = 70 → train as planned.
+// Soreness and stress are inverted (5 = very sore / very stressed).
+export const READINESS_POINTS = { 1: 0, 2: 40, 3: 70, 4: 85, 5: 100 };
 export function readinessScore(checkin = {}) {
-  const v = (k) => clamp(Number.isFinite(+checkin[k]) ? +checkin[k] : 3, 1, 5);
-  const pos = (k) => (v(k) - 1) / 4, neg = (k) => (5 - v(k)) / 4;
+  const v = (k) => Math.round(clamp(Number.isFinite(+checkin[k]) && checkin[k] !== null && checkin[k] !== '' ? +checkin[k] : 3, 1, 5));
+  const pos = (k) => READINESS_POINTS[v(k)], neg = (k) => READINESS_POINTS[6 - v(k)];
   const s = 0.3 * pos('sleep') + 0.3 * pos('energy') + 0.2 * neg('soreness') + 0.2 * neg('stress');
-  return Math.round(clamp(s * 100, 0, 100));
+  return Math.round(clamp(s, 0, 100));
 }
 
 // ---------- Session mining helpers ----------
@@ -113,14 +118,24 @@ const recent = (sessions, todayISO, days) => (sessions || []).filter((s) => {
   return d >= 0 && d < days;
 });
 
-function runEfforts(sessions) {
+// Benchmark-quality run efforts in a session: time-trial templates, sessions/entries flagged `benchmark: true`,
+// and manual cardio logs (no workoutId). Training reps inside intervals/circuits/sims never count.
+export const TT_IDS = ['t-1k-tt', 't-5k-tt'];
+export function benchmarkRuns(s) {
   const out = [];
-  for (const s of sessions || []) {
-    for (const c of s.cardio || []) if (c && (c.mode || 'run') === 'run' && +c.distanceM > 0 && +c.timeSec > 0) out.push({ d: +c.distanceM, t: +c.timeSec, date: s.date });
-    for (const x of s.sets || []) if (x && getExercise(x.exId).category === 'run' && +x.distanceM > 0 && +x.timeSec > 0) out.push({ d: +x.distanceM, t: +x.timeSec, date: s.date });
+  if (!s) return out;
+  const whole = s.benchmark === true || TT_IDS.includes(s.workoutId);
+  for (const c of s.cardio || []) {
+    if (!c || (c.mode || 'run') !== 'run' || !(+c.distanceM > 0) || !(+c.timeSec > 0)) continue;
+    if (whole || c.benchmark === true || !s.workoutId) out.push({ d: +c.distanceM, t: +c.timeSec, date: s.date });
+  }
+  for (const x of s.sets || []) {
+    if (!x || getExercise(x.exId).category !== 'run' || !(+x.distanceM > 0) || !(+x.timeSec > 0)) continue;
+    if (whole || x.benchmark === true) out.push({ d: +x.distanceM, t: +x.timeSec, date: s.date });
   }
   return out;
 }
+const runEfforts = (sessions) => (sessions || []).flatMap(benchmarkRuns);
 
 const near = (d, target, tol = 0.03) => Math.abs(d - target) <= target * tol;
 const best = (list) => list.reduce((a, b) => (!a || b.t < a.t ? b : a), null);
@@ -175,7 +190,8 @@ const isCompromised = (s) => {
 
 // ---------- Race predictor ----------
 const STATION_BASE = { skierg: 290, 'sled-push': 200, 'sled-pull': 270, bbj: 300, row: 300, farmers: 120, 'sandbag-lunges': 290, 'wall-balls': 360 };
-const EXP_MULT = { beginner: 1.3, intermediate: 1, advanced: 0.8 };
+const EXP_MULT = { beginner: 1.2, intermediate: 1, advanced: 0.82 };
+const EXP_MULT_ERG = { beginner: 1.15, intermediate: 1, advanced: 0.88 };
 const PRO_MULT = { 'sled-push': 1.35, 'sled-pull': 1.3, farmers: 1.12, 'sandbag-lunges': 1.2, 'wall-balls': 1.2 };
 const KB_HEAVY = ['sled-push', 'sled-pull', 'farmers', 'sandbag-lunges', 'wall-balls'];
 
@@ -193,19 +209,21 @@ export function predictRace(state = {}, todayISO) {
   const efforts = runEfforts(window);
   const tt5 = best(efforts.filter((e) => near(e.d, 5000)));
   const tt1 = best(efforts.filter((e) => near(e.d, 1000)));
+  // 5 km equivalent = best of profile time and benchmarks; a slower effort can never worsen the prediction.
+  const cands = [];
+  if (+profile.fiveKSec > 600) cands.push({ v: +profile.fiveKSec, label: `Profile 5 km time ${fmt(+profile.fiveKSec)}` });
+  if (tt5) cands.push({ v: tt5.t, label: `5 km benchmark ${fmt(tt5.t)} (${tt5.date})`, logged: true });
+  if (tt1) cands.push({ v: tt1.t * 5.5, label: `1 km benchmark ${fmt(tt1.t)} (${tt1.date})`, logged: true });
   let fiveK, runLogged = false;
-  if (tt5) { fiveK = tt5.t; runLogged = true; basis.push(`5 km run ${fmt(tt5.t)} (${tt5.date})`); }
-  if (tt1) {
-    const est = tt1.t * 5 * 1.1;
-    if (!fiveK || est < fiveK) fiveK = est;
-    runLogged = true; basis.push(`1 km benchmark ${fmt(tt1.t)} (${tt1.date})`);
-  }
-  if (!fiveK && +profile.fiveKSec > 600) { fiveK = +profile.fiveKSec; basis.push(`Profile 5 km time ${fmt(fiveK)}`); }
-  if (!fiveK) { fiveK = estimateFiveK(profile); basis.push(`No run benchmark — estimated from ${exp} experience`); }
+  if (cands.length) {
+    const bestC = cands.reduce((a, b) => (b.v < a.v ? b : a));
+    fiveK = bestC.v; runLogged = cands.some((c) => c.logged);
+    for (const c of cands) basis.push(c === bestC ? `${c.label} — used` : c.label);
+  } else { fiveK = estimateFiveK(profile); basis.push(`No run benchmark — estimated from ${exp} experience`); }
 
   const compromised = (today ? recent(sessions, today, 56) : sessions).filter(isCompromised).length;
   if (compromised) basis.push(`${compromised} compromised-run session${compromised > 1 ? 's' : ''} in the last 8 weeks`);
-  const runFactor = 1.24 - Math.min(compromised, 8) * 0.01 + ({ beginner: 0.04, intermediate: 0, advanced: -0.03 })[exp];
+  const runFactor = RACE_RUN_FACTOR - Math.min(compromised, 8) * 0.01 + ({ beginner: 0.04, intermediate: 0, advanced: -0.03 })[exp];
   const runPace = (fiveK / 5) * runFactor;
   const runWeights = Array.from({ length: 8 }, (_, i) => 0.965 + 0.01 * i);
   const runSplits = runWeights.map((w) => runPace * w);
@@ -222,7 +240,7 @@ export function predictRace(state = {}, todayISO) {
   }
   let stationLogged = 0;
   const stationSplits = STATIONS.map((st) => {
-    let t = STATION_BASE[st.id] * EXP_MULT[exp] * (female ? 1.08 : 1);
+    let t = STATION_BASE[st.id] * (st.id === 'skierg' || st.id === 'row' ? EXP_MULT_ERG : EXP_MULT)[exp] * (female ? 1.08 : 1);
     if (pro) t *= PRO_MULT[st.id] || 1;
     if (KB_HEAVY.includes(st.id)) t *= kbFactor;
     if (st.id === 'skierg' && ski) { t = ski.t * 1.06; stationLogged++; basis.push(`SkiErg 1000 m ${fmt(ski.t)}`); }

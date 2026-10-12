@@ -28,7 +28,7 @@ function applyTheme(theme) {
   let t = theme || 'dark';
   if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   document.documentElement.dataset.theme = t;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#f4f1ec' : '#151412');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#F1EDE4' : '#13120F');
 }
 
 function parse() {
@@ -87,7 +87,6 @@ function updateLiveDot() {
 }
 
 async function boot() {
-  for (const el of tabbar.querySelectorAll('[data-icon]')) el.replaceWith(icon(el.dataset.icon, 22));
   const s = store.get();
   applyTheme(s.settings.theme);
   document.body.dataset.haptics = s.settings.haptics ? 'on' : 'off';

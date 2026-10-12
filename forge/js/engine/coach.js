@@ -3,6 +3,7 @@
 
 import { addDays, daysBetween } from '../store.js';
 import { getExercise } from '../data/exercises.js';
+import { benchmarkRuns } from './hyrox.js';
 
 const EXP = ['beginner', 'intermediate', 'advanced'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -60,19 +61,64 @@ export function lastPerformance(exId, sessions) {
   return null;
 }
 
+// ---------- Bell targets & safety ----------
+const STRICT = new Set(['kb-tgu', 'kb-snatch', 'kb-overhead-carry', 'kb-windmill', 'kb-thruster', 'kb-double-thruster', 'kb-goblet-thruster', 'kb-halo', 'kb-armbar']);
+const NEAREST_PATTERNS = new Set(['squat', 'hinge', 'pull', 'carry']);
+
+const expOf = (profile) => (EXP.includes(profile?.experience) ? profile.experience : 'intermediate');
+const bwOf = (profile) => (+profile?.weightKg > 30 ? +profile.weightKg : (profile?.sex === 'f' ? 65 : 80));
+
+// Ideal bell (kg, per bell) from experience, sex and bodyweight.
+export function targetKg(exId, profile) {
+  const ex = getExercise(exId);
+  if (ex.category !== 'kb' || !ex.loadRatio) return null;
+  return ex.loadRatio[expOf(profile)] * bwOf(profile) * (profile?.sex === 'f' ? 0.75 : 1);
+}
+
+// How far above target a bell may be before it is unsafe for a first exposure.
+function heavyLimit(ex) {
+  if (ex.pattern === 'press' || STRICT.has(ex.id)) return 1.35;
+  if (ex.pattern === 'carry') return 2;
+  if (ex.pattern === 'hinge') return 1.8;
+  return 1.6;
+}
+
+const poolFor = (ex, profile) => {
+  const pairs = pairedBells(profile);
+  return ex.double && pairs.length ? pairs : ownedBells(profile);
+};
+
+function baselineKg(ex, profile) {
+  const pool = poolFor(ex, profile);
+  if (!pool.length) return null;
+  const target = targetKg(ex.id, profile);
+  if (NEAREST_PATTERNS.has(ex.pattern)) {
+    const near = pool.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
+    if (near <= target * 1.15) return near;
+  }
+  return atOrBelow(pool, target * 1.08);
+}
+
+// True when the lightest suitable owned bell (or `kg` if given) is unsafe for this athlete on this lift.
+export function tooHeavy(exId, profile, kg) {
+  const ex = getExercise(exId);
+  if (ex.category !== 'kb' || !ex.loadRatio) return false;
+  const pool = poolFor(ex, profile);
+  if (!pool.length) return false;
+  const bell = kg != null ? kg : baselineKg(ex, profile);
+  return bell > targetKg(exId, profile) * heavyLimit(ex);
+}
+
 // Suggested bell (kg) for a KB exercise, always one the athlete owns (a pair for double-bell lifts when owned).
+// Returns null for non-KB work, when no bells are owned, or when every owned bell is too heavy (see tooHeavy) and the
+// athlete has no logged history with this lift — the caller should then regress the exercise.
 // opts: { topReps } overrides the rep target that triggers a bell jump; { step } moves n owned sizes up (plan progression).
 export function suggestWeight(exId, profile, sessions = [], opts = {}) {
   const ex = getExercise(exId);
   if (ex.category !== 'kb' || !ex.loadRatio) return null;
-  const owned = ownedBells(profile);
-  if (!owned.length) return null;
-  const pairs = pairedBells(profile);
-  const pool = ex.double && pairs.length ? pairs : owned;
-  const exp = EXP.includes(profile?.experience) ? profile.experience : 'intermediate';
-  const bw = +profile?.weightKg > 30 ? +profile.weightKg : (profile?.sex === 'f' ? 65 : 80);
-  const target = ex.loadRatio[exp] * bw * (profile?.sex === 'f' ? 0.7 : 1);
-  let kg = atOrBelow(pool, target * 1.08);
+  const pool = poolFor(ex, profile);
+  if (!pool.length) return null;
+  let kg = baselineKg(ex, profile);
 
   const last = lastPerformance(exId, sessions);
   if (last && last.kg) {
@@ -80,13 +126,47 @@ export function suggestWeight(exId, profile, sessions = [], opts = {}) {
     const top = opts.topReps || topReps(ex);
     const hitTop = ex.pattern === 'carry' ? (last.distanceM || 0) >= 40 || (last.timeSec || 0) >= 45 : last.minReps >= top;
     if (hitTop && (last.rpe == null || last.rpe <= 8)) kg = nextUp(pool, kg);
-  }
+  } else if (tooHeavy(exId, profile, kg)) return null;
   for (let i = 0; i < (opts.step || 0); i++) kg = nextUp(pool, kg);
   return kg;
 }
 
+// Live recommendation for a planned KB item (plan bells are frozen at generation; this applies logged progress).
+// Returns { kg, reason, earned }:
+//  - non-KB item, or no bells owned → item.kg ?? null, reason ''.
+//  - item.hold (warm-ups, deload/taper, spec-weight station work) → item.kg unchanged.
+//  - no history with this lift → item.kg (or the baseline suggestion when the item has none).
+//  - last session at bell B: all sets reached item.reps (or the default top of range) at RPE ≤ 8 → next owned bell
+//    above B ("earned"); RPE ≥ 9 or missed reps → B ("repeat"); otherwise B.
+//  - result is max(planned kg, history kg) except after a "repeat" verdict on the planned bell; always an owned bell.
+export function liveItemAdvice(item, profile, sessions = []) {
+  const planned = item?.kg != null ? +item.kg : null;
+  const ex = getExercise(item?.exId);
+  if (!item || ex.category !== 'kb' || !ex.loadRatio) return { kg: planned, reason: '', earned: false };
+  const pool = poolFor(ex, profile);
+  if (!pool.length) return { kg: planned, reason: '', earned: false };
+  if (item.hold) return { kg: planned, reason: '', earned: false };
+  const last = lastPerformance(item.exId, sessions);
+  if (!last || !last.kg) return { kg: planned ?? suggestWeight(item.exId, profile, []), reason: '', earned: false };
+  const base = atOrBelow(pool, last.kg);
+  const top = +item.reps > 0 ? +item.reps : topReps(ex);
+  const hitTop = ex.pattern === 'carry' ? (last.distanceM || 0) >= (+item.distanceM || 40) : last.minReps >= top;
+  if (last.rpe != null && last.rpe >= 9 || (!hitTop && ex.pattern !== 'carry' && last.minReps < top && planned != null && base >= planned)) {
+    return { kg: planned != null ? Math.min(planned, base) : base, reason: 'Repeat this bell — own all reps first', earned: false };
+  }
+  if (hitTop && (last.rpe == null || last.rpe <= 8)) {
+    const up = nextUp(pool, base);
+    const kg = Math.max(up, planned ?? 0);
+    if (up > base && up >= (planned ?? 0)) return { kg, reason: 'Earned: you hit the top of the rep range last time', earned: true };
+    return { kg, reason: up === base ? 'Top owned bell — progress with reps, sets or less rest' : '', earned: false };
+  }
+  return { kg: Math.max(base, planned ?? 0), reason: '', earned: false };
+}
+
+export const liveItemWeight = (item, profile, sessions) => liveItemAdvice(item, profile, sessions).kg;
+
 // ---------- Readiness scaling ----------
-const QUALITY_RUN = new Set(['run-tempo', 'run-threshold', 'run-intervals', 'run-1k', 'run-hill-sprints', 'run-fartlek', 'run-strides']);
+const QUALITY_RUN = new Set(['run-tempo', 'run-threshold', 'run-intervals', 'run-1k', 'run-hill-sprints', 'run-fartlek']);
 const scaleN = (v, f, min = 1) => Math.max(min, Math.round(v * f));
 
 function recoveryBlocks(minutes = 25) {
@@ -102,11 +182,22 @@ function recoveryBlocks(minutes = 25) {
   ];
 }
 
+const BENCH_IDS = new Set(['t-1k-tt', 't-5k-tt', 't-swing-test', 't-station-benchmark']);
+const RUN_FAST = /race|threshold|interval|tempo/i;
+
 export function scaleWorkout(workout, readinessScore) {
   if (!workout) return { workout: null, changes: [] };
   const w = structuredClone(workout);
   const score = Number(readinessScore);
   if (readinessScore == null || !Number.isFinite(score) || score > 60 || w.type === 'recovery' || !Array.isArray(w.blocks)) return { workout: w, changes: [] };
+
+  // Race-day sessions are never altered; benchmarks are postponed rather than diluted.
+  if (w.fixed) {
+    return { workout: w, changes: [/race/i.test(w.title || '') ? 'Race day — no changes. Low readiness: start the first 2 km 10 s/km slower than target and fuel early.' : `${w.title} — no changes. Keep it light and controlled today.`] };
+  }
+  if (w.benchmark || BENCH_IDS.has(w.id)) {
+    return { workout: w, changes: [`Readiness ${Math.round(score)}/100 — postpone the benchmark to a day you feel fresh (score > 60); a tired test under-reports your fitness.`] };
+  }
 
   if (score < 40) {
     const out = {
@@ -117,42 +208,77 @@ export function scaleWorkout(workout, readinessScore) {
     return { workout: out, changes: [`Readiness ${Math.round(score)}/100 is low — swapped "${w.title}" for a 30-min recovery flow.`, 'Prioritise sleep, food and hydration today.'] };
   }
 
-  const changes = [`Readiness ${Math.round(score)}/100 — volume reduced ~25%, intensity capped.`];
+  const changes = new Map(); // one line per kind of change
+  const add = (k, msg) => { if (!changes.has(k)) changes.set(k, msg); };
+  const sim = w.type === 'hyrox';
+  const toEasy = (it) => { it.exId = it.exId === 'run-long' ? 'run-long' : 'run-easy'; delete it.paceSec; it.note = 'Zone 2 — conversational'; };
+  const cut5 = (m, f) => Math.max(5, Math.round((m * f) / 5) * 5);
+  let easyRuns = 0;
+
   for (const b of w.blocks) {
     const items = b.items || [];
+    if (b.kind === 'warmup' || b.kind === 'cooldown') continue;
     if (b.kind === 'strength') {
-      for (const it of items) if (it.sets > 1) { const n = scaleN(it.sets, 0.75); if (n !== it.sets) changes.push(`${getExercise(it.exId).name}: ${it.sets} → ${n} sets`); it.sets = n; }
+      for (const it of items) if (it.sets > 1) it.sets = scaleN(it.sets, 0.75);
+      add('sets', 'Strength: ~25% fewer sets, same bells');
     } else if (b.kind === 'emom' && b.minutes) {
-      const n = scaleN(b.minutes, 0.75, 4); changes.push(`${b.title || 'EMOM'}: ${b.minutes} → ${n} min`); b.minutes = n;
+      const n = scaleN(b.minutes, 0.75, 4);
+      b.title = (b.title || '').replace(/\d+(?=-min)/, String(n));
+      b.minutes = n; add('emom', 'EMOM/AMRAP: ~25% shorter');
     } else if (b.kind === 'amrap' && b.durationSec) {
-      const n = Math.max(180, Math.round((b.durationSec * 0.75) / 30) * 30); changes.push(`${b.title || 'AMRAP'}: ${fmtT(b.durationSec)} → ${fmtT(n)}`); b.durationSec = n;
+      const n = Math.max(180, Math.round((b.durationSec * 0.75) / 30) * 30);
+      b.title = (b.title || '').replace(/\d+(?=-min)/, String(Math.round(n / 60)));
+      b.durationSec = n; add('emom', 'EMOM/AMRAP: ~25% shorter');
     } else if (b.kind === 'intervals') {
       const cardio = items.some((it) => ['run', 'erg'].includes(getExercise(it.exId).category));
       if (cardio) {
         const total = (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
         const sec = Math.max(900, Math.round((total * 0.75) / 300) * 300);
-        changes.push(`${b.title || 'Intervals'} → ${Math.round(sec / 60)} min Zone 2 instead of intervals`);
-        b.kind = 'cardio'; b.title = 'Zone 2 (scaled from intervals)'; b.notes = 'Conversational pace only. Readiness says aerobic work today, not intensity.';
+        add('intervals', `Intervals → ${Math.round(sec / 60)} min easy Zone 2 (no intensity today)`);
+        b.kind = 'cardio'; b.title = `${Math.round(sec / 60)} min Zone 2 (instead of intervals)`; b.notes = 'Conversational pace only. Readiness says aerobic work today, not intensity.';
         delete b.rounds; delete b.workSec; delete b.restSec;
         b.items = [{ exId: 'run-easy', timeSec: sec, note: 'Zone 2 — conversational' }];
       } else if (b.rounds) {
-        const n = scaleN(b.rounds, 0.75); changes.push(`${b.title || 'Intervals'}: ${b.rounds} → ${n} rounds`); b.rounds = n;
+        b.rounds = scaleN(b.rounds, 0.75); add('rounds', 'Circuits: ~25% fewer rounds');
       }
-    } else if (b.kind === 'circuit' && b.rounds) {
-      const n = scaleN(b.rounds, 0.75); if (n !== b.rounds) changes.push(`${b.title || 'Circuit'}: ${b.rounds} → ${n} rounds`); b.rounds = n;
+    } else if (b.kind === 'circuit') {
+      if (b.rounds > 1) {
+        const n = scaleN(b.rounds, 0.75);
+        b.title = (b.title || '').replace(/^\d+(?= rounds)/, String(n)).replace(/× \d+$/, `× ${n}`);
+        b.rounds = n; add('rounds', 'Circuits: ~25% fewer rounds');
+      }
+      for (const it of items) if (getExercise(it.exId).category === 'run' && RUN_FAST.test(it.note || '')) { toEasy(it); easyRuns++; }
     } else if (b.kind === 'cardio' || b.kind === 'station') {
+      const f = sim ? 0.5 : 0.75;
       for (const it of items) {
-        if (QUALITY_RUN.has(it.exId)) { changes.push(`${getExercise(it.exId).name} → easy Zone 2 run`); it.exId = 'run-easy'; it.note = 'Zone 2 — conversational'; }
-        if (it.timeSec) it.timeSec = Math.round((it.timeSec * 0.75) / 60) * 60 || it.timeSec;
-        if (it.distanceM) it.distanceM = Math.round((it.distanceM * 0.75) / 50) * 50 || it.distanceM;
-        if (it.reps && b.kind === 'station') it.reps = scaleN(it.reps, 0.75);
+        const isRun = getExercise(it.exId).category === 'run';
+        if (isRun && (QUALITY_RUN.has(it.exId) || RUN_FAST.test(it.note || ''))) { toEasy(it); easyRuns++; }
+        if (it.timeSec) it.timeSec = Math.max(60, Math.round((it.timeSec * f) / 60) * 60);
+        if (it.distanceM) it.distanceM = isRun ? Math.max(200, Math.round((it.distanceM * f) / 50) * 50) : cut5(it.distanceM, f);
+        if (it.reps && b.kind === 'station') it.reps = scaleN(it.reps, f);
       }
-      if (b.kind === 'cardio' && items.length) changes.push(`${b.title || 'Cardio'}: duration −25%`);
+      if (b.kind === 'cardio') {
+        const it = items[0];
+        if (it && /^Run \d+/.test(b.title || '') && it.distanceM) b.title = b.title.replace(/·.*$/, `· ${it.distanceM} m easy`);
+        else if (it && it.timeSec && /^\d+ min/.test(b.title || '')) b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
+        if (!sim) add('cardio', 'Steady runs: ~25% shorter');
+      } else {
+        if (sim) b.title = `${(b.title || '').replace(/ \(half\)$/, '')} (half)`;
+        add('station', sim ? 'Stations: half volume' : 'Stations: ~25% less volume');
+      }
     }
   }
-  w.estMin = Math.max(15, Math.round((w.estMin || 45) * 0.78 / 5) * 5);
+  if (easyRuns) add('easy', `${easyRuns} race/threshold-pace run${easyRuns > 1 ? 's' : ''} → easy Zone 2 effort`);
+
+  const lines = [`Readiness ${Math.round(score)}/100 — volume down ~25%, intensity capped at easy/steady.`];
+  if (sim) {
+    w.title = `Half Simulation, steady (was: ${w.title})`;
+    lines.push('Full sim moved — do it within 3 days when readiness > 60.');
+  }
+  lines.push(...changes.values());
+  w.estMin = Math.max(15, Math.round(((w.estMin || 45) * (sim ? 0.55 : 0.78)) / 5) * 5);
   w.scaled = 'reduced';
-  return { workout: w, changes };
+  return { workout: w, changes: lines.slice(0, 5) };
 }
 
 // ---------- PRs ----------
@@ -165,6 +291,8 @@ function runEntries(s) {
   for (const x of s?.sets || []) if (x && getExercise(x.exId).category === 'run' && +x.distanceM > 0) out.push({ d: +x.distanceM, t: +x.timeSec || 0 });
   return out;
 }
+// 1 km reps inside interval/circuit work (not benchmarks).
+const kmReps = (s) => (s?.sets || []).filter((x) => x && x.exId === 'run-1k' && !x.benchmark && near(+x.distanceM, 1000) && +x.timeSec > 0).map((x) => +x.timeSec);
 const swingTotal = (s) => (s?.sets || []).reduce((a, x) => a + (x && SWINGS.has(x.exId) ? (+x.reps || 0) : 0), 0);
 
 export function detectPRs(session, priorSessions = []) {
@@ -191,8 +319,8 @@ export function detectPRs(session, priorSessions = []) {
     }
   }
 
-  // Runs: fastest 1 km / 5 km, longest run
-  const mine = runEntries(session), past = prior.flatMap(runEntries);
+  // Benchmark runs only (time trials, manual logs, flagged efforts): fastest 1 km / 5 km
+  const mine = benchmarkRuns(session), past = prior.flatMap(benchmarkRuns);
   for (const [dist, label] of [[1000, '1 km'], [5000, '5 km']]) {
     const cur = mine.filter((e) => near(e.d, dist) && e.t > 0).map((e) => e.t);
     if (!cur.length) continue;
@@ -201,8 +329,13 @@ export function detectPRs(session, priorSessions = []) {
     if (!prev.length) prs.push(`First ${label} benchmark: ${fmtT(t)}`);
     else if (t < Math.min(...prev)) prs.push(`Fastest ${label}: ${fmtT(t)} (−${fmtT(Math.min(...prev) - t)})`);
   }
-  if (mine.length && past.length) {
-    const longest = Math.max(...mine.map((e) => e.d)), prevLong = Math.max(...past.map((e) => e.d));
+  // Interval 1 km reps: only compared with earlier reps
+  const reps = kmReps(session), prevReps = prior.flatMap(kmReps);
+  if (reps.length && prevReps.length && Math.min(...reps) < Math.min(...prevReps)) prs.push(`Fastest 1 km rep: ${fmtT(Math.min(...reps))}`);
+
+  const all = runEntries(session), allPast = prior.flatMap(runEntries);
+  if (all.length && allPast.length) {
+    const longest = Math.max(...all.map((e) => e.d)), prevLong = Math.max(...allPast.map((e) => e.d));
     if (longest > prevLong && longest >= 3000) prs.push(`Longest run: ${(longest / 1000).toFixed(1)} km`);
   }
 

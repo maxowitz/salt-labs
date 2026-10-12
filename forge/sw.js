@@ -1,9 +1,10 @@
 // FORGE service worker — precache the app shell, then stale-while-revalidate same-origin GETs.
 // Bump VERSION whenever the precache list changes.
-const VERSION = 'forge-v2';
+const VERSION = 'forge-v3';
 const SHELL = [
   './', 'index.html', 'manifest.json', 'icon.svg',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  'fonts/archivo-var.woff2', 'fonts/plex-mono-400.woff2', 'fonts/plex-mono-500.woff2',
   'css/app.css', 'css/train.css', 'css/workout.css', 'css/fuel.css', 'css/dash.css',
   'js/app.js', 'js/theme.js', 'js/store.js', 'js/idb.js', 'js/api.js', 'js/sync.js', 'js/lock.js', 'js/ui.js', 'js/charts.js',
   'js/data/exercises.js', 'js/data/foods.js',

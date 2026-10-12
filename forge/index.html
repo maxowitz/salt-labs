@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>FORGE — Kettlebell · Engine · HYROX</title>
   <meta name="description" content="Kettlebell strength, cardio engine and HYROX race prep with food tracking. Local-first, offline-ready.">
-  <meta name="theme-color" content="#151412">
+  <meta name="theme-color" content="#13120F">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,6 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preload" href="fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/train.css">
   <link rel="stylesheet" href="css/workout.css">
@@ -24,17 +25,17 @@
   <div id="app">
     <main id="view" tabindex="-1">
       <div class="boot" aria-label="Loading FORGE">
-        <svg class="boot-mark" viewBox="0 0 64 64" aria-hidden="true"><use href="icon.svg#mark"/></svg>
+        <span class="boot-mark wordmark" aria-hidden="true">FORGE</span>
       </div>
     </main>
   </div>
   <div class="tabbar" id="tabbar" hidden>
     <nav aria-label="Main">
-      <a href="#/today" data-tab="today"><span data-icon="today"></span>Today</a>
-      <a href="#/train" data-tab="train"><span data-icon="bell"></span>Train</a>
-      <a href="#/fuel" data-tab="fuel"><span data-icon="fuel"></span>Fuel</a>
-      <a href="#/progress" data-tab="progress"><span data-icon="chart"></span>Progress</a>
-      <a href="#/me" data-tab="me"><span data-icon="user"></span>Me</a>
+      <a href="#/today" data-tab="today">Today</a>
+      <a href="#/train" data-tab="train">Train</a>
+      <a href="#/fuel" data-tab="fuel">Fuel</a>
+      <a href="#/progress" data-tab="progress">Progress</a>
+      <a href="#/me" data-tab="me">Me</a>
     </nav>
   </div>
   <div id="sheet-root"></div>
