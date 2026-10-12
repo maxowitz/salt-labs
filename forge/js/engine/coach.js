@@ -259,7 +259,10 @@ export function scaleWorkout(workout, readinessScore) {
       }
       if (b.kind === 'cardio') {
         const it = items[0];
-        if (it && /^Run \d+/.test(b.title || '') && it.distanceM) b.title = b.title.replace(/·.*$/, `· ${it.distanceM} m easy`);
+        if (it && /^Run \d+/.test(b.title || '') && it.distanceM) {
+          b.title = b.title.replace(/·.*$/, `· ${it.distanceM} m easy`);
+          b.notes = 'Steady and conversational — rehearse transitions, not pace.';
+        }
         else if (it && it.timeSec && /^\d+ min/.test(b.title || '')) b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
         if (!sim) add('cardio', 'Steady runs: ~25% shorter');
       } else {

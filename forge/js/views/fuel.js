@@ -1285,259 +1285,29 @@ function weeklyCard(s, ctx) {
 // from the formula on every weigh-in/profile edit, which would silently undo the data-driven calibration.
 // Day targets still flex with training via dayTargetsFor. "Back to formula" restores computeTargets(profile,
 // {plan}) with auto = true. Suggestions come at most weekly and move ≤ ±150 kcal per check-in.
+const LB_KG = 0.45359237;
+// kg/week options; imperial users get lb-native steps (stored in kg)
 const RATE_OPTIONS = {
-  lose: [[null, '−20 %'], [-0.25, '0.25'], [-0.5, '0.5'], [-0.75, '0.75'], [-1, '1.0']],
-  gain: [[null, '+10 %'], [0.1, '0.1'], [0.25, '0.25'], [0.5, '0.5']],
+  metric: { lose: [[null, '−20 %'], [-0.25, '0.25'], [-0.5, '0.5'], [-0.75, '0.75'], [-1, '1.0']], gain: [[null, '+10 %'], [0.1, '0.1'], [0.25, '0.25'], [0.5, '0.5']] },
+  imperial: { lose: [[null, '−20 %'], [-0.5 * LB_KG, '0.5'], [-1 * LB_KG, '1'], [-1.5 * LB_KG, '1.5'], [-2 * LB_KG, '2']], gain: [[null, '+10 %'], [0.25 * LB_KG, '0.25'], [0.5 * LB_KG, '0.5'], [1 * LB_KG, '1']] },
 };
-
-// ---------------------------------------------------------------------------------------------
-// Adaptive targets
-function adaptiveCard(s, ctx) {
-  const today = todayISO();
-  const res = adaptiveTdee(s, today);
-  const imperial = isImperial(s);
-  const t = s.targets;
-  const applied = t.source === 'adaptive' && !t.auto && t.adaptive?.appliedAt;
-  const sinceApply = applied ? Math.round((Date.parse(today) - Date.parse(t.adaptive.appliedAt)) / 86400000) : Infinity;
-  const coolDown = sinceApply < 7;
-  const children = [];
-  const logWeightBtn = h('button', { type: 'button', class: 'btn sm subtle', on: { click: () => openWeight() } }, icon('scale', 16), 'Log weight');
-  const wkFmt = (wk) => `${wk > 0 ? '+' : wk < 0 ? '−' : '±'}${fmtWeight(Math.abs(wk), imperial ? 'imperial' : 'metric', 1)}/wk`;
-
-  if (!res.tdee) {
-    const prog = clamp(res.days / 14, 0, 1);
-    children.push(
-      h('p', { class: 'small dim' }, 'FORGE estimates your real maintenance calories from your weight trend and what you eat — then suggests a new target each week.'),
-      h('div', { class: 'row between xs muted mt' }, h('span', null, res.reason || 'Collecting data…'), h('span', { class: 'tabular' }, `${Math.min(14, res.days)}/14 days`)),
-      h('div', { class: 'bar thin mt' }, h('i', { style: { width: prog * 100 + '%' } })),
-      h('div', { class: 'row gap mt' }, logWeightBtn, h('span', { class: 'xs muted' }, `${res.weighIns} weigh-ins · ${res.intakeDays} complete food days`)));
-  } else {
-    const wk = res.weeklyChangeKg;
-    const pts = res.trendKg;
-    children.push(
-      h('div', { class: 'grid3' },
-        h('div', { class: 'stat' }, h('span', { class: 'v accent' }, num(res.tdee)), h('span', { class: 'k' }, 'Est. TDEE')),
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, num(res.avgIntake)), h('span', { class: 'k' }, 'Avg intake')),
-        h('div', { class: 'stat' }, h('span', { class: 'v' }, wkFmt(wk)), h('span', { class: 'k' }, 'Trend'))),
-      pts.length > 2 ? h('div', { class: 'fu-trend' }, lineChart({
-        series: [{ points: pts.map((p, i) => ({ x: i, y: imperial ? p.kg / 0.45359237 : p.kg })), color: 'var(--accent)', area: true }],
-        xLabels: [{ x: 0, label: fmtDate(pts[0].date, { month: 'short', day: 'numeric' }) }, { x: pts.length - 1, label: fmtDate(pts.at(-1).date, { month: 'short', day: 'numeric' }) }],
-        height: 96, yTicks: 2, yFmt: (v) => num(v, 1), ariaLabel: 'Weight trend',
-      })) : null,
-      h('p', { class: 'xs muted' }, `${res.days} days · ${res.weighIns} weigh-ins · ${res.intakeDays} complete food days${res.excludedDays ? ` (${res.excludedDays} partial left out)` : ''} · formula ${num(res.formulaTdee)} kcal · confidence `,
-        h('b', { class: res.confidence === 'high' ? 'go' : res.confidence === 'med' ? 'warn-text' : 'danger-text' }, res.confidence === 'med' ? 'medium' : res.confidence)),
-      res.reason ? h('p', { class: 'xs warn-text' }, res.reason) : null);
-    if (res.suggestion && !coolDown) {
-      const sg = res.suggestion;
-      const rate = t.goalRateKgWk ?? s.profile.goalRateKgWk;
-      const goalTxt = s.profile.goal === 'maintain' ? 'maintain' : rate != null ? wkFmt(rate).replace('/wk', ' per week') : s.profile.goal === 'lose' ? '−20 %' : '+10 %';
-      children.push(h('div', { class: 'callout fu-suggest' },
-        h('div', { class: 'row between top' },
-          h('div', null, h('div', { class: 'eyebrow' }, 'Suggested daily target (weekly average)'),
-            h('div', { class: 'big tabular' }, num(sg.kcal), h('small', { class: 'muted' }, ' kcal')),
-            h('div', { class: 'xs muted tabular' }, `P ${sg.protein} g · C ${sg.carbs} g · F ${sg.fat} g · ${sg.delta > 0 ? '+' : '−'}${num(Math.abs(sg.delta))} vs now`)),
-          h('button', { type: 'button', class: 'btn sm primary', on: { click: () => applySuggestion(res) } }, icon('check', 16), 'Apply')),
-        h('p', { class: 'xs mt' }, `You averaged ${num(res.avgIntake)} kcal and your trend moved ${wkFmt(wk)} → maintenance ≈ ${num(res.tdee)}; goal ${goalTxt} = ${num(sg.ideal)}.`,
-          sg.capped ? ` Changing by at most ${num(150)} kcal this week.` : '')));
-    } else if (coolDown) {
-      children.push(h('p', { class: 'small go' }, icon('check', 14), ` Adaptive target applied ${sinceApply === 0 ? 'today' : `${sinceApply} day${sinceApply > 1 ? 's' : ''} ago`}. Next check-in in ${7 - sinceApply} day${7 - sinceApply > 1 ? 's' : ''}.`));
-    } else {
-      children.push(h('p', { class: 'small go' }, icon('check', 14), ' Your current target matches your data — no change needed.'));
-    }
-    children.push(h('div', { class: 'row gap mt' }, logWeightBtn));
-  }
-  children.push(goalRateControl(s));
-  if (applied) {
-    children.push(h('div', { class: 'row between xs muted mt fu-adapt-foot' },
-      h('span', null, `Using adaptive target (${num(t.kcal)} kcal) since ${fmtDate(t.adaptive.appliedAt)}.`),
-      h('button', { type: 'button', class: 'link-btn', on: { click: () => resetToFormula() } }, 'Back to formula')));
-  }
-  if ((t.notes || []).includes('carb-short') && s.profile.goal === 'lose') {
-    children.push(h('p', { class: 'xs warn-text' }, 'Your deficit leaves under 3.5 g/kg of carbs for hard training. Consider a slower goal rate during Build and Peak.'));
-  }
-  return h('section', { 'aria-label': 'Adaptive targets' },
-    sectionHead('Adaptive targets', h('span', { class: 'pill' + (res.tdee ? ' go' : '') }, res.tdee ? 'Active' : 'Learning')),
-    h('div', { class: 'card fu-adapt' }, children));
-}
-
-function applySuggestion(res) {
-  const prev = { ...store.get().targets };
-  const today = todayISO();
-  store.update((st) => {
-    const m = macrosForKcal(st.profile, res.suggestion.kcal);
-    st.targets = { ...st.targets, kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat, notes: m.notes, auto: false, source: 'adaptive',
-      maintenance: res.tdee, adaptive: { tdee: res.tdee, appliedAt: today, confidence: res.confidence } };
-  });
-  haptic(20);
-  toast(`Target set to ${num(res.suggestion.kcal)} kcal`, { kind: 'go', action: { label: 'Undo', fn: () => store.update((st) => { st.targets = prev; }) }, ms: 5000 });
-}
-
-function resetToFormula() {
-  const prev = { ...store.get().targets };
-  store.update((st) => {
-    const c = computeTargets(st.profile, { plan: st.plan });
-    st.targets = { ...c, auto: true, goalRateKgWk: st.targets.goalRateKgWk ?? null };
-  });
-  toast('Targets back to the formula', { action: { label: 'Undo', fn: () => store.update((st) => { st.targets = prev; }) } });
-}
-
-async function openWeight() {
-  try {
-    const m = await import('./today.js');
-    if (typeof m.openWeightSheet === 'function') { m.openWeightSheet(); return; }
-  } catch (e) { console.warn('weight sheet unavailable', e); }
-  navigate('#/progress');
-}
-
-export function portionUnits(food, imperial) {
-  const sg = +food?.serving?.grams || 100;
-  const label = food?.serving?.label || 'serving';
-  const units = [{ id: 'serving', seg: 'Servings', unit: label, gramsPer: sg, step: 0.25, presets: [0.5, 1, 1.5, 2, 3] }];
-  const hh = parseHousehold(label);
-  if (hh) units.push({ id: 'hh', seg: hh.unit, unit: hh.unit, gramsPer: sg / hh.qty, step: hh.unit === 'cup' ? 0.25 : 0.5, presets: hh.unit === 'cup' ? [0.25, 0.5, 1, 1.5, 2] : [0.5, 1, 2, 3, 4] });
-  if (imperial) units.push({ id: 'oz', seg: 'oz', unit: 'oz', gramsPer: OZ_G, step: 0.5, presets: [2, 3, 4, 6, 8] });
-  units.push({ id: 'g', seg: 'g', unit: 'g', gramsPer: 1, step: 10, presets: [50, 100, 150, 200, 250] });
-  return units;
-}
-
-const FRACTIONS = { '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3 };
-
-export function parseHousehold(label) {
-  const m = String(label || '').trim().match(/^(\d+(?:\.\d+)?)?\s*([½¼¾⅓⅔])?\s*(cups?|tbsp|tsp)\b/i);
-  if (!m || (!m[1] && !m[2])) return null;
-  const qty = (m[1] ? +m[1] : 0) + (m[2] ? FRACTIONS[m[2]] : 0);
-  if (!(qty > 0)) return null;
-  const unit = m[3].toLowerCase().replace(/^cups$/, 'cup');
-  return { qty, unit };
-}
-
-/** Which portion-unit id an entry's stored unit corresponds to. */
-
-function unitIdOf(unit) {
-  if (unit === 'g') return 'g';
-  if (unit === 'oz') return 'oz';
-  if (HH_UNITS.has(unit)) return 'hh';
-  return 'serving';
-}
-
-/** Build a FoodEntry from a food and an amount in one of portionUnits(food) (mode = unit id). */
-
-function fuelMeta(s) {
-  const f = s.settings?.fuel;
-  return { lastPortion: f?.lastPortion && typeof f.lastPortion === 'object' ? f.lastPortion : {}, incompleteDays: Array.isArray(f?.incompleteDays) ? f.incompleteDays : [] };
-}
-
-function updateFuelMeta(st, fn) {
-  const cur = fuelMeta(st);
-  const next = { lastPortion: { ...cur.lastPortion }, incompleteDays: [...cur.incompleteDays] };
-  fn(next);
-  // keep the portion memory bounded
-  const keys = Object.keys(next.lastPortion);
-  if (keys.length > 200) for (const k of keys.slice(0, keys.length - 200)) delete next.lastPortion[k];
-  next.incompleteDays = next.incompleteDays.slice(-90);
-  st.settings = { ...st.settings, fuel: next };
-}
-
-/** Last portion logged for a food → {mode, qty} or the default serving. */
-
-function lastPortionFor(s, food) {
-  const lp = food?.id ? fuelMeta(s).lastPortion[food.id] : null;
-  if (lp && +lp.qty > 0 && ['serving', 'hh', 'g', 'oz'].includes(lp.mode)) {
-    if (lp.mode === 'hh' && !parseHousehold(food.serving?.label)) return { mode: 'serving', qty: 1 };
-    return { mode: lp.mode, qty: +lp.qty };
-  }
-  return { mode: 'serving', qty: 1 };
-}
-
-function isImperial(s) { return (s.profile?.units || 'imperial') !== 'metric'; }
-
-/** Totals for a list of entries, incl. optional alcohol / sodium. */
-
-function totalsOf(list) {
-  const t = { kcal: 0, p: 0, c: 0, f: 0, fiber: 0, alc: 0, na: 0, naKnown: 0 };
-  for (const e of list) {
-    t.kcal += +e.kcal || 0; t.p += +e.p || 0; t.c += +e.c || 0; t.f += +e.f || 0; t.fiber += +e.fiber || 0;
-    t.alc += +e.alc || 0;
-    if (e.na != null) { t.na += +e.na || 0; t.naKnown++; }
-  }
-  return t;
-}
-
-/** Shared day targets (engine selector) with a safe fallback to the raw targets. */
-
-function targetsFor(s, date) {
-  try { return dayTargetsFor(s, date); } catch (e) { console.error(e); return { ...s.targets, dayType: null, fiber: fiberTarget(s.targets.kcal), sessions: [], notes: [] }; }
-}
-
-function dayTools(s, ctx) {
-  const today = todayISO();
-  const flagged = fuelMeta(s).incompleteDays.includes(ctx.date);
-  const past = ctx.date < today;
-  const box = h('input', { type: 'checkbox', checked: flagged, id: 'fu-incomplete', on: { change: (e) => {
-    const on = e.target.checked;
-    store.update((st) => updateFuelMeta(st, (m) => { m.incompleteDays = on ? [...new Set([...m.incompleteDays, ctx.date])] : m.incompleteDays.filter((d) => d !== ctx.date); }));
-    toast(on ? 'Day left out of adaptive targets' : 'Day counts toward adaptive targets', { ms: 1600 });
-  } } });
-  return h('div', { class: 'fu-daytools' },
-    h('button', { type: 'button', class: 'btn sm ghost', on: { click: () => copyDaySheet(ctx) } }, icon('copy', 16), 'Copy from another day…'),
-    past || flagged ? h('label', { class: 'fu-incomplete xs', for: 'fu-incomplete' }, box, h('span', null, 'Incomplete log — leave this day out of the adaptive estimate')) : null);
-}
-
-function copyDaySheet(ctx) {
-  const st0 = { from: addDays(ctx.date, -1), meals: new Set(MEALS.map(([m]) => m)) };
-  const preview = h('div', { class: 'small muted', 'aria-live': 'polite' });
-  const dateIn = h('input', { type: 'date', value: st0.from, max: addDays(todayISO(), 30), 'aria-label': 'Copy from date', on: { change: (e) => { if (validISO(e.target.value)) { st0.from = e.target.value; paint(); } } } });
-  const checks = h('div', { class: 'chips' });
-  const btn = h('button', { type: 'submit', class: 'btn primary block' });
-  const items = () => sel.foodsFor(store.get(), st0.from).filter((e) => st0.meals.has(e.meal));
-  function paint() {
-    const all = sel.foodsFor(store.get(), st0.from);
-    clear(checks);
-    for (const [m, l] of MEALS) {
-      const cnt = all.filter((e) => e.meal === m).length;
-      checks.append(h('button', { type: 'button', class: 'chip', 'aria-pressed': String(st0.meals.has(m)), disabled: !cnt,
-        on: { click: () => { if (st0.meals.has(m)) st0.meals.delete(m); else st0.meals.add(m); paint(); } } }, `${l}${cnt ? ` · ${cnt}` : ''}`));
-    }
-    const it = items();
-    preview.textContent = it.length ? `${it.length} item${it.length > 1 ? 's' : ''} · ${num(sumEntries(it).kcal)} kcal from ${fmtDate(st0.from)}` : `Nothing logged on ${fmtDate(st0.from)} for those meals.`;
-    btn.textContent = it.length ? `Copy ${it.length} item${it.length > 1 ? 's' : ''} to ${fmtDate(ctx.date)}` : 'Nothing to copy';
-    btn.disabled = !it.length;
-  }
-  trackSheet(ctx, {
-    title: 'Copy from another day',
-    content: ({ close }) => h('form', { class: 'stack', on: { submit: (e) => {
-      e.preventDefault();
-      const it = items();
-      if (!it.length) return;
-      const ids = [];
-      store.update((st) => {
-        const arr = st.foodLog[ctx.date] || (st.foodLog[ctx.date] = []);
-        for (const x of it) { const id = uid('fe'); ids.push(id); arr.push({ ...x, id }); }
-      });
-      haptic();
-      toast(`Copied ${it.length} item${it.length > 1 ? 's' : ''}`, { action: { label: 'Undo', fn: () => removeEntries(ctx.date, ids) } });
-      close();
-    } } },
-    field('From', dateIn), groupField('Meals', checks), preview, btn),
-  });
-  paint();
-}
-
 function goalRateControl(s) {
   const goal = s.profile.goal;
-  const opts = RATE_OPTIONS[goal];
-  if (!opts) return null;
   const imperial = isImperial(s);
+  const opts = RATE_OPTIONS[imperial ? 'imperial' : 'metric'][goal];
+  if (!opts) return null;
+  const key = (v) => (v == null ? 'pct' : (Math.round(v * 1000) / 1000).toFixed(3));
   const cur = s.targets.goalRateKgWk ?? s.profile.goalRateKgWk ?? null;
-  const label = (v, l) => (v == null ? l : imperial ? `${num(Math.abs(v) * 2.20462, 1)}` : l);
-  const control = seg(opts.map(([v, l]) => [v == null ? 'pct' : String(v), label(v, l)]), cur == null ? 'pct' : String(cur), (val) => {
-    const rate = val === 'pct' ? null : +val;
+  const curKey = cur == null ? 'pct' : (opts.find(([v]) => v != null && Math.abs(v - cur) < 0.01) ? key(opts.find(([v]) => v != null && Math.abs(v - cur) < 0.01)[0]) : 'custom');
+  const control = seg(opts.map(([v, l]) => [key(v), l]), curKey, (val) => {
+    const opt = opts.find(([v]) => key(v) === val);
+    const rate = opt ? opt[0] : null;
     store.update((st) => {
       st.targets.goalRateKgWk = rate;
       st.profile.goalRateKgWk = rate;
       if (st.targets.auto) st.targets = { ...st.targets, ...computeTargets(st.profile, { plan: st.plan }), auto: true, goalRateKgWk: rate };
     });
-    toast(rate == null ? `Goal: ${goal === 'lose' ? '−20 %' : '+10 %'} of maintenance` : `Goal rate: ${rate > 0 ? '+' : '−'}${imperial ? `${num(Math.abs(rate) * 2.20462, 1)} lb` : `${Math.abs(rate)} kg`}/week`, { ms: 1600 });
+    toast(rate == null ? `Goal: ${goal === 'lose' ? '−20 %' : '+10 %'} of maintenance` : `Goal rate: ${rate > 0 ? '+' : '−'}${opt[1]} ${imperial ? 'lb' : 'kg'}/week`, { ms: 1600 });
   }, { label: 'Goal rate per week' });
   return groupField(`Goal rate (${imperial ? 'lb' : 'kg'} per week)`, control);
 }
