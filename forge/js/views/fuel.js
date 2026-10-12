@@ -4,7 +4,7 @@ import { store, sel, todayISO, addDays, uid, isISODate } from '../store.js';
 import { h, clear, toast, sheet, num, fmtDate, icon, navigate, seg, field, sectionHead, haptic, clamp, fmtWeight, fig, masthead } from '../ui.js';
 import { barChart, lineChart, ticks } from '../charts.js';
 import { FOODS } from '../data/foods.js';
-import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
+import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, sodiumSummary, energyAvailability, fuelingNote, maxGoalRate, defaultDeficit, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
 
 const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snacks', 'Snacks']];
 const MEAL_LABEL = Object.fromEntries(MEALS);
@@ -194,7 +194,7 @@ function summaryCard(s, ctx) {
   const extras = [
     h('span', null, 'fiber ', r0(tot.fiber), ` / ${fT} g`),
     tot.alc > 0 ? h('span', { title: 'Alcohol: 7 kcal per gram, not in P/C/F' }, `alcohol ${r0(tot.alc)} g`) : null,
-    tot.naKnown ? h('span', { title: `Sodium from ${tot.naKnown} item(s) with sodium data` }, `sodium ${num(tot.na)} mg`) : null,
+    sodiumLine(sel.foodsFor(s, ctx.date)),
   ];
   const sessionNote = t.dayType === 'training' && t.sessions?.length
     ? h('p', { class: 'xs muted fu-sess-note' }, `${t.sessions.map((x) => `${x.title}${x.min ? ` · ${x.min} min` : ''}`).join(' + ')} — target includes ~${num(t.trainingKcal)} kcal of training${t.sessions[0].source === 'planned' ? ' (planned)' : ''}.`)
@@ -214,7 +214,32 @@ function summaryCard(s, ctx) {
       macro('Protein', 'p', 'protein', 'var(--protein)'),
       macro('Carbs', 'c', 'carbs', 'var(--carbs)'),
       macro('Fat', 'f', 'fat', 'var(--fat)')),
-    sessionNote);
+    sessionNote,
+    fuelNotes(s, ctx.date, tot));
+}
+
+/** Sodium with honest coverage (R2 P1-3): a total only when ≥ 80 % of the day's kcal has sodium data. */
+function sodiumLine(entries) {
+  const na = sodiumSummary(entries);
+  if (!na.known) return null;
+  if (na.complete) return h('span', { title: `${na.known} of ${na.total} items have sodium data` }, `sodium ≈ ${num(na.mg)} mg`);
+  return h('span', { title: 'Some foods have no sodium data, so the real total is higher' }, `sodium ≥ ${num(na.mg)} mg · incomplete (${na.known} of ${na.total} items)`);
+}
+
+/** Pre-session fuelling, hard-day carb shortfall and low energy availability (R2 P1-2, P2-4/5). */
+function fuelNotes(s, date, tot) {
+  const lines = [];
+  let fn = null, ea = null;
+  try { fn = fuelingNote(s, date); } catch (e) { console.error(e); }
+  try { ea = energyAvailability(s, date); } catch (e) { console.error(e); }
+  if (fn?.pre) lines.push(h('li', null, h('span', { class: 'lbl' }, 'Before'), h('span', null, fn.pre)));
+  if (fn?.during) lines.push(h('li', null, h('span', { class: 'lbl' }, 'During'), h('span', null, fn.during)));
+  if (fn?.warn) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl acc' }, 'Carbs'), h('span', null, fn.warn)));
+  if (ea?.low) lines.push(h('li', { class: 'warn' }, h('span', { class: 'lbl acc' }, 'Energy'),
+    h('span', null, `Today’s target leaves ≈ ${num(ea.ea, 0)} kcal per kg of fat-free mass after training — under 30 risks low energy availability (RED-S). `,
+      s.profile.goal === 'lose' ? 'Consider a slower goal rate below.' : 'Make sure you eat to target today.')));
+  if (!lines.length) return null;
+  return h('ul', { class: 'fu-fuel-notes data', 'aria-label': 'Fuelling notes' }, lines);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -599,7 +624,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       rows = (s.favorites || []).map((id) => map.get(id)).filter(Boolean);
       empty = ['No favourites', 'Tap a food, then the star, to pin it here.'];
     } else if (st.tab === 'mine') {
-      rows = s.customFoods || [];
+      rows = (s.customFoods || []).filter((f) => f.source !== 'photo');
       empty = ['No custom foods', 'Create a food from its label, or scan a barcode.'];
     }
     if (st.tab === 'meals') {
@@ -1036,7 +1061,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       const map = foodMap(s2);
       let match = raw.foodId && map.get(String(raw.foodId)) || null;
       if (!match) match = matchFood(name, allFoods(s2));
-      return { name, aiName: name, grams: Math.round(grams), aiPer100: per100, per100, include: true, useDb: false, match,
+      return { name, aiName: name, grams: Math.round(grams), aiPer100: per100, per100, include: true, useDb: false, match, oz: isImperial(s2),
         confidence: ['low', 'medium', 'high'].includes(raw.confidence) ? raw.confidence : 'low' };
     }
 
@@ -1076,15 +1101,37 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         addBtn.disabled = !inc.length;
       };
       const rows = ph.items.map((it, idx) => itemRow(it, idx, refresh));
+      const saveMealBox = h('input', { type: 'checkbox', id: 'fu-photo-savemeal' });
       addBtn.addEventListener('click', () => {
         const inc = ph.items.filter((i) => i.include && i.grams > 0);
         if (!inc.length) return;
-        const entries = inc.map((it) => ({
-          id: uid('fe'), meal: ph.meal, foodId: it.useDb && it.match ? it.match.id : null, name: it.name,
-          qty: it.grams, unit: 'g', grams: it.grams, ...itemMacros(it), source: 'photo',
-        }));
+        // Each item becomes a re-loggable food (R2 P2-3): the database match when chosen, else a small
+        // "photo" food (hidden from My Foods) so it shows up in Recents with its portion.
+        const photoFoods = [];
+        const entries = inc.map((it) => {
+          let foodId = it.useDb && it.match ? it.match.id : null;
+          if (!foodId) {
+            const pf = { id: uid('ph-'), name: it.name, serving: { label: `${Math.round(it.grams)} g portion`, grams: Math.round(it.grams) },
+              per100: Object.fromEntries(Object.entries(it.per100).map(([k, v]) => [k, Math.round(v * 10) / 10])), tags: ['photo'], source: 'photo' };
+            photoFoods.push(pf); foodId = pf.id;
+          }
+          const oz = it.oz;
+          return { id: uid('fe'), meal: ph.meal, foodId, name: it.name, qty: oz ? Math.round((it.grams / OZ_G) * 10) / 10 : Math.round(it.grams), unit: oz ? 'oz' : 'g',
+            grams: Math.round(it.grams * 10) / 10, ...itemMacros(it), source: 'photo' };
+        });
+        if (photoFoods.length) store.update((st2) => {
+          // keep at most 60 photo foods (newest first) so they don't pile up
+          const photos = (st2.customFoods || []).filter((f) => f.source === 'photo');
+          st2.customFoods = [...photoFoods, ...(st2.customFoods || []).filter((f) => f.source !== 'photo'), ...photos.slice(0, Math.max(0, 60 - photoFoods.length))];
+        });
         st.meal = ph.meal;
-        addEntries(ctx.date, entries, { toastMsg: `Added ${entries.length} item${entries.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}` });
+        addEntries(ctx.date, entries, { toastMsg: `Added ${entries.length} item${entries.length > 1 ? 's' : ''} to ${MEAL_LABEL[ph.meal]}`,
+          portions: entries.map((e) => ({ foodId: e.foodId, mode: e.unit === 'oz' ? 'oz' : 'g', qty: e.qty })) });
+        if (saveMealBox.checked) {
+          const name = entries.slice(0, 3).map((e) => String(e.name).split(/[,·(—]/)[0].trim().split(' ').slice(0, 2).join(' ')).join(' + ').slice(0, 60) || 'Photo meal';
+          store.update((st2) => { st2.mealTemplates = [{ id: uid('mt'), name, items: entries.map(({ id, meal: _m, ...rest }) => rest) }, ...(st2.mealTemplates || [])]; });
+          setTimeout(() => toast(`Saved “${name}” to Meals`, { kind: 'go' }), 1800);
+        }
         revoke(); ph.items = [];
         sh.close();
       });
@@ -1097,6 +1144,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         h('h4', null, 'Total selected'),
         totalsEl,
         groupField('Meal', seg(MEALS, ph.meal, (m) => { ph.meal = m; refresh(); }, { label: 'Meal' })),
+        h('label', { class: 'switch fu-save', for: 'fu-photo-savemeal' }, h('span', null, 'Also save as a meal'), saveMealBox),
         addBtn,
         h('button', { type: 'button', class: 'btn ghost block', on: { click: () => { revoke(); pickView(); } } }, 'Start over with a new photo'));
       refresh();
@@ -1106,9 +1154,17 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       const macroEl = h('div', { class: 'xs muted tabular fu-item-macros' });
       const kcalEl = h('b', { class: 'tabular fu-item-kcal' });
       const nameIn = h('input', { type: 'text', value: it.name, maxlength: '80', 'aria-label': `Item ${idx + 1} name`, class: 'fu-item-name', on: { input: (e) => { it.name = e.target.value.trim() || it.aiName; } } });
-      const gIn = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: '1', value: String(it.grams), 'aria-label': `Grams of ${it.name}`, class: 'fu-item-g',
-        on: { input: (e) => { const v = parseFloat(e.target.value); it.grams = Number.isFinite(v) && v >= 0 ? Math.min(5000, v) : 0; upd(); } } });
-      const stepG = (d) => { it.grams = Math.max(0, Math.round(it.grams + d)); gIn.value = String(it.grams); haptic(); upd(); };
+      // grams internally; imperial users see and step in oz (R2 P2-3)
+      const shown = () => (it.oz ? String(Math.round((it.grams / OZ_G) * 10) / 10) : String(Math.round(it.grams)));
+      const gIn = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: shown(), 'aria-label': `Amount of ${it.name} in ${it.oz ? 'ounces' : 'grams'}`, class: 'fu-item-g',
+        on: { input: (e) => { const v = parseFloat(e.target.value); const g = Number.isFinite(v) && v >= 0 ? (it.oz ? v * OZ_G : v) : 0; it.grams = Math.min(5000, g); upd(); } } });
+      const unitBtn = h('button', { type: 'button', class: 'link-btn fu-item-unit', 'aria-label': `Show ${it.name} in ${it.oz ? 'grams' : 'ounces'}`,
+        on: { click: () => { it.oz = !it.oz; gIn.value = shown(); unitBtn.textContent = it.oz ? 'oz' : 'g'; gIn.setAttribute('aria-label', `Amount of ${it.name} in ${it.oz ? 'ounces' : 'grams'}`); } } }, it.oz ? 'oz' : 'g');
+      const stepG = (dir) => {
+        const d = it.oz ? 0.5 * OZ_G : it.grams >= 100 ? 25 : 10;
+        it.grams = Math.max(0, it.oz ? Math.round((it.grams + dir * d) / (0.5 * OZ_G)) * 0.5 * OZ_G : Math.round(it.grams + dir * d));
+        gIn.value = shown(); haptic(); upd();
+      };
       const inc = h('input', { type: 'checkbox', checked: it.include, 'aria-label': `Include ${it.name}`, on: { change: (e) => { it.include = e.target.checked; card.classList.toggle('off', !it.include); refresh(); } } });
       const swapEl = h('div');
       const card = h('div', { class: 'fu-item' + (it.include ? '' : ' off') },
@@ -1118,9 +1174,9 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
             h('div', { class: 'row between' }, nameIn, h('span', { class: 'pill fu-conf ' + it.confidence, title: 'Model confidence' }, it.confidence === 'medium' ? 'med' : it.confidence)),
             h('div', { class: 'row between' },
               h('div', { class: 'fu-item-step' },
-                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Less ${it.name}`, on: { click: () => stepG(-(it.grams > 100 ? 25 : 10)) } }, icon('minus', 16)),
-                h('label', { class: 'fu-item-gwrap' }, gIn, h('span', null, 'g')),
-                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `More ${it.name}`, on: { click: () => stepG(it.grams >= 100 ? 25 : 10) } }, icon('plus', 16))),
+                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `Less ${it.name}`, on: { click: () => stepG(-1) } }, icon('minus', 16)),
+                h('span', { class: 'fu-item-gwrap' }, gIn, unitBtn),
+                h('button', { type: 'button', class: 'icon-btn', 'aria-label': `More ${it.name}`, on: { click: () => stepG(1) } }, icon('plus', 16))),
               h('div', { class: 'right' }, kcalEl, h('span', { class: 'xs muted' }, ' kcal'))),
             macroEl, swapEl)));
       function paintSwap() {
@@ -1167,17 +1223,25 @@ async function apiCall(fn, ...args) {
 }
 
 /** Best local database match for a free-text item name (all words, then progressively fewer). */
+/**
+ * Best local database match for a free-text item name (R2 P2-2): first with cooking-method words kept
+ * ("roasted potatoes" → Roasted potatoes, not Mashed), then without them, then with progressively fewer words.
+ */
 export function matchFood(name, foods) {
-  const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
-  for (let n = toks.length; n >= 1; n--) {
-    const q = toks.slice(0, n).join(' ');
-    const r = searchFoods(q, foods, { limit: 1 })[0];
-    if (r) return r;
-    if (n > 1) { const q2 = toks.slice(-n).join(' '); const r2 = searchFoods(q2, foods, { limit: 1 })[0]; if (r2) return r2; }
+  const words = String(name || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
+  const tries = [words, words.filter((w) => !COOKING.has(w))];
+  for (const toks of tries) {
+    if (!toks.length) continue;
+    for (let n = toks.length; n >= 1; n--) {
+      const r = searchFoods(toks.slice(0, n).join(' '), foods, { limit: 1 })[0];
+      if (r) return r;
+      if (n > 1) { const r2 = searchFoods(toks.slice(-n).join(' '), foods, { limit: 1 })[0]; if (r2) return r2; }
+    }
   }
   return null;
 }
-const STOP = new Set(['and', 'with', 'the', 'small', 'large', 'medium', 'piece', 'pieces', 'slice', 'slices', 'side', 'plate', 'bowl', 'portion', 'some', 'fresh', 'homemade', 'grilled', 'roasted', 'baked', 'steamed', 'boiled', 'pan', 'seared', 'sauteed', 'plain']);
+const STOP = new Set(['and', 'with', 'the', 'small', 'large', 'medium', 'piece', 'pieces', 'slice', 'slices', 'side', 'plate', 'bowl', 'portion', 'some', 'fresh', 'homemade', 'plain', 'serving']);
+const COOKING = new Set(['grilled', 'roasted', 'baked', 'steamed', 'boiled', 'pan', 'seared', 'sauteed', 'fried', 'mashed', 'poached', 'broiled']);
 
 function cameraIcon(size = 20) {
   const NS = 'http://www.w3.org/2000/svg';
@@ -1226,7 +1290,7 @@ export function parseOffProduct(p, code) {
     id: c ? 'off-' + c : 'off-' + cleanText(name, 40).toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     name, brand: cleanText(String(p.brands || '').split(',')[0], 40) || undefined,
     serving: { label, grams },
-    per100: { kcal: Math.round(kcal), p: r1(nz(n.proteins_100g, 100)), c: r1(nz(n.carbohydrates_100g, 100)), f: r1(nz(n.fat_100g, 100)), fiber: r1(nz(n.fiber_100g, 100)) },
+    per100: { kcal: Math.round(kcal), p: r1(nz(n.proteins_100g, 100)), c: r1(nz(n.carbohydrates_100g, 100)), f: r1(nz(n.fat_100g, 100)), fiber: r1(nz(n.fiber_100g, 100)), ...offSodium(n) },
     tags: ['off'], ...(c ? { barcode: c } : {}), source: 'off',
   };
 }
@@ -1333,30 +1397,51 @@ function weeklyCard(s, ctx) {
 // Day targets still flex with training via dayTargetsFor. "Back to formula" restores computeTargets(profile,
 // {plan}) with auto = true. Suggestions come at most weekly and move ≤ ±150 kcal per check-in.
 const LB_KG = 0.45359237;
-// kg/week options; imperial users get lb-native steps (stored in kg)
+// kg/week options; imperial users get lb-native steps (stored in kg). null = Auto (engine default).
 const RATE_OPTIONS = {
-  metric: { lose: [[null, '−20 %'], [-0.25, '0.25'], [-0.5, '0.5'], [-0.75, '0.75'], [-1, '1.0']], gain: [[null, '+10 %'], [0.1, '0.1'], [0.25, '0.25'], [0.5, '0.5']] },
-  imperial: { lose: [[null, '−20 %'], [-0.5 * LB_KG, '0.5'], [-1 * LB_KG, '1'], [-1.5 * LB_KG, '1.5'], [-2 * LB_KG, '2']], gain: [[null, '+10 %'], [0.25 * LB_KG, '0.25'], [0.5 * LB_KG, '0.5'], [1 * LB_KG, '1']] },
+  metric: { lose: [null, -0.25, -0.5, -0.75, -1], gain: [null, 0.1, 0.25, 0.5] },
+  imperial: { lose: [null, -0.5 * LB_KG, -1 * LB_KG, -1.5 * LB_KG, -2 * LB_KG], gain: [null, 0.25 * LB_KG, 0.5 * LB_KG, 1 * LB_KG] },
 };
+/**
+ * Goal-rate picker (R2 P1-4). Options faster than the target can deliver (maxGoalRate: −25 % of
+ * maintenance, the kcal floor, 1 % BW/week; gain +15 % / 0.5 % BW) are disabled and annotated, so a
+ * stored rate is always one the target actually delivers.
+ */
 function goalRateControl(s) {
   const goal = s.profile.goal;
   const imperial = isImperial(s);
   const opts = RATE_OPTIONS[imperial ? 'imperial' : 'metric'][goal];
   if (!opts) return null;
-  const key = (v) => (v == null ? 'pct' : (Math.round(v * 1000) / 1000).toFixed(3));
+  const maint = +s.targets.maintenance || computeTargets(s.profile, { plan: s.plan }).maintenance;
+  const cap = maxGoalRate(s.profile, maint);
+  const fmtRate = (kg) => (imperial ? `${num(Math.abs(kg) / LB_KG, Math.abs(kg) / LB_KG < 1 ? 2 : 1)} lb` : `${num(Math.abs(kg), Math.abs(kg) < 1 ? 2 : 1)} kg`);
   const cur = s.targets.goalRateKgWk ?? s.profile.goalRateKgWk ?? null;
-  const curKey = cur == null ? 'pct' : (opts.find(([v]) => v != null && Math.abs(v - cur) < 0.01) ? key(opts.find(([v]) => v != null && Math.abs(v - cur) < 0.01)[0]) : 'custom');
-  const control = seg(opts.map(([v, l]) => [key(v), l]), curKey, (val) => {
-    const opt = opts.find(([v]) => key(v) === val);
-    const rate = opt ? opt[0] : null;
+  const isCur = (v) => (v == null ? cur == null : cur != null && Math.abs(Math.abs(v) - Math.abs(cur)) < 0.01);
+  const autoKg = goal === 'lose' ? (defaultDeficit(s.profile, maint) * 7) / 7700 : (0.1 * maint * 7) / 7700;
+  const choose = (v) => {
+    const rate = v == null ? null : Math.sign(v) * Math.min(Math.abs(v), cap);
     store.update((st) => {
       st.targets.goalRateKgWk = rate;
       st.profile.goalRateKgWk = rate;
       if (st.targets.auto) st.targets = { ...st.targets, ...computeTargets(st.profile, { plan: st.plan }), auto: true, goalRateKgWk: rate };
     });
-    toast(rate == null ? `Goal: ${goal === 'lose' ? '−20 %' : '+10 %'} of maintenance` : `Goal rate: ${rate > 0 ? '+' : '−'}${opt[1]} ${imperial ? 'lb' : 'kg'}/week`, { ms: 1600 });
-  }, { label: 'Goal rate per week' });
-  return groupField(`Goal rate (${imperial ? 'lb' : 'kg'} per week)`, control);
+    toast(rate == null ? `Goal: auto (≈ ${fmtRate(autoKg)}/week)` : `Goal rate: ${rate > 0 ? '+' : '−'}${fmtRate(rate)}/week`, { ms: 1600 });
+  };
+  const group = h('div', { class: 'seg fu-rate', role: 'radiogroup', 'aria-label': 'Goal rate per week' },
+    opts.map((v) => {
+      const over = v != null && Math.abs(v) > cap + 0.005;
+      const label = v == null ? 'Auto' : imperial ? num(Math.abs(v) / LB_KG, Math.abs(v) / LB_KG < 1 ? 2 : 1) : num(Math.abs(v), 2);
+      return h('button', { type: 'button', role: 'radio', 'aria-checked': String(isCur(v)), class: isCur(v) ? 'on' : '', disabled: over,
+        title: over ? `Faster than your target can deliver (max ≈ ${fmtRate(cap)}/week)` : v == null ? `Auto ≈ ${fmtRate(autoKg)}/week` : '',
+        on: { click: () => choose(v) } }, label);
+    }));
+  const curOver = cur != null && Math.abs(cur) > cap + 0.005;
+  return h('div', { class: 'stack sm' },
+    groupField(`Goal rate (${imperial ? 'lb' : 'kg'} per week)`, group),
+    h('p', { class: 'data' },
+      `Auto ≈ ${fmtRate(autoKg)}/week${goal === 'lose' && (s.profile.daysPerWeek ?? 4) >= 4 ? ' (the gentler of −15 % or 0.5 % body weight, to protect training)' : ''}. `,
+      `Fastest your target can deliver: ≈ ${fmtRate(cap)}/week.`,
+      curOver ? ` Your saved rate is capped at that.` : ''));
 }
 
 export function portionUnits(food, imperial) {
@@ -1610,4 +1695,13 @@ let photoCheck = null;
 function checkPhotoAvailable() {
   if (!photoCheck) photoCheck = apiCall('apiAvailable').then((ok) => (photoAvail = !!ok), () => (photoAvail = false));
   return photoCheck;
+}
+
+/** Open Food Facts sodium (R2 P1-3): sodium_100g is grams → mg; else salt_100g × 400 (salt is 40 % sodium). */
+export function offSodium(n = {}) {
+  const na = parseFloat(n.sodium_100g);
+  if (Number.isFinite(na) && na >= 0 && na <= 40) return { na: Math.round(na * 1000) };
+  const salt = parseFloat(n.salt_100g);
+  if (Number.isFinite(salt) && salt >= 0 && salt <= 100) return { na: Math.round(salt * 400) };
+  return {};
 }

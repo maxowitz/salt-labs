@@ -568,9 +568,80 @@ const SODIUM = {
   'mixed-nuts': 304, 'popcorn-air': 8, 'banana': 1, 'white-rice-cooked': 1, 'chicken-breast-cooked': 74, 'egg-whole': 142, 'milk-2': 41,
 };
 
+
+// USDA FDC / SR Legacy sodium (mg per 100 g) for the remaining foods (R2 P1-3). Plain cooked meats/fish are
+// unsalted values; restaurant and packaged items use typical label values.
+const SODIUM2 = {
+  'chicken-breast-raw': 45, 'chicken-thigh-cooked': 95, 'chicken-thigh-raw': 95, 'chicken-drumstick-cooked': 95, 'chicken-wings-cooked': 82,
+  'rotisserie-chicken': 380, 'ground-chicken-cooked': 75, 'chicken-sausage': 690, 'ground-turkey-93-cooked': 90, 'turkey-breast-roasted': 64,
+  'beef-90-10-cooked': 76, 'beef-80-20-cooked': 82, 'beef-90-10-raw': 66, 'beef-80-20-raw': 67, 'sirloin-steak-cooked': 60, 'ribeye-cooked': 57,
+  'flank-steak-cooked': 63, 'filet-mignon-cooked': 60, 'ny-strip-cooked': 58, 'bison-ground-cooked': 76, 'lamb-leg-roasted': 66,
+  'pork-tenderloin-cooked': 55, 'pork-chop-cooked': 62, 'salmon-cooked': 61, 'salmon-raw': 59, 'salmon-sockeye-cooked': 92, 'tuna-canned-oil': 354,
+  'tuna-steak-cooked': 54, 'shrimp-cooked': 111, 'cod-cooked': 78, 'tilapia-cooked': 56, 'halibut-cooked': 82, 'sardines-oil': 307,
+  'scallops-cooked': 667, 'egg-hard-boiled': 124, 'egg-fried': 207, 'eggs-scrambled': 145, 'egg-whites': 166, 'tofu-firm': 14, 'tofu-silken': 7,
+  'tempeh': 9, 'seitan': 380, 'edamame': 6, 'greek-yogurt-nonfat': 36, 'greek-yogurt-2': 34, 'greek-yogurt-whole': 35, 'skyr': 45,
+  'cottage-cheese-4': 315, 'cottage-cheese-nonfat': 330, 'whey-protein': 400, 'whey-isolate': 300, 'casein-protein': 550, 'plant-protein': 900,
+  'collagen-peptides': 300, 'protein-shake-rtd': 70, 'brown-rice-cooked': 4, 'jasmine-rice-cooked': 1, 'basmati-rice-cooked': 1, 'wild-rice-cooked': 3,
+  'oats-rolled-dry': 6, 'oatmeal-cooked': 4, 'steel-cut-oats-dry': 5, 'instant-oatmeal-flavored': 520, 'potato-baked': 10, 'potato-boiled': 5,
+  'mashed-potatoes': 333, 'sweet-potato-baked': 36, 'pasta-cooked': 1, 'pasta-whole-wheat-cooked': 4, 'pasta-dry': 6, 'egg-noodles-cooked': 5,
+  'rice-noodles-cooked': 19, 'quinoa-cooked': 7, 'couscous-cooked': 5, 'bulgur-cooked': 5, 'barley-cooked': 3, 'bread-whole-wheat': 450,
+  'bread-sourdough': 600, 'bread-rye': 603, 'bread-sprouted': 220, 'bagel-whole-wheat': 450, 'english-muffin': 422, 'tortilla-flour-large': 630,
+  'tortilla-corn': 45, 'pita-white': 536, 'naan': 465, 'hamburger-bun': 469, 'croissant': 467, 'rice-cakes': 29, 'cereal-oat-os': 497,
+  'cereal-corn-flakes': 729, 'cereal-raisin-bran': 360, 'granola': 150, 'muesli': 200, 'pancakes': 439, 'waffle-frozen': 627,
+  'apple': 1, 'orange': 0, 'strawberries': 1, 'blueberries': 1, 'raspberries': 1, 'blackberries': 1, 'mixed-berries-frozen': 1, 'grapes': 2,
+  'watermelon': 1, 'cantaloupe': 16, 'honeydew': 18, 'pineapple': 1, 'mango': 1, 'papaya': 8, 'pear': 1, 'peach': 0, 'plum': 0, 'kiwi': 3,
+  'cherries': 0, 'grapefruit': 0, 'clementine': 1, 'pomegranate-arils': 3, 'dates-medjool': 1, 'raisins': 11, 'dried-cranberries': 5,
+  'dried-apricots': 10, 'applesauce-pouch': 2, 'broccoli-raw': 33, 'broccoli-cooked': 41, 'spinach-raw': 79, 'spinach-cooked': 70, 'kale-raw': 53,
+  'romaine': 8, 'iceberg': 10, 'mixed-greens': 28, 'arugula': 27, 'carrots': 69, 'baby-carrots': 78, 'bell-pepper-red': 4, 'bell-pepper-green': 3,
+  'cucumber': 2, 'tomato': 5, 'cherry-tomatoes': 5, 'onion': 4, 'garlic': 17, 'mushrooms': 5, 'zucchini': 8, 'asparagus': 2, 'green-beans': 6,
+  'cauliflower': 30, 'cauliflower-rice': 30, 'brussels-sprouts': 21, 'cabbage': 18, 'celery': 80, 'corn-kernels': 1, 'peas-green': 3,
+  'beets-cooked': 77, 'eggplant-cooked': 1, 'butternut-squash': 4, 'spaghetti-squash': 18, 'bok-choy': 65, 'mixed-veg-frozen': 35, 'jalapeno': 3,
+  'fajita-veggies': 180, 'black-beans': 1, 'chickpeas': 7, 'lentils': 2, 'kidney-beans': 2, 'pinto-beans': 1, 'split-peas': 2, 'refried-beans': 390,
+  'baked-beans': 343, 'falafel': 294, 'olive-oil': 2, 'avocado-oil': 0, 'coconut-oil': 0, 'butter': 643, 'ghee': 2, 'avocado': 7, 'guacamole': 370,
+  'almonds': 1, 'walnuts': 2, 'cashews': 12, 'peanuts': 6, 'pistachios': 1, 'pecans': 0, 'macadamias': 5, 'brazil-nuts': 3, 'peanut-butter': 426,
+  'almond-butter': 7, 'powdered-peanut-butter': 760, 'chia-seeds': 16, 'flaxseed-ground': 30, 'hemp-seeds': 5, 'pumpkin-seeds': 7,
+  'sunflower-seeds': 9, 'sesame-seeds': 11, 'coconut-shredded': 37, 'mozzarella-part-skim': 619, 'mozzarella-fresh': 486, 'string-cheese': 714,
+  'swiss-cheese': 192, 'provolone': 727, 'pepper-jack': 600, 'shredded-mexican-cheese': 600, 'cream-cheese': 314, 'goat-cheese': 459,
+  'ricotta-part-skim': 99, 'halloumi': 1200, 'brie': 629, 'milk-whole': 43, 'milk-1': 44, 'milk-skim': 42, 'milk-ultrafiltered': 50,
+  'chocolate-milk': 60, 'almond-milk': 63, 'oat-milk': 42, 'soy-milk': 37, 'coconut-milk-canned': 13, 'kefir': 40, 'yogurt-plain-lowfat': 70,
+  'yogurt-fruit': 58, 'heavy-cream': 27, 'half-and-half': 61, 'sour-cream': 31, 'coffee-creamer': 67, 'protein-bar-low-sugar': 400,
+  'whole-food-bar': 250, 'energy-bar-oat': 290, 'nut-bar': 300, 'granola-bar-crunchy': 380, 'tart-cherry-juice': 8, 'restaurant-chicken': 274,
+  'carnitas': 400, 'cilantro-lime-rice': 310, 'cheeseburger-quarter': 550, 'burger-restaurant': 400, 'chicken-sandwich-grilled': 330,
+  'chicken-sandwich-fried': 740, 'sushi-california-roll': 330, 'sushi-spicy-tuna-roll': 320, 'sushi-salmon-nigiri': 290, 'poke-bowl': 420,
+  'teriyaki-chicken-bowl': 450, 'chicken-caesar-salad': 300, 'side-salad': 25, 'turkey-sub-6': 335, 'pad-thai-chicken': 500, 'fried-rice-chicken': 480,
+  'taco-beef-hard': 470, 'taco-chicken-street': 380, 'quesadilla-chicken': 650, 'breakfast-sandwich': 600, 'chicken-shawarma-wrap': 500,
+  'acai-bowl': 15, 'fruit-smoothie': 8, 'protein-smoothie': 55, 'mac-and-cheese': 360, 'lasagna-meat': 330, 'spaghetti-meat-sauce': 300,
+  'chili-beef-beans': 400, 'grilled-cheese': 750, 'pbj-sandwich': 430, 'blueberry-muffin': 360, 'coffee-black': 2, 'espresso': 14, 'cold-brew': 2,
+  'latte-2': 35, 'latte-oat': 30, 'cappuccino-2': 25, 'mocha': 30, 'tea-unsweetened': 3, 'sweet-tea': 6, 'cola': 4, 'diet-soda': 7,
+  'sparkling-water': 2, 'energy-drink': 42, 'energy-drink-zero': 30, 'orange-juice': 1, 'apple-juice': 4, 'cranberry-juice': 2, 'kombucha': 4,
+  'hot-chocolate': 44, 'beer-regular': 4, 'beer-light': 3, 'beer-ipa': 4, 'wine-red': 4, 'wine-white': 5, 'spirits': 1, 'hard-seltzer': 6,
+  'mayonnaise': 635, 'mayonnaise-light': 827, 'balsamic-vinaigrette': 700, 'italian-dressing': 993, 'honey': 4, 'maple-syrup': 12,
+  'pancake-syrup': 81, 'jam': 32, 'hazelnut-spread': 41, 'sugar': 1, 'pesto': 600, 'marinara': 437, 'alfredo-sauce': 600, 'tahini': 35,
+  'tzatziki': 330, 'cinnamon': 10, 'trail-mix': 229, 'whole-grain-crackers': 571, 'cheese-crackers': 840, 'graham-crackers': 498,
+  'protein-chips': 900, 'banana-chips': 6, 'fruit-snacks': 60, 'gummy-bears': 40, 'dark-chocolate': 20, 'ice-cream-vanilla': 80,
+  'ice-cream-light-protein': 160, 'frozen-yogurt': 63, 'chocolate-chip-cookie': 380, 'sandwich-cookies': 390, 'brownie': 277, 'donut-glazed': 316,
+  'cheesecake': 438, 'apple-pie': 211, 'chocolate-cake': 334, 'banana-bread': 302, 'milk-chocolate': 79, 'peanut-butter-cups': 357,
+  'candy-bar-caramel-peanut': 239, 'chocolate-pudding': 140, 'rice-crispy-treat': 330, 'fruit-popsicle': 5, 'chicken-breast-grilled-strips': 470,
+  'canned-chicken': 400, 'turkey-bacon': 2021, 'roast-beef-deli': 850, 'mahi-mahi-cooked': 113, 'trout-cooked': 61, 'crab-cooked': 395,
+  'lobster-cooked': 486, 'protein-yogurt-cup': 50, 'protein-pudding': 180, 'overnight-oats': 40, 'protein-pancakes': 500, 'grits-cooked': 2,
+  'cream-of-rice': 1, 'farro-cooked': 5, 'sushi-rice': 230, 'hash-browns': 330, 'tater-tots': 420, 'roasted-potatoes': 250, 'bagel-everything': 520,
+  'cinnamon-raisin-bagel': 330, 'lavash-wrap': 500, 'brioche-bun': 420, 'plantain-cooked': 5, 'lemon': 2, 'lime': 2, 'apricot': 1, 'nectarine': 0,
+  'fig-dried': 10, 'prunes': 2, 'fruit-cup': 5, 'frozen-banana': 1, 'sweet-potato-fries': 380, 'radish': 39, 'snap-peas': 4, 'red-onion': 4,
+  'leeks': 10, 'artichoke-hearts': 340, 'pumpkin-puree': 5, 'salsa-verde': 470, 'queso-dip': 1000, 'buffalo-sauce': 2500, 'sweet-chili-sauce': 1100,
+  'hoisin-sauce': 1615, 'peanut-sauce': 750, 'gravy': 600, 'honey-mustard': 600, 'greek-yogurt-vanilla': 40, 'cottage-cheese-pineapple': 280,
+  'mozzarella-sticks': 900, 'chicken-tenders': 650, 'fish-and-chips': 350, 'steak-fries-plate': 300, 'chicken-tikka-masala': 380, 'butter-chicken': 390,
+  'general-tsos-chicken': 640, 'beef-broccoli': 460, 'lo-mein': 470, 'dumplings-pork': 520, 'spring-roll': 600, 'nachos-cheese': 600, 'gyro': 520,
+  'chicken-wrap': 480, 'cobb-salad': 380, 'bagel-cream-cheese': 420, 'egg-bites': 520, 'breakfast-burrito': 520, 'avocado-toast': 330,
+  'chai-latte': 25, 'iced-coffee-sweet': 15, 'matcha-latte': 30, 'lemonade': 6, 'margarita': 120, 'cider-hard': 5, 'vegetable-juice': 250,
+  'protein-water': 30, 'mass-gainer': 200, 'pre-workout': 1000, 'banana-and-pb-toast': 330, 'rice-cake-pb-honey': 280, 'baked-chips': 520,
+  'pita-chips': 860, 'veggie-straws': 820, 'seaweed-snack': 1100, 'cheese-and-crackers': 950, 'peanut-butter-crackers': 720, 'oatmeal-cookie': 380,
+  'cinnamon-roll': 380, 'pumpkin-pie': 260, 'sorbet': 15, 'gelato': 70, 'jelly-beans': 50, 'marshmallows': 80, 'whipped-cream': 39,
+};
+
 for (const f of FOODS) {
   if (PRIMARY[f.id]) f.primary = PRIMARY[f.id];
   if (SODIUM[f.id] != null) f.per100.na = SODIUM[f.id];
+  else if (SODIUM2[f.id] != null) f.per100.na = SODIUM2[f.id];
   // Alcohol (R1 P2-8): grams of ethanol = the energy P/C/F don't explain, at 7 kcal/g.
   if (f.tags.includes('alcohol')) {
     const { kcal, p, c, f: fat } = f.per100;

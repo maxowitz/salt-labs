@@ -847,9 +847,9 @@ const QFLOOR = {
   advanced: { k1: 5, vo2: 5, repMin: 10, tempoMin: 25 },
 };
 
-// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 20 min), long run
-// (floor max(30 min, 85%)), hybrid rounds (floor 3), then quality — never below the experience floor (QFLOOR).
-function capRunVolume(ctx, raws, targetKm) {
+// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 20 min; 15 in deloads), long run
+// (floor max(30 min, 85% of the last loading week's long run)), hybrid rounds (floor 3), then quality — never below the experience floor (QFLOOR).
+function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, prevLongSec = null) {
   const over = () => runKmOf(ctx, raws) > targetKm + 0.05;
   const blocks = raws.flatMap((w) => w.blocks);
   const fl = QFLOOR[ctx.exp];
@@ -860,7 +860,7 @@ function capRunVolume(ctx, raws, targetKm) {
     if (adjKm < 0.2) return;
     const f = clamp((targetKm - (runKmOf(ctx, raws) - adjKm)) / adjKm, 0, 1);
     for (const { b, it } of adj) {
-      it.timeSec = Math.max(floorOf(it), Math.round((it.timeSec * f) / 300) * 300);
+      it.timeSec = Math.max(floorOf(it), Math.floor((it.timeSec * f) / 300) * 300);
       b.title = b.title.replace(/^\d+ min/, `${Math.round(it.timeSec / 60)} min`);
     }
   };
@@ -876,8 +876,8 @@ function capRunVolume(ctx, raws, targetKm) {
   const isHybrid = (b) => b.kind === 'circuit' && b.items.some((it) => it.exId === 'run-1k');
   const isQuality = (b) => b.kind === 'intervals' && !!runItem(b);
 
-  if (over()) shrink(['run-easy'], () => 1200);
-  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round((orig.get(it) * 0.85) / 300) * 300)); }
+  if (over()) shrink(['run-easy'], () => easyFloorSec);
+  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round(((prevLongSec || orig.get(it)) * 0.85) / 300) * 300)); }
   cutRounds(isHybrid, () => 3);
   // Quality: fewer reps (1 km / VO2) or shorter reps (cruise/tempo), never below the floor.
   cutRounds(isQuality, (b) => (runItem(b).exId === 'run-1k' ? fl.k1 : runItem(b).exId === 'run-intervals' ? fl.vo2 : 99));
@@ -927,7 +927,7 @@ export function generatePlan(profile, startISO) {
 
   const slots = SLOTS[p.daysPerWeek];
   const weeks = [], workouts = {};
-  let L = 0, prevKm = null;
+  let L = 0, prevKm = null, prevLongSec = null;
   const phaseLoad = {};
 
   for (let w = 0; w < nWeeks; w++) {
@@ -974,8 +974,12 @@ export function generatePlan(profile, startISO) {
     const guarded = !taper && !isRaceWeek && !lay.post;
     // The first Build week may reach +20% (new block, new session types); otherwise +15%.
     const firstBuild = phase === 'build' && pl === 0 && !deload;
-    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15));
-    if (guarded && !deload && !hasSim) prevKm = runKmOf(ctx, list);
+    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15), deload ? 900 : 1200, prevLongSec);
+    if (guarded && !deload && !hasSim) {
+      prevKm = runKmOf(ctx, list);
+      const longs = list.flatMap((x) => x.blocks).flatMap((b) => b.items || []).filter((it) => it.exId === 'run-long').map((it) => it.timeSec);
+      if (longs.length) prevLongSec = Math.max(...longs);
+    }
 
     const days = [];
     for (let d = 0; d < 7; d++) {

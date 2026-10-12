@@ -493,7 +493,8 @@ test('P1-2: weekly run volume ramps ≤ 15% (simulation weeks exempt) and deload
       if (wk.phase === 'taper') continue;
       const km = weekRunKm(plan, wk);
       const sim = wk.days.some((d) => d.workoutId && plan.workouts[d.workoutId].type === 'hyrox');
-      if (prev != null) {
+      const firstBuild = wk.phase === 'build' && plan.weeks[wk.index - 1]?.phase !== 'build' && !wk.deload;
+      if (prev != null && !firstBuild) {
         if (wk.deload) assert.ok(km < prev, `week ${wk.index + 1} deload ${km.toFixed(1)} vs ${prev.toFixed(1)}`);
         else if (!sim) assert.ok(km <= prev * 1.15 + 0.3, `week ${wk.index + 1}: ${km.toFixed(1)} km vs ${prev.toFixed(1)}`);
       }
@@ -547,7 +548,7 @@ test('liveItemWeight: applies logged double progression to planned items', () =>
   assert.equal(liveItemWeight(item, PROFILE, log(8, 7)), 24, 'hit top at RPE 7 → next pair');
   assert.equal(liveItemAdvice(item, PROFILE, log(8, 7)).earned, true);
   assert.equal(liveItemWeight(item, PROFILE, log(8, 9.5)), 16, 'grinder → repeat');
-  assert.match(liveItemAdvice(item, PROFILE, log(6, 9)).reason, /Repeat/);
+  assert.match(liveItemAdvice(item, PROFILE, log(6, 9)).reason, /repeat/i);
   assert.equal(liveItemWeight(item, PROFILE, log(6, 7)), 16, 'reps first');
   assert.equal(liveItemWeight({ ...item, kg: 24 }, PROFILE, log(6, 7)), 24, 'never below the planned bell unless struggling');
   assert.equal(liveItemWeight({ ...item, hold: true }, PROFILE, log(8, 7)), 16, 'held items (warm-up/deload) do not progress');
@@ -588,4 +589,135 @@ test('impossible efforts are ignored by PRs, predictor, readiness and summaries'
   assert.equal(weekSummary([{ ...real, date: '2026-10-12', durationSec: 1e12 }], '2026-10-12').minutes, 0);
   const hr = hyroxReadiness({ profile: PROFILE, sessions: [bogus] }, '2026-10-15');
   assert.ok(hr.parts[0].score < 100);
+});
+
+// ---------- Review round 2 regressions ----------
+const A_PROF = { ...PROFILE, raceDate: '2027-01-03', fiveKSec: 1440 };
+
+// An athlete who completes every prescribed set at RPE 7 using the live advice each time (review live2.mjs).
+function simulateCompliant(profile, weeks, extraSet = {}) {
+  const plan = generatePlan(profile, START);
+  const sessions = [];
+  const seen = {};
+  for (const w of plan.weeks.slice(0, weeks)) for (const d of w.days) {
+    if (!d.workoutId) continue;
+    const wo = plan.workouts[d.workoutId];
+    const sets = [];
+    for (const b of wo.blocks) for (const it of b.items) {
+      if (getExercise(it.exId).category !== 'kb' || it.kg == null) continue;
+      const kg = liveItemWeight(it, profile, sessions, { plan });
+      (seen[it.exId] ||= []).push(kg);
+      for (let i = 0; i < (it.sets || 1); i++) sets.push({ exId: it.exId, kg, reps: it.reps, rpe: 7, ...extraSet(b, it) });
+    }
+    sessions.push({ id: d.workoutId, workoutId: d.workoutId, date: d.date, sets });
+  }
+  return seen;
+}
+
+test('R2 P0-1: compliant athlete does not jump bells every session (TGU/SL-RDL stay ≤ 24 kg over 9 weeks)', () => {
+  for (const extra of [() => ({}), (b, it) => ({ blockKind: b.kind, targetReps: it.reps })]) {
+    const seen = simulateCompliant(A_PROF, 9, extra);
+    assert.ok(Math.max(...seen['kb-tgu']) <= 24, `TGU ${seen['kb-tgu']}`);
+    assert.ok(Math.max(...seen['kb-sl-rdl']) <= 24, `SL-RDL ${seen['kb-sl-rdl']}`);
+    assert.ok(Math.max(...seen['kb-double-press']) <= 16, 'press 16→24 is a > 30% jump');
+  }
+  // careful lift: needs two consecutive easy sessions at the top of the range + ≤ 30% jump
+  const prof = { ...PROFILE, bells: [{ kg: 16, count: 1 }, { kg: 20, count: 1 }] };
+  const item = { exId: 'kb-press', sets: 5, reps: 8, kg: 16, blockKind: 'strength' };
+  const sess = (date, rpe = 7, kg = 16) => ({ date, sets: Array(5).fill({ exId: 'kb-press', kg, reps: 8, rpe, blockKind: 'strength', targetReps: 8 }) });
+  assert.equal(liveItemWeight(item, prof, [sess('2026-10-01')]), 16, 'one easy session is not enough');
+  assert.equal(liveItemWeight(item, prof, [sess('2026-10-01'), sess('2026-10-04')]), 20, 'two easy sessions → +25% bell');
+  assert.equal(liveItemWeight(item, prof, [sess('2026-10-01'), sess('2026-10-04', 8)]), 16, 'RPE 8 is not easy for a press');
+  // ≤ 1 bump per 14 days
+  const sq = { exId: 'kb-goblet-squat', sets: 4, reps: 8, kg: 16, blockKind: 'strength' };
+  const pr2 = { ...PROFILE, bells: [{ kg: 16, count: 1 }, { kg: 20, count: 1 }, { kg: 24, count: 1 }] };
+  const g = (date, kg) => ({ date, sets: Array(4).fill({ exId: 'kb-goblet-squat', kg, reps: 8, rpe: 6, blockKind: 'strength' }) });
+  assert.equal(liveItemWeight(sq, pr2, [g('2026-10-01', 16)]), 20);
+  assert.equal(liveItemWeight(sq, pr2, [g('2026-10-01', 16), g('2026-10-05', 20)]), 20, 'just moved up → consolidate');
+  assert.equal(liveItemWeight(sq, pr2, [g('2026-10-01', 16), g('2026-10-20', 20)]), 24);
+});
+
+test('R2 P0-2: standard starting bells are always allowed; carries up to race spec', () => {
+  const begM = { ...PROFILE, sex: 'm', weightKg: 80, experience: 'beginner', bells: [{ kg: 16, count: 1 }, { kg: 24, count: 1 }] };
+  assert.equal(suggestWeight('kb-press', begM, []), 16);
+  assert.equal(suggestWeight('kb-tgu', begM, []), 16);
+  const begF = { ...PROFILE, sex: 'f', weightKg: 65, experience: 'beginner', bells: [{ kg: 12, count: 1 }, { kg: 16, count: 1 }] };
+  assert.equal(suggestWeight('kb-press', begF, []), 12);
+  assert.equal(suggestWeight('kb-goblet-thruster', begF, []), 12);
+  assert.equal(suggestWeight('kb-press', BEGINNER_F, []), null, '24 kg press still refused for a 58 kg beginner woman');
+  assert.equal(suggestWeight('kb-suitcase-carry', BEGINNER_F, []), 24);
+  const plan = generatePlan({ ...begF, daysPerWeek: 3 }, START);
+  const items = planWorkouts(plan).flatMap(allItems);
+  assert.ok(items.some((it) => it.exId === 'kb-press' && it.kg === 12), 'B presses a 12 kg bell');
+  assert.ok(items.some((it) => it.exId === 'kb-tgu' && it.kg === 12), 'B get-ups with 12 kg');
+  assert.ok(!items.some((it) => it.exId === 'mob-arm-circles'), 'no arm-circle halos');
+  for (const w of planWorkouts(plan)) for (const b of w.blocks) {
+    const ids = b.items.map((it) => it.exId).filter((id) => id.startsWith('bw-'));
+    assert.equal(new Set(ids).size, ids.length, `${w.id} ${b.title}: duplicate ${ids}`);
+  }
+  const strengthSquats = planWorkouts(generatePlan(BEGINNER_F, START)).flatMap((w) => w.blocks.filter((b) => b.kind === 'strength').flatMap((b) => b.items)).filter((it) => it.exId === 'bw-air-squat');
+  assert.ok(strengthSquats.every((it) => it.reps >= 12 && /tempo/.test(it.note)));
+});
+
+test('R2 P1-3: "repeat" only when a set fell short of ITS target', () => {
+  const item = { exId: 'kb-double-press', sets: 5, reps: 7, kg: 16, blockKind: 'strength' };
+  const done = [{ date: '2026-10-01', sets: Array(5).fill({ exId: 'kb-double-press', kg: 16, reps: 6, rpe: 7, targetReps: 6, blockKind: 'strength' }) }];
+  const adv = liveItemAdvice(item, PROFILE, done);
+  assert.equal(adv.kg, 16);
+  assert.doesNotMatch(adv.reason, /repeat/i);
+  assert.match(adv.reason, /more reps/);
+  const missed = [{ date: '2026-10-01', sets: [...Array(4).fill({ exId: 'kb-double-press', kg: 16, reps: 6, rpe: 7, targetReps: 6 }), { exId: 'kb-double-press', kg: 16, reps: 4, rpe: 8, targetReps: 6 }] }];
+  assert.match(liveItemAdvice(item, PROFILE, missed).reason, /Repeat this bell/);
+  // fallback: target from that session's planned workout
+  const plan = generatePlan(A_PROF, START);
+  const w = planWorkouts(plan).find((x) => allItems(x).some((it) => it.exId === 'kb-double-press' && it.sets));
+  const it0 = allItems(w).find((it) => it.exId === 'kb-double-press');
+  const legacy = [{ date: '2026-10-01', workoutId: w.id, sets: Array(it0.sets).fill({ exId: 'kb-double-press', kg: 16, reps: it0.reps, rpe: 7 }) }];
+  assert.doesNotMatch(liveItemAdvice({ ...item, reps: it0.reps + 1 }, PROFILE, legacy, { plan }).reason, /repeat/i);
+  const legacyMiss = [{ date: '2026-10-01', workoutId: w.id, sets: Array(it0.sets).fill({ exId: 'kb-double-press', kg: 16, reps: it0.reps - 2, rpe: 7 }) }];
+  assert.match(liveItemAdvice(item, PROFILE, legacyMiss, { plan }).reason, /Repeat/);
+});
+
+test('R2 P1-4: progression is like-for-like; AMRAP totals never progress a bell', () => {
+  const strength = [{ date: '2026-10-01', sets: Array(5).fill({ exId: 'kb-double-front-squat', kg: 24, reps: 8, rpe: 7, blockKind: 'strength' }) }];
+  assert.equal(liveItemWeight({ exId: 'kb-double-front-squat', kg: 16, reps: 6, blockKind: 'emom' }, PROFILE, strength), 16, 'EMOM ignores strength history');
+  assert.equal(liveItemWeight({ exId: 'kb-swing', kg: 16, reps: 15, blockKind: 'emom' }, PROFILE, [{ date: '2026-10-01', sets: [{ exId: 'kb-swing', kg: 16, reps: 150, blockKind: 'amrap' }] }]), 16);
+  assert.equal(liveItemWeight({ exId: 'kb-swing', kg: 16, reps: 15, blockKind: 'strength' }, PROFILE, [{ date: '2026-10-01', sets: [{ exId: 'kb-swing', kg: 16, reps: 150 }] }]), 16, 'legacy giant set ignored');
+  assert.equal(liveItemWeight({ exId: 'kb-swing', kg: 16, reps: 15, blockKind: 'amrap' }, PROFILE, [{ date: '2026-10-01', sets: Array(5).fill({ exId: 'kb-swing', kg: 16, reps: 20, rpe: 6, blockKind: 'amrap' }) }]), 16, 'AMRAP items never progress');
+  const cond = [{ date: '2026-10-01', sets: Array(10).fill({ exId: 'kb-swing', kg: 16, reps: 15, rpe: 6, blockKind: 'emom' }) }];
+  assert.ok(liveItemWeight({ exId: 'kb-swing', kg: 16, reps: 15, blockKind: 'emom' }, PROFILE, cond) <= 24, 'conditioning capped at planned + one size');
+  const plan = generatePlan(PROFILE, START);
+  for (const w of planWorkouts(plan)) for (const b of w.blocks) for (const it of b.items) if (getExercise(it.exId).category === 'kb') assert.equal(it.blockKind, b.kind);
+});
+
+test('R2 P1-5: ramp guard keeps a real quality dose and ≥ 20-min easy runs', () => {
+  const plan = generatePlan(A_PROF, START);
+  for (const wk of plan.weeks.slice(4, 9).filter((x) => !x.deload)) for (const d of wk.days) {
+    if (!d.workoutId) continue;
+    const w = plan.workouts[d.workoutId];
+    for (const b of w.blocks) {
+      if (b.kind === 'intervals' && b.items[0].exId === 'run-1k' && /threshold/.test(b.title)) assert.ok(b.rounds >= 4, `${w.id} ${b.title}`);
+      if (b.kind === 'intervals' && b.items[0].exId === 'run-intervals') assert.ok(b.rounds >= 4, `${w.id} ${b.title}`);
+      if (b.kind === 'intervals' && b.items[0].exId === 'run-threshold') assert.ok(b.items[0].timeSec >= 480, `${w.id} ${b.title}`);
+      if (b.kind === 'cardio') for (const it of b.items) if (it.exId === 'run-easy') assert.ok(it.timeSec >= 1200, `${w.id} easy ${it.timeSec}`);
+    }
+  }
+});
+
+test('R2 P2: scaled estMin recomputed; station names carry no distance; early taper has one opener and no KB conditioning', () => {
+  const plan = generatePlan(PROFILE, START);
+  for (const w of planWorkouts(plan).filter((x) => !x.fixed && !x.benchmark)) {
+    const r = scaleWorkout(w, 50);
+    if (r.changes.length) assert.ok(r.workout.estMin <= w.estMin, `${w.title} ${r.workout.estMin} vs ${w.estMin}`);
+  }
+  for (const st of STATIONS) assert.doesNotMatch(getExercise(st.exId).name, /\d+\s?m\b/);
+  const race = addDays(START, 8 * 7 + 1); // Tuesday race → previous week is an early taper
+  const tp = generatePlan({ ...PROFILE, raceDate: race }, START);
+  const early = tp.weeks[tp.weeks.length - 2];
+  assert.equal(early.phase, 'taper');
+  const ws = early.days.filter((d) => d.workoutId).map((d) => tp.workouts[d.workoutId]);
+  assert.equal(ws.filter((w) => w.title === 'Race Openers').length, 1, ws.map((w) => w.title).join(' | '));
+  assert.ok(!ws.some((w) => w.type === 'conditioning'), ws.map((w) => w.title).join(' | '));
+  const hyb = scaleWorkout(planWorkouts(plan).find((w) => w.type === 'hybrid' && !w.title.startsWith('Deload')), 50).workout;
+  assert.ok(!hyb.blocks.some((b) => /same 1 km split/.test(b.notes || '')));
 });

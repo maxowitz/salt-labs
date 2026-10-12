@@ -352,7 +352,7 @@ export function scaleWorkout(workout, readinessScore) {
       const cardio = items.some((it) => ['run', 'erg'].includes(getExercise(it.exId).category));
       if (cardio) {
         const total = (b.rounds || 1) * ((b.workSec || 60) + (b.restSec || 0));
-        const sec = Math.max(900, Math.round((total * 0.75) / 300) * 300);
+        const sec = Math.max(600, Math.round((total * 0.75) / 300) * 300);
         add('intervals', `Intervals → ${Math.round(sec / 60)} min easy Zone 2 (no intensity today)`);
         b.kind = 'cardio'; b.title = `${Math.round(sec / 60)} min Zone 2 (instead of intervals)`; b.notes = 'Conversational pace only. Readiness says aerobic work today, not intensity.';
         delete b.rounds; delete b.workSec; delete b.restSec;
