@@ -248,3 +248,8 @@
   margin: 4px -16px -20px; padding: 10px 16px calc(10px + var(--safe-b)); background: var(--bg-2); border-top: 1px solid var(--line);
 }
 .fu-multibar[hidden] { display: none; }
+.fu-amt-input, .fu-item-g { -moz-appearance: textfield; appearance: textfield; }
+.fu-amt-input::-webkit-inner-spin-button, .fu-amt-input::-webkit-outer-spin-button,
+.fu-item-g::-webkit-inner-spin-button, .fu-item-g::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.fu-amt-input:focus-visible, .fu-item-g:focus-visible { outline: none; } /* the field wrapper shows focus */
+.fu-item-step:focus-within { border-color: var(--accent); }

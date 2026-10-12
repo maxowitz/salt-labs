@@ -10,7 +10,18 @@ let availability = null;
 /** → Promise<{ok, photo, vault}|null>; null when there is no FORGE server (static hosting, offline). */
 export function serverInfo({ refresh = false } = {}) {
   if (!availability || refresh) {
-    availability = fetchJSON('api/health', { timeout: 6000 }).catch(() => null);
+    // Remember "no server" for this browser session so static hosting doesn't log a 404 on every screen.
+    let known = null;
+    try { known = sessionStorage.getItem('forge:api'); } catch {}
+    availability = known === 'none' && !refresh
+      ? Promise.resolve(null)
+      : fetchJSON('api/health', { timeout: 6000 }).then((info) => {
+        try { sessionStorage.setItem('forge:api', 'ok'); } catch {}
+        return info;
+      }).catch((e) => {
+        if (e.code === 'unavailable') { try { sessionStorage.setItem('forge:api', 'none'); } catch {} }
+        return null;
+      });
   }
   return availability;
 }
