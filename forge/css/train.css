@@ -133,7 +133,9 @@
 .tr-done-call { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); margin-bottom: 12px; font-weight: 650; }
 .tr-done-call .ico:first-child { color: var(--go); }
 .tr-ready { margin-bottom: 4px; }
-.tr-seg { min-width: 190px; }
+.tr-ready > .row { flex-wrap: wrap; gap: 10px; }
+.tr-seg { flex: 1 1 200px; max-width: 240px; }
+.tr-seg button { white-space: nowrap; }
 .tr-changes { margin: 10px 0 0 18px; font-size: 13.5px; color: var(--text-2); display: grid; gap: 4px; }
 .tr-block { padding: 14px 14px 6px; }
 .tr-block-head { display: flex; gap: 12px; align-items: flex-start; }
@@ -219,8 +221,8 @@
 @media (max-width: 360px) {
   .tr-qagrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tr-dnum { font-size: 16px; }
-  .tr-seg { min-width: 0; }
 }
 
 /* anchor rows inside lists should look like rows, not links */
 .view .list > a.li { color: inherit; text-decoration: none; }
+.tr-sstats .v { font-size: 21px; white-space: nowrap; }

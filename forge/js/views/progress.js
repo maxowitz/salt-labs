@@ -159,7 +159,7 @@ function loadSection(s, today) {
     optimal: ['Sweet spot', 'Acute load matches what you’re built for. This is where fitness grows with low injury risk.'],
     high: ['Pushing it', 'Load is climbing faster than your base. Prioritise sleep and keep easy days easy.'],
     spike: ['Spike — back off', 'A sharp jump in load raises injury risk. Swap the next hard day for Zone 2 or recovery.'],
-  }[tl.status] || ['Building data', 'Log a couple of weeks of training to see your acute:chronic ratio.'];
+  }[tl.chronic > 0 ? tl.status : 'none'] || ['Building data', 'Log a couple of weeks of training to see your acute:chronic ratio.'];
   const colors = { low: 'var(--info)', optimal: 'var(--go)', high: 'var(--warn)', spike: 'var(--danger)' };
   return h('div', { class: 'card load-card' },
     h('div', { class: 'eyebrow' }, 'Training load · ACWR'),
@@ -167,7 +167,7 @@ function loadSection(s, today) {
       h('div', { class: 'gauge-wrap' }, gauge({ value: Math.min(2, ratio), max: 2, size: 168, label: s.sessions.length ? num(ratio, 2) : '–', sub: 'acute : chronic',
         zones: [{ to: 0.8, color: 'var(--info)' }, { to: 1.3, color: 'var(--go)' }, { to: 1.5, color: 'var(--warn)' }, { to: 2, color: 'var(--danger)' }] })),
       h('div', { class: 'grow' },
-        h('div', { class: 'card-title', style: { color: colors[tl.status] || 'var(--text)' } }, desc[0]),
+        h('div', { class: 'card-title', style: { color: (tl.chronic > 0 && colors[tl.status]) || 'var(--text)' } }, desc[0]),
         h('p', { class: 'small dim' }, desc[1]),
         h('p', { class: 'xs muted mt' }, `7-day ${num(tl.acute)} · 28-day avg ${num(tl.chronic)}`))));
 }

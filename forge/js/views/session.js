@@ -63,11 +63,11 @@ export function blockStructure(b) {
       return `${r} × ${fmtSec(w)} on / ${fmtSec(rest)} off${items.length > 1 ? ' — cycle the items' : ''}`;
     }
     case 'circuit': return `${b.rounds || 1} round${(b.rounds || 1) > 1 ? 's' : ''} through the list${b.restSec ? ` · ${fmtSec(b.restSec)} rest between rounds` : ''}`;
-    case 'strength': return b.restSec ? `Straight sets · rest ${fmtSec(b.restSec)} between sets` : 'Straight sets — quality reps, full rest';
+    case 'strength': return b.restSec ? `Rest ${fmtSec(b.restSec)} between sets` : '';
     case 'station': return 'For time — race pace, smooth transitions';
     case 'cardio': return b.durationSec ? `About ${fmtSec(b.durationSec)}` : 'Steady, controlled effort';
-    case 'warmup': return b.durationSec ? `${fmtSec(b.durationSec)} · move well, raise temperature` : 'Move well, raise temperature';
-    case 'cooldown': return b.durationSec ? `${fmtSec(b.durationSec)} · bring the heart rate down` : 'Bring the heart rate down';
+    case 'warmup': return b.durationSec ? `${fmtSec(b.durationSec)} · move well, raise temperature` : '';
+    case 'cooldown': return b.durationSec ? `${fmtSec(b.durationSec)} · bring the heart rate down` : '';
     default: return '';
   }
 }

@@ -61,10 +61,14 @@ function itemTarget(it, block) {
   if (block?.kind === 'strength' && it.sets) parts.push(`${it.sets} ×`);
   if (it.reps) parts.push(`${it.reps}${it.perSide ? '/side' : ''} reps`.replace(' reps', block?.kind === 'strength' ? '' : ' reps'));
   if (it.timeSec && !it.reps) parts.push(fmtDur(it.timeSec));
-  if (it.distanceM) parts.push(fmtDist(it.distanceM, units()));
+  if (it.distanceM) parts.push(fmtTarget(it.distanceM));
   return parts.join(' ').trim();
 }
 const units = () => store.get().profile?.units || 'metric';
+// Reps of a distance (400 m repeats, 50 m sled push) read best in metres in either unit system.
+const fmtTarget = (m) => (m < 1000 ? `${Math.round(m)} m` : fmtDist(m, units()));
+const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
+const CAT_LABEL = { kb: 'Kettlebell', run: 'Run', erg: 'Erg', bodyweight: 'Bodyweight', hyrox: 'HYROX', mobility: 'Mobility' };
 
 function readinessToday() {
   const r = store.get().readiness?.[todayISO()];
@@ -659,7 +663,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     function itemLine(it, ii, big) {
       const kg = bs.kg[ii];
       return h('div', { class: 'wo-item' + (big ? ' big' : '') },
-        h('span', { class: 'wo-item-reps num' }, it.reps ? `${it.reps}${it.perSide ? '/s' : ''}` : it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? fmtDist(it.distanceM, units()) : '—'),
+        h('span', { class: 'wo-item-reps num' }, it.reps ? `${it.reps}${it.perSide ? '/s' : ''}` : it.timeSec ? fmtDur(it.timeSec) : it.distanceM ? fmtTarget(it.distanceM) : '—'),
         h('span', { class: 'wo-item-name' }, exName(it.exId)),
         kg ? h('span', { class: 'wo-item-kg num' }, fmtBell(kg)) : null,
         infoBtn(it.exId));
@@ -738,7 +742,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       bs.logged = true; bs.done = true;
       timer?.stop(); blockTimers.delete(key); bs.timer = timer ? timer.snapshot() : bs.timer;
       haptic(30);
-      toast(isAmrap ? `${rounds} rounds${bs.extraReps ? ' + ' + bs.extraReps : ''} logged` : `${rounds} ${b.kind === 'emom' ? 'minutes' : 'rounds'} logged`, { kind: 'go' });
+      toast(isAmrap ? `${plural(rounds, 'round')}${bs.extraReps ? ' + ' + plural(bs.extraReps, 'rep') : ''} logged` : `${plural(rounds, b.kind === 'emom' ? 'minute' : 'round')} logged`, { kind: 'go' });
       save();
       if (aw.blockIndex < W.blocks.length - 1) goBlock(aw.blockIndex + 1); else { drawAll(); }
     }
@@ -756,6 +760,12 @@ function player(ctx, aw, { fresh = false } = {}) {
       lastSegIdx = -1;
       const started = !!timer?.started;
       const finished = !!(timer?.state.done || bs.logged);
+      put(wrap, h('div', { class: 'wo-stage' }, face.el, nowEl, nextEl));
+      if (isAmrap && started && !finished) {
+        const rc = roundCounter(bs.rounds || 0, (v) => { bs.rounds = v; bs.roundsDone = v; save(); });
+        put(wrap, rc.el);
+      }
+      if (!finished) put(wrap, ctl.el);
       if (!started && !bs.logged) {
         // setup: items with bell choice
         put(wrap, h('div', { class: 'card wo-setup' },
@@ -764,12 +774,6 @@ function player(ctx, aw, { fresh = false } = {}) {
             h('div', { class: 'row between' }, itemLine(it, ii, false)),
             bs.kg[ii] != null || isKbEx(it.exId) ? bellPicker(bs.kg[ii], (kg) => { bs.kg[ii] = kg; save(); draw(); }) : null))));
       }
-      put(wrap, h('div', { class: 'wo-stage' }, face.el, nowEl, nextEl));
-      if (isAmrap && started && !finished) {
-        const rc = roundCounter(bs.rounds || 0, (v) => { bs.rounds = v; bs.roundsDone = v; save(); });
-        put(wrap, rc.el);
-      }
-      if (!finished) put(wrap, ctl.el);
       if (finished || bs.manual) put(wrap, resultForm());
       else if (started) put(wrap, h('button', { class: 'link-btn wo-endblock', on: { click: () => { timer.end(); bs.timerDone = true; bs.roundsDone = null; save(); draw(); } } }, 'End block early & log'));
       else put(wrap, h('button', { class: 'link-btn wo-endblock', on: { click: () => { bs.manual = true; bs.roundsDone = isAmrap ? 0 : totalRounds || 0; save(); draw(); } } }, 'Already done? Log result without timer'));
@@ -958,7 +962,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     sheet({
       title: e.name,
       content: h('div', { class: 'stack' },
-        h('div', { class: 'chips' }, [e.category, e.pattern, e.double ? 'double bell' : null, e.unilateral ? 'unilateral' : null].filter(Boolean).map((x) => h('span', { class: 'pill' }, x))),
+        h('div', { class: 'chips' }, [CAT_LABEL[e.category] || e.category, e.pattern, e.double ? 'double bell' : null, e.unilateral ? 'unilateral' : null].filter(Boolean).map((x) => h('span', { class: 'pill' }, x))),
         e.muscles?.length ? h('p', { class: 'small dim' }, e.muscles.join(' · ')) : null,
         lst('Cues', e.cues),
         lst('Common faults', e.faults),
@@ -992,13 +996,13 @@ function player(ctx, aw, { fresh = false } = {}) {
       title: 'Add exercise', full: true,
       content: () => h('div', { class: 'stack' },
         h('label', { class: 'search' }, icon('search'), h('input', { type: 'search', placeholder: 'Search exercises', 'aria-label': 'Search exercises', on: { input: (e) => { q = e.target.value.toLowerCase(); draw(); } } })),
-        h('div', { class: 'chips scroll' }, cats.map((c) => h('button', { class: 'chip' + (c === cat ? ' on' : ''), 'aria-pressed': String(c === cat), on: { click: (e) => { cat = c; for (const b of e.target.parentElement.children) b.classList.toggle('on', b === e.target); draw(); } } }, c === 'all' ? 'All' : c))),
+        h('div', { class: 'chips scroll' }, cats.map((c) => h('button', { class: 'chip' + (c === cat ? ' on' : ''), 'aria-pressed': String(c === cat), on: { click: (e) => { cat = c; for (const b of e.target.parentElement.children) b.classList.toggle('on', b === e.target); draw(); } } }, c === 'all' ? 'All' : CAT_LABEL[c] || c))),
         h('div', { class: 'card flush' }, listEl)),
     });
     function draw() {
       const res = all.filter((e) => (cat === 'all' || e.category === cat) && (!q || e.name.toLowerCase().includes(q) || e.id.includes(q))).slice(0, 80);
       put(clear(listEl), res.length ? res.map((e) => h('button', { class: 'li', on: { click: () => { s.close(); addExercise(e.id); } } },
-        h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, e.name), h('div', { class: 'li-sub' }, [e.category, e.pattern].filter(Boolean).join(' · '))),
+        h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, e.name), h('div', { class: 'li-sub' }, [CAT_LABEL[e.category] || e.category, e.pattern].filter(Boolean).join(' · '))),
         icon('plus'))) : h('div', { class: 'empty' }, 'No matches'));
     }
     draw();
@@ -1099,7 +1103,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     const byEx = new Map();
     for (const st of sess.sets) {
       const k = st.exId; const e = byEx.get(k) || { sets: 0, reps: 0, top: 0, time: 0 };
-      e.sets++; e.reps += +st.reps || 0; e.top = Math.max(e.top, +st.kg || 0); e.time += +st.timeSec || 0; byEx.set(k, e);
+      e.sets++; e.reps += +st.reps || 0; e.top = Math.max(e.top, +st.kg || 0); e.time += +st.timeSec || 0; e.dist = (e.dist || 0) + (+st.distanceM || 0); byEx.set(k, e);
     }
 
     const save$ = h('button', {
@@ -1128,7 +1132,7 @@ function player(ctx, aw, { fresh = false } = {}) {
         h('ul', null, sess.prs.map((p) => h('li', null, p)))) : null,
       byEx.size || sess.cardio.length ? h('div', { class: 'card flush' }, h('div', { class: 'list' },
         [...byEx].map(([exId, e]) => h('div', { class: 'li' },
-          h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, exName(exId)), h('div', { class: 'li-sub' }, `${e.sets} sets${e.reps ? ` · ${e.reps} reps` : ''}${e.time ? ' · ' + fmtDur(e.time) : ''}`)),
+          h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, exName(exId)), h('div', { class: 'li-sub' }, `${plural(e.sets, 'set')}${e.reps ? ` · ${e.reps} reps` : ''}${e.time ? ' · ' + fmtDur(e.time) : ''}${e.dist ? ' · ' + fmtTarget(e.dist) : ''}`)),
           h('div', { class: 'li-end num' }, e.top ? fmtBell(e.top) : 'BW'))),
         sess.cardio.map((c) => h('div', { class: 'li' },
           h('div', { class: 'li-main' }, h('div', { class: 'li-title' }, pretty(c.mode)), h('div', { class: 'li-sub' }, [c.timeSec ? fmtDur(c.timeSec) : null, c.avgHr ? c.avgHr + ' bpm' : null].filter(Boolean).join(' · '))),

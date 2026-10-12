@@ -155,7 +155,7 @@ forge/
   js/engine/timer.js    IntervalTimer, beep(), speak(), wakeLock()
   js/engine/coach.js    scaleWorkout(workout, readiness), suggestWeight(), detectPRs()
   js/views/*.js         each exports `render(root, params)` and may return a cleanup fn
-  tests/*.test.mjs      node --test unit tests for engine + store
+  tests/*.test.mjs      unit tests — run with `cd forge && node --test`
 ```
 
 ### 6.2 Store (`js/store.js`)
@@ -206,13 +206,22 @@ plus any attribute), `toast(msg)`, `sheet({title, content, onClose}) → {close}
 `fmtWeight(kg, units)`, `fmtBell(kg)`, `fmtDist(m, units)`, `fmtDur(sec)`, `fmtPace(secPerKm, units)`,
 `fmtDate(iso)`, `num(v, d)`, `navigate(hash)`. Never inject user text via `html`.
 
-### 6.4 Design system
-Dark-first, "forged iron": near-black graphite surfaces, warm molten-orange accent `--accent`,
-electric lime `--go` for success/active, phase colours (`--base` teal, `--build` amber,
-`--peak` red, `--taper` violet). Tokens defined on `:root` in `app.css`. Components:
-`.card`, `.btn`, `.btn.primary|ghost|danger|sm`, `.chip`, `.pill`, `.stat`, `.list`, `.row`,
-`.field`, `.seg` (segmented control), `.ring`, `.empty`, `.sheet`. Big numerals use
-`font-variant-numeric: tabular-nums`.
+### 6.4 Design system — clean, monotone, flat, earth tones
+Owner direction: the app must feel **clean and monotone, flat and modern, with earth tones used only
+for highlights and to make important things stand out**.
+- **Monotone base**: warm-stone neutrals (`--bg`, `--surface*`, `--line*`, `--text*`, `--muted`) carry 90 %+
+  of every screen. Dark and light themes are the same palette inverted.
+- **Earth-tone highlights, used sparingly and with meaning**: terracotta `--accent` (primary action, current
+  item), sage/olive `--go` (done/success), ochre `--warn`, brick `--danger`, lichen `--info`. Macros:
+  clay `--protein`, ochre `--carbs`, olive `--fat`, stone-blue `--water`. Phases: sage `--base`,
+  ochre `--build`, terracotta `--peak`, clay-brown `--taper`. Never hard-code hex colours in views/CSS.
+- **Flat**: no gradients, no drop shadows, no glows, no glassmorphism/blur, no text-shadow, no neon.
+  Separate surfaces with a 1 px `--line` border or a step in surface tone. Focus rings are the only outline.
+- **Modern type**: one sans family, weights 400–700 (no 800/900 shouting), generous whitespace, numbers in
+  `tabular-nums`. Hierarchy comes from size, weight and spacing — not colour.
+- One accent per screen region: if everything is highlighted, nothing is.
+Components: `.card`, `.btn`, `.btn.primary|ghost|danger|sm`, `.chip`, `.pill`, `.stat`, `.list`, `.row`,
+`.field`, `.seg`, `.ring`, `.empty`, `.sheet`.
 
 ### 6.5a Engine APIs (exact exports — code against these)
 ```js

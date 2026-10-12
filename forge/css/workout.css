@@ -280,3 +280,5 @@ body.wo-running .wo { padding-bottom: calc(96px + var(--safe-b)); }
   .tf.warn, .wo-done-mark, .wo-rest { animation: none !important; }
   .tf-arc, .wo-rest-bar > i { transition: none !important; }
 }
+
+.view-workout a.btn, .view-timer a.btn { text-decoration: none; }
