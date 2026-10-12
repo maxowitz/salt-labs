@@ -255,6 +255,24 @@ function statRow(items) {
   return h('div', { class: 'stat-row' }, items.filter(Boolean).map(([v, unit, k]) => h('div', { class: 'stat' }, h('span', { class: 'v' }, v, unit ? h('small', null, unit) : null), h('span', { class: 'k' }, k))));
 }
 
+/** Today's workout after readiness scaling (fixed/benchmark sessions are never scaled). Single source for minutes. */
+function scaledFor(s, today, workout) {
+  const score = s.readiness[today]?.score;
+  const locked = !!(workout?.fixed || workout?.benchmark);
+  const scaled = workout && Number.isFinite(score) && !locked ? safe(() => coach.scaleWorkout(workout, score), null) : null;
+  return { score, locked, scaled, workout: scaled?.workout || workout };
+}
+
+/** One-line pre-session fuelling note from the nutrition engine (if available). */
+function fuelNote(s, today) {
+  if (typeof nutrition.fuelingNote !== 'function' || sel.sessionsOn(s, today).length) return null;
+  const n = safe(() => nutrition.fuelingNote(s, today), null);
+  const text = n && (n.warn || n.pre);
+  if (!text) return null;
+  return h('p', { class: 'fuel-note' + (n.warn ? ' warn' : ''), title: [n.pre, n.during, n.warn].filter(Boolean).join(' ') },
+    h('span', { class: 'lbl' }, n.warn ? 'Fuel ⚠' : 'Fuel'), ' ', text, n.during && !n.warn ? ` ${n.during}` : '');
+}
+
 function sessionCard(s, today) {
   const units = s.profile.units;
   const volTxt = (kg) => (units === 'metric' ? num(Math.round(kg)) : num(Math.round(kg / 0.45359237)));
@@ -316,10 +334,7 @@ function sessionCard(s, today) {
   }
 
   // Planned session with readiness scaling preview
-  const score = s.readiness[today]?.score;
-  const locked = !!(workout.fixed || workout.benchmark);
-  const scaled = Number.isFinite(score) && !locked ? safe(() => coach.scaleWorkout(workout, score), null) : null;
-  const w = scaled?.workout || workout;
+  const { score, locked, scaled, workout: w } = scaledFor(s, today, workout);
   const changes = scaled?.changes || [];
   const tm = TYPE_META[w.type] || TYPE_META.strength;
   const P = safe(() => program.PHASES, {}) || {};
@@ -470,11 +485,13 @@ export function render(root) {
     const today = todayISO();
     const y = window.scrollY;
     const wfdNow = s.plan ? safe(() => program.workoutForDate(s.plan, today), null) : null;
+    const nowW = wfdNow?.workout ? scaledFor(s, today, wfdNow.workout).workout : null;
     clear(root).append(h('div', { class: 'today' },
       headerBlock(s, today),
       readinessCard(s, today, ui, paint),
-      sectionHead('Session', h('span', { class: 'lbl' }, wfdNow?.workout ? `~${wfdNow.workout.estMin || 45} min` : 'Today'), 1),
+      sectionHead('Session', h('span', { class: 'lbl' }, nowW ? `~${nowW.estMin || 45} min` : 'Today'), 1),
       sessionCard(s, today),
+      fuelNote(s, today),
       sectionHead('Daily', h('span', { class: 'lbl' }, wfdNow?.workout ? 'Training day' : 'Rest day'), 2),
       ringsRow(s, today),
       quickActions(s.profile.units),

@@ -118,7 +118,7 @@ export function describeItem(item, block, profile, sessions) {
   let suggested = false, reason = '', earned = false, regress = null;
   if (ex.category === 'kb') {
     try {
-      const adv = liveItemAdvice(item, profile, sessions) || {};
+      const adv = liveItemAdvice(item, profile, sessions, { plan: store.get().plan, todayISO: todayISO() }) || {};
       if (Number.isFinite(+adv.kg) && +adv.kg > 0) {
         suggested = kg == null; kg = +adv.kg;
       } else if (kg == null) {
@@ -401,7 +401,7 @@ export function render(root, { args }) {
         class: 'btn primary xl block tr-start', on: {
           click: () => startWorkout(id, viewMode === 'scaled' && changes.length > 0 && !locked),
         },
-      }, h('span', null, resuming ? 'Resume workout' : done.length ? 'Start again' : 'Start workout'), h('span', { class: 'k' }, `${workout.estMin ? '~' + workout.estMin + ' min ' : ''}→`))));
+      }, h('span', null, resuming ? 'Resume workout' : done.length ? 'Start again' : 'Start workout'), h('span', { class: 'k' }, `${shown.estMin ? '~' + shown.estMin + ' min ' : ''}→`))));
   };
   draw();
   const unsub = store.subscribe(draw);

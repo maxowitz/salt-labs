@@ -4,7 +4,7 @@ import { store, sel, todayISO, addDays, uid, isISODate } from '../store.js';
 import { h, clear, toast, sheet, num, fmtDate, icon, navigate, seg, field, sectionHead, haptic, clamp, fmtWeight, fig, masthead } from '../ui.js';
 import { barChart, lineChart, ticks } from '../charts.js';
 import { FOODS } from '../data/foods.js';
-import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, sodiumSummary, energyAvailability, fuelingNote, maxGoalRate, defaultDeficit, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
+import { dayTargetsFor, adaptiveTdee, scaleFood, searchFoods, computeTargets, macrosForKcal, fiberTarget, parseNum, sodiumSummary, energyAvailability, fuelingNote, maxGoalRate, goalKcal, validateQuickAdd, validateCustomFood, validateWaterMl, amountError } from '../engine/nutrition.js';
 
 const MEALS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snacks', 'Snacks']];
 const MEAL_LABEL = Object.fromEntries(MEALS);
@@ -215,7 +215,7 @@ function summaryCard(s, ctx) {
       macro('Carbs', 'c', 'carbs', 'var(--carbs)'),
       macro('Fat', 'f', 'fat', 'var(--fat)')),
     sessionNote,
-    fuelNotes(s, ctx.date, tot));
+    fuelNotes(s, ctx.date));
 }
 
 /** Sodium with honest coverage (R2 P1-3): a total only when ≥ 80 % of the day's kcal has sodium data. */
@@ -227,7 +227,7 @@ function sodiumLine(entries) {
 }
 
 /** Pre-session fuelling, hard-day carb shortfall and low energy availability (R2 P1-2, P2-4/5). */
-function fuelNotes(s, date, tot) {
+function fuelNotes(s, date) {
   const lines = [];
   let fn = null, ea = null;
   try { fn = fuelingNote(s, date); } catch (e) { console.error(e); }
@@ -1417,7 +1417,8 @@ function goalRateControl(s) {
   const fmtRate = (kg) => (imperial ? `${num(Math.abs(kg) / LB_KG, Math.abs(kg) / LB_KG < 1 ? 2 : 1)} lb` : `${num(Math.abs(kg), Math.abs(kg) < 1 ? 2 : 1)} kg`);
   const cur = s.targets.goalRateKgWk ?? s.profile.goalRateKgWk ?? null;
   const isCur = (v) => (v == null ? cur == null : cur != null && Math.abs(Math.abs(v) - Math.abs(cur)) < 0.01);
-  const autoKg = goal === 'lose' ? (defaultDeficit(s.profile, maint) * 7) / 7700 : (0.1 * maint * 7) / 7700;
+  // what Auto actually delivers once the kcal floor is applied
+  const autoKg = (Math.abs(maint - goalKcal(maint, { ...s.profile, goalRateKgWk: null })) * 7) / 7700;
   const choose = (v) => {
     const rate = v == null ? null : Math.sign(v) * Math.min(Math.abs(v), cap);
     store.update((st) => {

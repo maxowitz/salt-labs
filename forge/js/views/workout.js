@@ -574,7 +574,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       const e = ex(it.exId);
       let kg, reason = '', tooHeavy = false;
       if (isKbEx(it.exId) && coach.liveItemAdvice) {
-        const adv = safe(() => coach.liveItemAdvice(it, profile, priorSessions), null) || {};
+        const adv = safe(() => coach.liveItemAdvice(it, profile, priorSessions, { plan: store.get().plan, todayISO: todayISO() }), null) || {};
         kg = adv.kg ?? null; reason = adv.reason || '';
         // suggestWeight → null for a loaded KB lift means every owned bell is too heavy
         if (kg == null && e.loadRatio && bells.length) tooHeavy = true;

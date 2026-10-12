@@ -295,3 +295,7 @@ body.locked #app, body.locked .tabbar, body.locked #toast-root { visibility: hid
 .view-today a.btn, .view-today a.link-btn, .view-progress a.btn, .view-progress a.link-btn, .view-me a.btn, .view-me a.link-btn,
 .view-progress .legend a, .view-today .empty a { text-decoration: none; }
 .view-today a.li, .view-progress a.li, .view-me a.li { text-decoration: none; color: var(--text); }
+
+.fuel-note { font-size: 13px; color: var(--text-2); margin: 8px 0 0; line-height: 1.4; }
+.fuel-note .lbl { color: var(--muted); margin-right: 4px; }
+.fuel-note.warn .lbl { color: var(--warn); }
