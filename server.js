@@ -333,6 +333,9 @@ http.createServer(async (req, res) => {
 
   const allowed = !p.split("/").some((seg) => seg.startsWith(".")) && STATIC_ALLOW.some((re) => re.test(p));
   const file = path.join(ROOT, p);
+  const ext = path.extname(p).toLowerCase();
+  // a missing asset is a real 404 (so caches never store HTML in place of a script); only page-like paths fall back
+  if (allowed && ext && ext !== ".html" && !fs.existsSync(file)) return send(req, res, 404, "Not found", { "Content-Type": "text/plain", "Cache-Control": "no-store" });
   if (!allowed || !file.startsWith(ROOT + path.sep)) {
     // unknown paths fall back to the hub page (or the FORGE shell inside /forge/)
     p = p.startsWith("/forge/") ? "/forge/index.html" : "/index.html";

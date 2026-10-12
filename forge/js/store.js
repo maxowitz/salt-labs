@@ -79,14 +79,96 @@ export function normalize(raw) {
       .filter((b) => b && Number.isFinite(+b.kg) && +b.kg > 0)
       .map((b) => ({ kg: +b.kg, count: Math.max(1, Math.min(2, +b.count || 1)) }));
   }
-  out.sessions = out.sessions.filter(isObj);
-  out.bodyweight = out.bodyweight.filter((b) => isObj(b) && b.date && Number.isFinite(+b.kg));
-  for (const k of ['foodLog', 'water', 'readiness']) if (!isObj(out[k])) out[k] = {};
-  for (const [d, list] of Object.entries(out.foodLog)) if (!Array.isArray(list)) delete out.foodLog[d];
-  if (out.plan && (!isObj(out.plan) || !Array.isArray(out.plan.weeks))) out.plan = null;
-  if (out.activeWorkout && !isObj(out.activeWorkout)) out.activeWorkout = null;
+  sanitizeDeep(out, def);
   out.version = SCHEMA_VERSION;
   return out;
+}
+
+// ---------- deep sanitising: anything malformed is repaired or dropped so no screen can crash on it ----------
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function isISODate(v) {
+  if (typeof v !== 'string' || !ISO_RE.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+const str = (v, max = 200, dflt = '') => (typeof v === 'string' ? v.slice(0, max) : typeof v === 'number' && Number.isFinite(v) ? String(v) : dflt);
+const fin = (v, lo, hi, dflt) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; };
+const oneOf = (v, opts, dflt) => (opts.includes(v) ? v : dflt);
+const objs = (v) => (Array.isArray(v) ? v.filter(isObj) : []);
+
+function sanitizeDeep(out, def) {
+  const p = out.profile, dp = def.profile;
+  p.name = str(p.name, 60);
+  p.sex = oneOf(p.sex, ['m', 'f'], dp.sex);
+  p.units = oneOf(p.units, ['imperial', 'metric'], dp.units);
+  p.experience = oneOf(p.experience, ['beginner', 'intermediate', 'advanced'], dp.experience);
+  p.division = oneOf(p.division, ['open', 'pro', 'doubles'], dp.division);
+  p.goal = oneOf(p.goal, ['lose', 'maintain', 'gain'], dp.goal);
+  p.activity = typeof p.activity === 'string' ? p.activity : dp.activity;
+  p.age = fin(p.age, 14, 99, dp.age);
+  p.heightCm = fin(p.heightCm, 120, 230, dp.heightCm);
+  p.weightKg = fin(p.weightKg, 30, 300, dp.weightKg);
+  p.daysPerWeek = Math.round(fin(p.daysPerWeek, 3, 6, dp.daysPerWeek));
+  p.raceDate = isISODate(p.raceDate) ? p.raceDate : null;
+  p.hrMax = p.hrMax == null ? null : fin(p.hrMax, 120, 230, null);
+  p.fiveKSec = p.fiveKSec == null ? null : fin(p.fiveKSec, 12 * 60, 60 * 60, null);
+  p.onboarded = p.onboarded === true;
+  for (const k of Object.keys(dp.equipment)) p.equipment[k] = p.equipment[k] === true;
+
+  for (const k of ['kcal', 'protein', 'carbs', 'fat', 'waterMl']) out.targets[k] = fin(out.targets[k], 0, 20000, def.targets[k]);
+  out.targets.auto = out.targets.auto !== false;
+
+  out.sessions = objs(out.sessions).filter((x) => isISODate(x.date)).map((x, i) => ({
+    ...x,
+    id: str(x.id, 80) || 'sess-' + x.date + '-' + i,
+    title: str(x.title, 120, 'Session'),
+    type: str(x.type, 30, 'strength'),
+    durationSec: fin(x.durationSec, 0, 24 * 3600, 0),
+    sets: objs(x.sets).map((st) => ({ ...st, exId: str(st.exId, 80), kg: fin(st.kg, 0, 200, 0), reps: fin(st.reps, 0, 1000, 0), timeSec: fin(st.timeSec, 0, 24 * 3600, 0), distanceM: fin(st.distanceM, 0, 300000, 0) })),
+    cardio: objs(x.cardio).map((c) => ({ ...c, mode: str(c.mode, 20, 'run'), distanceM: fin(c.distanceM, 0, 300000, 0), timeSec: fin(c.timeSec, 0, 24 * 3600, 0), avgHr: c.avgHr == null ? null : fin(c.avgHr, 30, 240, null) })),
+    prs: Array.isArray(x.prs) ? x.prs.filter((t) => typeof t === 'string').map((t) => t.slice(0, 200)) : [],
+    notes: str(x.notes, 2000),
+    rpe: x.rpe == null ? null : fin(x.rpe, 1, 10, null),
+  }));
+
+  const foodLog = {};
+  for (const [d, list] of Object.entries(out.foodLog)) {
+    if (!isISODate(d) || !Array.isArray(list)) continue;
+    foodLog[d] = objs(list).map((e, i) => ({
+      ...e,
+      id: str(e.id, 80) || 'f-' + d + '-' + i,
+      meal: oneOf(e.meal, ['breakfast', 'lunch', 'dinner', 'snacks'], 'snacks'),
+      name: str(e.name, 120, 'Food'),
+      qty: fin(e.qty, 0, 10000, 1),
+      grams: fin(e.grams, 0, 10000, 0),
+      kcal: fin(e.kcal, 0, 10000, 0), p: fin(e.p, 0, 1000, 0), c: fin(e.c, 0, 1500, 0), f: fin(e.f, 0, 1000, 0), fiber: fin(e.fiber, 0, 300, 0),
+    }));
+  }
+  out.foodLog = foodLog;
+
+  const numMap = (m, lo, hi) => Object.fromEntries(Object.entries(isObj(m) ? m : {}).filter(([d]) => isISODate(d)).map(([d, v]) => [d, fin(v, lo, hi, 0)]));
+  out.water = numMap(out.water, 0, 20000);
+  out.readiness = Object.fromEntries(Object.entries(out.readiness).filter(([d, v]) => isISODate(d) && isObj(v)));
+  out.bodyweight = objs(out.bodyweight).filter((b) => isISODate(b.date) && Number.isFinite(+b.kg) && +b.kg >= 25 && +b.kg <= 350).map((b) => ({ date: b.date, kg: +b.kg }));
+  out.customFoods = objs(out.customFoods).filter((f) => typeof f.id === 'string' && isObj(f.per100)).map((f) => ({ ...f, name: str(f.name, 120, 'Custom food') }));
+  out.mealTemplates = objs(out.mealTemplates).map((t) => ({ ...t, name: str(t.name, 80, 'Meal'), items: objs(t.items) }));
+  out.favorites = out.favorites.filter((x) => typeof x === 'string');
+  out.recentFoods = out.recentFoods.filter((x) => typeof x === 'string');
+
+  if (out.plan) {
+    out.plan.weeks = objs(out.plan.weeks).map((w, i) => ({ ...w, index: Number.isFinite(+w.index) ? +w.index : i + 1, days: objs(w.days).filter((d) => isISODate(d.date)) }));
+    if (!isObj(out.plan.workouts)) out.plan.workouts = {};
+    if (!out.plan.weeks.length) out.plan = null;
+  }
+  const aw = out.activeWorkout;
+  if (aw && ((aw.workout != null && !isObj(aw.workout)) || (aw.workoutId != null && typeof aw.workoutId !== 'string'))) out.activeWorkout = null;
+
+  const st = out.settings;
+  st.theme = oneOf(st.theme, ['dark', 'light', 'system'], 'dark');
+  for (const k of ['sound', 'voice', 'haptics']) st[k] = st[k] !== false;
+  if (st.lock && !(isObj(st.lock) && typeof st.lock.hash === 'string' && typeof st.lock.salt === 'string' && st.lock.hash && st.lock.salt)) delete st.lock;
+  out.savedAt = fin(out.savedAt, 0, 1e15, 0);
 }
 
 function memoryStorage() {
@@ -177,7 +259,11 @@ export function createStore(storage) {
     importJSON(txt) {
       const parsed = JSON.parse(txt);
       if (!isObj(parsed) || !isObj(parsed.profile)) throw new Error('Not a FORGE backup file');
-      this.replace(parsed);
+      // a backup never brings its own passcode lock: keep this device's lock (or none)
+      const next = { ...parsed, settings: { ...(isObj(parsed.settings) ? parsed.settings : {}) } };
+      delete next.settings.lock;
+      if (state.settings.lock) next.settings.lock = state.settings.lock;
+      this.replace(next);
     },
     reset() { state = defaultState(); persist(); notify(); },
   };

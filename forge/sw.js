@@ -1,6 +1,6 @@
-// FORGE service worker — precache the app shell, then stale-while-revalidate same-origin GETs.
+// FORGE service worker — precache the app shell, then network-first with offline fallback for same-origin GETs.
 // Bump VERSION whenever the precache list changes.
-const VERSION = 'forge-v3';
+const VERSION = 'forge-v4';
 const SHELL = [
   './', 'index.html', 'manifest.json', 'icon.svg',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
@@ -37,17 +37,23 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return; // Open Food Facts etc. go straight to network
   if (url.pathname.includes('/api/')) return; // never cache API traffic (backups, photo estimates)
 
+  // Network-first: always run the newest code when online (no mixing old and new modules between releases);
+  // fall back to the precached copy offline.
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
     const cached = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
-    const network = fetch(req).then((res) => {
+    const network = fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok && res.type === 'basic') cache.put(req, res.clone());
       return res;
-    }).catch(() => null);
-    if (cached) { e.waitUntil(network); return cached; }
-    const res = await network;
-    if (res) return res;
-    if (req.mode === 'navigate') return (await cache.match('index.html')) || Response.error();
-    return Response.error();
+    });
+    try {
+      // weak gym wifi: if a cached copy exists, don't wait more than 3.5 s for the network
+      if (!cached) return await network;
+      return await Promise.race([network, new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 3500))]);
+    } catch {
+      if (cached) { e.waitUntil(network.catch(() => {})); return cached; }
+      if (req.mode === 'navigate') return (await cache.match('index.html')) || Response.error();
+      return Response.error();
+    }
   })());
 });

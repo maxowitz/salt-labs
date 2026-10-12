@@ -1,7 +1,7 @@
 // FORGE — History (#/history, #/history/<sessionId>)
 import { store, addDays, todayISO } from '../store.js';
 import { h, icon, toast, sheet, confirmDialog, fmtBell, bellLb, fmtWeight, fmtDist, fmtDur, fmtDate, fmtPace, navigate, field, emptyState, clear, num } from '../ui.js';
-import { typeBadge, typeMeta, safeEx, safeGetWorkout, rpePicker, backBar } from './session.js';
+import { typeBadge, typeMeta, safeEx, safeGetWorkout, rpePicker, backBar, once, arr, isoOk } from './session.js';
 import { exerciseSheet } from './library.js';
 
 const FILTERS = [
@@ -172,11 +172,11 @@ function editSheet(x) {
       field('Notes', notes),
       h('button', {
         class: 'btn primary block xl', on: {
-          click: () => {
+          click: once(() => {
             store.update((d) => { const y = d.sessions.find((z) => z.id === x.id); if (y) { y.rpe = rpe; y.notes = notes.value.trim(); } });
             close();
             toast('Saved ✓', { kind: 'go' });
-          },
+          }),
         },
       }, 'Save')),
   });

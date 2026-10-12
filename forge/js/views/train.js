@@ -6,7 +6,7 @@ import {
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { weekSummary } from '../engine/coach.js';
 import {
-  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker, startWorkout, wouldScale,
+  typeBadge, typeMeta, phaseLabel, phasePill, blockSummary, safeGetWorkout, saveSession, rpePicker, once, startWorkout, wouldScale,
 } from './session.js';
 
 function sortedDays(week) { return [...(week?.days || [])].sort((a, b) => String(a.date).localeCompare(String(b.date))); }
@@ -314,11 +314,11 @@ export function logCardioSheet(preset = {}) {
       field('Notes', notes),
       h('button', {
         class: 'btn primary block xl', on: {
-          click: () => {
+          click: once(() => {
             const distanceM = Math.round((+dist.value || 0) * (units === 'metric' ? 1000 : M_PER_MI));
             const timeSec = parseDur(time.value);
-            if (!(distanceM > 0) && !(timeSec > 0)) { toast('Add a distance or a time', { kind: 'danger' }); dist.focus(); return; }
-            if (time.value && !(timeSec > 0)) { toast('Time looks off — use mm:ss', { kind: 'danger' }); time.focus(); return; }
+            if (!(distanceM > 0) && !(timeSec > 0)) { toast('Add a distance or a time', { kind: 'danger' }); dist.focus(); return false; }
+            if (time.value && !(timeSec > 0)) { toast('Time looks off — use mm:ss', { kind: 'danger' }); time.focus(); return false; }
             const avgHr = +hr.value > 0 ? Math.round(+hr.value) : null;
             const label = MODES.find((m) => m[0] === mode)[1];
             const linked = linkCb?.checked ? linkCb.dataset : null;
@@ -333,7 +333,7 @@ export function logCardioSheet(preset = {}) {
             });
             close();
             toast(sess.prs?.length ? `PR · ${sess.prs[0]}` : `${label} logged ✓`, { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
-          },
+          }),
         },
       }, icon('check'), 'Save')),
   });
@@ -385,14 +385,14 @@ export function logPastSheet() {
       field('Notes', notes),
       h('button', {
         class: 'btn primary block xl', on: {
-          click: () => {
+          click: once(() => {
             const v = sel.value;
             let wid = null, w = null;
             if (v.startsWith('p:')) wid = v.split(':')[1];
             else if (v.startsWith('t:')) wid = v.slice(2);
             if (wid) w = safeGetWorkout(plan, wid);
             const t = w ? w.title : title.value.trim();
-            if (!t) { toast('Give it a title', { kind: 'danger' }); title.focus(); return; }
+            if (!t) { toast('Give it a title', { kind: 'danger' }); title.focus(); return false; }
             const d = date.value || today;
             const sess = saveSession({
               id: uid('s'), date: d, workoutId: w ? w.id : null, title: t, type: w ? (w.type || 'strength') : freeType,
@@ -401,7 +401,7 @@ export function logPastSheet() {
             });
             close();
             toast('Workout logged ✓', { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
-          },
+          }),
         },
       }, icon('check'), 'Save workout')),
   });

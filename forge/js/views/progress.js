@@ -245,13 +245,12 @@ function hyroxSection(s, today) {
 function adherenceSection(s, today, repaint) {
   const days = Array.from({ length: adhDays }, (_, i) => addDays(today, -i));
   let logged = 0, kcal = 0, prot = 0, tk = 0, tp = 0, inRange = 0;
-  const trainingDates = new Set(s.sessions.map((x) => x.date));
   for (const d of days) {
     const list = s.foodLog[d];
     if (!list?.length) continue;
     logged++;
     const t = sel.totalsFor(s, d);
-    const dt = safe(() => nutrition.dayTargets(s.targets, trainingDates.has(d)), null) || s.targets;
+    const dt = safe(() => nutrition.dayTargetsFor(s, d), null) || s.targets;
     kcal += t.kcal; prot += t.p; tk += dt.kcal; tp += dt.protein;
     if (Math.abs(t.kcal - dt.kcal) <= dt.kcal * 0.1) inRange++;
   }

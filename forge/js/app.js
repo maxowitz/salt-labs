@@ -1,6 +1,6 @@
 // FORGE boot + hash router. Views live in js/views/*.js and export render(root, params) → cleanup?
 import { store } from './store.js';
-import { h, clear, toast } from './ui.js';
+import { h, clear, toast, closeAllSheets } from './ui.js';
 
 // route segment → [module, tab]
 const ROUTES = {
@@ -34,7 +34,8 @@ function applyTheme(theme) {
 function parse() {
   const raw = (location.hash || '').replace(/^#\/?/, '');
   const [path, query = ''] = raw.split('?');
-  const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  const dec = (x) => { try { return decodeURIComponent(x); } catch { return x; } };
+  const parts = path.split('/').filter(Boolean).map(dec);
   return { name: parts[0] || 'today', args: parts.slice(1), query: Object.fromEntries(new URLSearchParams(query)) };
 }
 
@@ -43,8 +44,11 @@ async function route() {
   const s = store.get();
   let { name, args, query } = parse();
   if (!s.profile.onboarded && name !== 'onboarding') { location.replace('#/onboarding'); return; }
+  if (s.profile.onboarded && name === 'onboarding') { location.replace('#/today'); return; }
+  closeAllSheets();
   if (!ROUTES[name]) name = 'today';
-  const [mod, tab] = ROUTES[name];
+  const [mod, routeTab] = ROUTES[name];
+  const tab = name === 'history' && query.from === 'train' ? 'train' : routeTab;
 
   try { cleanup?.(); } catch (e) { console.error(e); }
   cleanup = null;
@@ -74,8 +78,16 @@ async function route() {
     cleanup = (await view.render(root, { args, query, name })) || null;
   } catch (e) {
     console.error(e);
-    clear(root).append(h('div', { class: 'fatal' }, h('h2', null, 'Something went wrong'), h('p', { class: 'muted mt' }, String(e.message || e)),
-      h('button', { class: 'btn primary mt', on: { click: () => (location.hash = '#/today') } }, 'Go to Today')));
+    // Escape hatches: the user can always get their data out, even if a screen can't render it.
+    const exportData = () => {
+      const a = h('a', { href: URL.createObjectURL(new Blob([store.exportJSON()], { type: 'application/json' })), download: `forge-backup-${new Date().toISOString().slice(0, 10)}.json` });
+      document.body.append(a); a.click(); a.remove();
+    };
+    clear(root).append(h('div', { class: 'fatal stack' }, h('h2', null, 'Something went wrong'), h('p', { class: 'muted' }, String(e.message || e)),
+      h('p', { class: 'muted small' }, 'Your data is safe. You can download a backup, then go back to Today.'),
+      h('div', { class: 'row gap' },
+        h('button', { class: 'btn ghost', on: { click: exportData } }, 'Download backup'),
+        h('button', { class: 'btn primary', on: { click: () => (location.hash = mod === 'today' ? '#/me' : '#/today') } }, mod === 'today' ? 'Open Me' : 'Go to Today'))));
   }
   if (!query.keepScroll) window.scrollTo(0, 0);
 }

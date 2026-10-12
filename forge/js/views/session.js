@@ -5,6 +5,10 @@ import {
 } from '../ui.js';
 import { getWorkout, PHASES } from '../engine/program.js';
 import { scaleWorkout, suggestWeight, liveItemAdvice, tooHeavy, detectPRs } from '../engine/coach.js';
+
+/** Defensive array read: non-arrays → [], null entries dropped. */
+export const arr = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
+export const isoOk = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 import { getExercise } from '../data/exercises.js';
 import { exerciseSheet } from './library.js';
 
@@ -175,6 +179,20 @@ export function findPlanned(plan, workoutId) {
   return null;
 }
 
+/**
+ * Sessions that count as completing a workout. Plan workout ids are positional (w{n}-d{d}) and get reused when the
+ * plan is regenerated, so for plan workouts a session only counts if it was logged on the plan day's date or against
+ * this exact plan generation (session.planGeneratedAt === plan.generatedAt). Template ids (t-*) match by id alone.
+ */
+export function sessionsForWorkout(st, workoutId, date) {
+  if (!workoutId) return [];
+  const plan = st.plan;
+  const positional = !String(workoutId).startsWith('t-') && !!(plan?.workouts?.[workoutId] || findPlanned(plan, workoutId));
+  if (positional && !date) date = findPlanned(plan, workoutId)?.day.date;
+  return arr(st.sessions).filter((x) => x.workoutId === workoutId &&
+    (!positional || x.date === date || (x.planGeneratedAt && plan?.generatedAt && x.planGeneratedAt === plan.generatedAt)));
+}
+
 export const planOrEmpty = (s) => s.plan || { weeks: [], workouts: {} };
 export function safeGetWorkout(plan, id) {
   try { return getWorkout(plan || { weeks: [], workouts: {} }, id) || null; } catch (e) { console.warn(e); return null; }
@@ -187,11 +205,24 @@ export function saveSession(sess) {
   try { prs = detectPRs(sess, s.sessions) || []; } catch (e) { console.warn('detectPRs failed', e); }
   sess.prs = prs;
   if (sess.readiness == null) sess.readiness = s.readiness?.[sess.date]?.score ?? null;
+  if (sess.workoutId && s.plan?.generatedAt && !String(sess.workoutId).startsWith('t-')) sess.planGeneratedAt = s.plan.generatedAt;
   store.update((d) => {
     d.sessions.push(sess);
     d.sessions.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   });
   return sess;
+}
+
+/** Click handler that disables its button on first tap (no double-submit). Return false from fn to re-enable. */
+export function once(fn) {
+  return (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    let ok;
+    try { ok = fn(ev); } catch (e) { btn.disabled = false; throw e; }
+    if (ok === false) btn.disabled = false;
+  };
 }
 
 export function rpePicker(value, onChange, label = 'Session RPE') {
@@ -231,7 +262,7 @@ export function markDoneSheet(workout, defaultDate) {
       field('Notes', notes),
       h('button', {
         class: 'btn primary block xl', on: {
-          click: () => {
+          click: once(() => {
             const m = Math.max(1, Math.min(600, +mins.value || workout.estMin || 30));
             const d = date.value || today;
             const sess = saveSession({
@@ -241,7 +272,7 @@ export function markDoneSheet(workout, defaultDate) {
             });
             close();
             toast(sess.prs?.length ? `Logged · ${sess.prs.length} PR!` : 'Marked as done ✓', { kind: 'go', action: { label: 'View', fn: () => navigate('#/history/' + sess.id) } });
-          },
+          }),
         },
       }, icon('check'), 'Save as done')),
   });
@@ -286,7 +317,7 @@ export function render(root, { args }) {
     const planned = findPlanned(s.plan, id);
     const weekNo = planned ? planned.weekIndex + 1 : null;
     const phase = workout.phase || planned?.week?.phase;
-    const done = s.sessions.filter((x) => x.workoutId === id);
+    const done = sessionsForWorkout(s, id, planned?.day.date);
     const readinessScore = s.readiness?.[today]?.score;
     if (viewModeFor !== id) { viewMode = null; viewModeFor = id; }
 
@@ -406,7 +437,7 @@ function swapSheet(workoutId) {
       h('div', { class: 'card flush' }, h('div', { class: 'list' }, days.map((d) => {
         const w = d.workoutId ? safeGetWorkout(s.plan, d.workoutId) : null;
         const isFrom = d.date === from;
-        const logged = s.sessions.some((x) => x.date === d.date || (d.workoutId && x.workoutId === d.workoutId));
+        const logged = arr(s.sessions).some((x) => x.date === d.date) || sessionsForWorkout(s, d.workoutId, d.date).length > 0;
         return h('button', {
           class: 'li', disabled: isFrom, 'aria-current': isFrom ? 'true' : null,
           on: {

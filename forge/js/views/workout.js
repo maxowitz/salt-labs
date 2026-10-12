@@ -85,7 +85,7 @@ function freeWorkout() {
   return { id: 'free', title: 'Free session', type: 'strength', estMin: null, summary: 'Add exercises as you go and log sets or cardio.', equipment: [], blocks: [] };
 }
 
-/** kg × reps (× 2 for double bells, × 2 when reps are per side). */
+/** Fallback only — coach.sessionVolumeKg is canonical. kg × reps (× 2 double bells, × 2 per side). */
 function setVolume(st) {
   if (!(st.kg > 0) || !(st.reps > 0)) return 0;
   return st.kg * st.reps * (st.double ? 2 : 1) * (st.perSide ? 2 : 1);
@@ -109,9 +109,10 @@ export async function render(root, { args = [], query = {} } = {}) {
   const s = store.get();
   const aw = s.activeWorkout;
   if (aw && aw.workoutId === id) {
-    const w = aw.workout || (id === 'free' ? freeWorkout() : getPlanned(id));
-    if (!w) { notFound(root, id); return cleanup; }
-    player(ctx, structuredClone({ ...aw, workout: w }));
+    const clean = sanitizeActive(aw, id);
+    if (!clean) { broken(ctx, aw); return cleanup; }
+    try { player(ctx, clean); }
+    catch (e) { console.error('FORGE player: could not restore workout', e); cleanup(); ctx.dead = false; broken(ctx, aw); }
     return cleanup;
   }
   if (aw && aw.workoutId) {
@@ -132,6 +133,54 @@ export async function render(root, { args = [], query = {} } = {}) {
   return cleanup;
 }
 
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const finiteOr = (v, d) => (Number.isFinite(+v) && v !== null && v !== '' ? +v : d);
+
+/** Validate a restored activeWorkout (it may come from an old schema, an import or a hand edit).
+ *  Returns a clean deep copy, or null when it is unusable. */
+function sanitizeActive(raw, id) {
+  if (!isObj(raw)) return null;
+  let w = isObj(raw.workout) && Array.isArray(raw.workout.blocks) ? raw.workout : null;
+  if (!w) w = id === 'free' ? freeWorkout() : getPlanned(id);
+  if (!isObj(w)) return null;
+  let aw;
+  try { aw = structuredClone({ ...raw, workout: w }); } catch { return null; }
+  const W = aw.workout;
+  W.title = typeof W.title === 'string' ? W.title : 'Workout';
+  W.blocks = (Array.isArray(W.blocks) ? W.blocks : []).filter(isObj).map((b) => ({
+    ...b, kind: typeof b.kind === 'string' ? b.kind : 'strength',
+    items: (Array.isArray(b.items) ? b.items : []).filter((it) => isObj(it) && typeof it.exId === 'string'),
+  }));
+  const n = W.blocks.length;
+  aw.blockIndex = Math.max(0, Math.min(Math.max(0, n - 1), Math.trunc(finiteOr(aw.blockIndex, 0))));
+  aw.stepIndex = Math.max(0, Math.trunc(finiteOr(aw.stepIndex, 0)));
+  aw.log = (Array.isArray(aw.log) ? aw.log : []).filter((l) => isObj(l) && Number.isInteger(l.block) && l.block >= 0 && l.block < n);
+  aw.blocks = isObj(aw.blocks) ? aw.blocks : {};
+  for (const k of Object.keys(aw.blocks)) if (!isObj(aw.blocks[k]) || !(+k >= 0 && +k < n)) delete aw.blocks[k];
+  aw.elapsed = Math.max(0, finiteOr(aw.elapsed, 0));
+  aw.runningSince = Number.isFinite(+aw.runningSince) && aw.runningSince > 0 ? +aw.runningSince : null;
+  aw.paused = !!aw.paused || aw.runningSince == null;
+  if (aw.paused) aw.runningSince = null;
+  aw.rest = isObj(aw.rest) && isObj(aw.rest.snap) && Number.isFinite(+aw.rest.sec) ? aw.rest : null;
+  if (typeof aw.startedAt !== 'string' || Number.isNaN(Date.parse(aw.startedAt))) aw.startedAt = new Date().toISOString();
+  return aw;
+}
+
+function broken(ctx, aw) {
+  const title = isObj(aw?.workout) && typeof aw.workout.title === 'string' ? aw.workout.title : 'the workout in progress';
+  put(clear(ctx.root), h('div', { class: 'wo-empty' },
+    icon('info', 36),
+    h('h2', null, 'This workout can’t be resumed'),
+    h('p', { class: 'muted' }, `The saved progress for ${title} is damaged, so FORGE can’t restore it.`),
+    h('div', { class: 'stack wo-conflict-actions' },
+      h('button', {
+        class: 'btn primary xl block', on: {
+          click: () => { store.update((d) => { d.activeWorkout = null; }); toast('Broken workout discarded'); navigate('#/today'); },
+        },
+      }, 'Discard broken workout'),
+      h('a', { class: 'btn ghost block', href: '#/today' }, 'Back to Today'))));
+}
+
 function notFound(root, id) {
   put(clear(root), h('div', { class: 'wo-empty' },
     icon('info', 36),
@@ -143,12 +192,12 @@ function notFound(root, id) {
 }
 
 function conflict(ctx, aw, id) {
-  const title = aw.workout?.title || getPlanned(aw.workoutId)?.title || 'Unfinished workout';
+  const title = (isObj(aw.workout) && typeof aw.workout.title === 'string' && aw.workout.title) || getPlanned(aw.workoutId)?.title || 'Unfinished workout';
   const mins = Math.round(elapsedOf(aw) / 60);
   put(clear(ctx.root), h('div', { class: 'wo-empty' },
     icon('timer', 36),
     h('h2', null, 'A workout is already in progress'),
-    h('p', { class: 'muted' }, `“${title}” — ${mins} min in, ${(aw.log || []).filter((l) => l.type === 'set' || l.type === 'cardio').length} entries logged.`),
+    h('p', { class: 'muted' }, `“${title}” — ${mins} min in, ${(Array.isArray(aw.log) ? aw.log : []).filter((l) => l.type === 'set' || l.type === 'cardio').length} entries logged.`),
     h('div', { class: 'stack wo-conflict-actions' },
       h('button', { class: 'btn primary xl block', on: { click: () => navigate('#/workout/' + encodeURIComponent(aw.workoutId)) } }, icon('play'), 'Resume it'),
       h('button', {
@@ -186,6 +235,8 @@ function scaledVersion(original) {
 }
 
 function startWorkout(ctx, original, scaled, score) {
+  if (ctx.started) return; // double-tap on Start
+  ctx.started = true;
   unlockAudio();
   const isFree = original.id === 'free' || !(original.blocks || []).length;
   const w = scaled ? scaled.workout : original;
@@ -248,6 +299,7 @@ function preStart(ctx, original) {
       click: () => startWorkout(ctx, original, useScaled ? scaled : null, score),
     },
   }, icon('play'), isFree ? 'Start free session' : 'Start workout');
+  start.addEventListener('click', () => { start.disabled = true; }, { capture: true });
 
   put(root, h('div', { class: 'wo-pre' },
     h('div', { class: 'wo-pre-top' },
@@ -319,6 +371,15 @@ function player(ctx, aw, { fresh = false } = {}) {
     clearInterval(uiTick);
     document.body.classList.remove('wo-running');
   });
+
+  // ---- sheets opened by the player are closed when the route changes (e.g. browser Back)
+  const openSheets = new Set();
+  const psheet = (opts) => {
+    const sh = sheet({ ...opts, onClose: () => { openSheets.delete(sh); opts.onClose?.(); } });
+    openSheets.add(sh);
+    return sh;
+  };
+  ctx.disposers.push(() => { for (const sh of [...openSheets]) { try { sh.close(); } catch {} } });
 
   // ---- tickers (UI refresh), cleared on block re-render
   let tickers = new Set();
@@ -410,8 +471,10 @@ function player(ctx, aw, { fresh = false } = {}) {
   }
 
   // ---- navigation between blocks
+  const mountedAt = Date.now();
   function goBlock(i) {
     if (i < 0 || i >= W.blocks.length) return;
+    if (Date.now() - mountedAt < 500) return; // 2nd tap of a double-tap on Start would land on Next block
     if (restTimer && aw.rest?.block !== i) endRest();
     aw.blockIndex = i; aw.stepIndex = 0;
     save();
@@ -578,7 +641,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       else if (dist != null) edit = stepper(dist, { min: 5, max: 5000, step: 5, label: 'metres', fmt: (v) => `${v} m`, onChange: (v) => { d.distanceM = v; save(); } });
     }
     const val = h('div', { class: 'wo-set-val' },
-      h('span', { class: 'wo-set-kg num' }, kg ? fmtBell(kg) : 'BW'),
+      h('span', { class: 'wo-set-kg num' }, kg ? fmtBell(kg) : d.tooHeavy && !done ? '—' : 'BW'),
       h('span', { class: 'wo-x' }, '×'),
       edit || h('span', { class: 'wo-set-reps num' }, reps != null ? String(reps) : amount, reps != null && it.perSide ? h('small', { class: 'wo-side' }, ' / side') : null));
     const check = h('button', {
@@ -587,6 +650,7 @@ function player(ctx, aw, { fresh = false } = {}) {
       on: {
         click: () => {
           if (done) {
+            if (Date.now() - (+lg.at || 0) < 600) return; // second tap of a double-tap, not an undo
             aw.log = aw.log.filter((l) => l !== lg && !(l.type === 'set' && l.block === bi && l.item === ii && l.set === si));
             toast('Set removed');
           } else {
@@ -929,11 +993,28 @@ function player(ctx, aw, { fresh = false } = {}) {
         });
         const timeIn = h('input', { type: 'text', inputmode: 'numeric', placeholder: 'mm:ss', value: is.timeSec ? fmtDur(is.timeSec) : '', 'aria-label': 'Time (mm:ss)',
           on: { input: () => { is.timeSec = parseDur(timeIn.value); is.timeManual = !!timeIn.value; save(); updPace(); } } });
-        const distIn = h('input', { type: 'number', inputmode: 'decimal', step: meters ? '1' : '0.01', min: '0', value: is.dist === '' ? '' : String(+(+is.dist).toFixed(meters ? 0 : 2)), 'aria-label': `Distance (${distUnit})`,
+        const distIn = h('input', { type: 'number', inputmode: 'decimal', step: meters ? '1' : '0.01', min: '0', max: meters ? '300000' : u === 'metric' ? '300' : '186', value: is.dist === '' ? '' : String(+(+is.dist).toFixed(meters ? 0 : 2)), 'aria-label': `Distance (${distUnit})`,
           on: { input: () => { is.dist = distIn.value; save(); updPace(); } } });
-        const hrIn = h('input', { type: 'number', inputmode: 'numeric', min: '40', max: '230', placeholder: 'bpm', value: is.hr || '', 'aria-label': 'Average heart rate',
+        const hrIn = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '240', placeholder: 'bpm', value: is.hr || '', 'aria-label': 'Average heart rate',
           on: { input: () => { is.hr = hrIn.value; save(); } } });
         const paceEl = h('div', { class: 'wo-pace num' });
+        const errEl = h('div', { class: 'wo-field-err small danger-text', role: 'alert' });
+        // Sanity bounds: distance <= 300 km, time <= 24 h, HR 30-240 bpm.
+        function validate() {
+          const m = toM(is.dist), sec = is.timeSec, hr = is.hr === '' || is.hr == null ? null : +is.hr;
+          const msgs = [];
+          if (is.dist !== '' && is.dist != null && !(Number.isFinite(+is.dist) && +is.dist >= 0)) msgs.push('Distance must be a positive number.');
+          else if (m > 300000) msgs.push(`Distance looks too long (max ${meters ? '300000 m' : u === 'metric' ? '300 km' : '186 mi'}).`);
+          if (timeIn.value && sec == null) msgs.push('Time should look like mm:ss or h:mm:ss.');
+          else if (sec > 86400) msgs.push('Time must be under 24 h.');
+          if (hr != null && !(hr >= 30 && hr <= 240)) msgs.push('Heart rate should be 30–240 bpm.');
+          errEl.textContent = msgs.join(' ');
+          distIn.toggleAttribute('aria-invalid', /Distance/.test(errEl.textContent));
+          timeIn.toggleAttribute('aria-invalid', /Time/.test(errEl.textContent));
+          hrIn.toggleAttribute('aria-invalid', /Heart/.test(errEl.textContent));
+          return !msgs.length;
+        }
+        for (const el of [distIn, timeIn, hrIn]) el.addEventListener('change', validate);
         function updPace() {
           const m = toM(is.dist), sec = is.timeSec;
           paceEl.textContent = m > 0 && sec > 0 && cardio ? `Pace ${fmtPace(sec / (m / 1000), u)}` : m > 0 && sec > 0 ? `${num(m / sec, 2)} m/s` : '';
@@ -952,9 +1033,11 @@ function player(ctx, aw, { fresh = false } = {}) {
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Time'), timeIn),
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, cardio ? 'Avg HR' : 'Avg HR (opt.)'), hrIn)),
           paceEl,
+          errEl,
           h('button', {
             class: 'btn primary xl block', on: {
               click: () => {
+                if (!validate()) { haptic(); return; }
                 if (t?.started && !t.state.done) { t.skip(); }
                 const m = toM(is.dist), sec = is.timeSec || (t?.state.totalElapsed ? Math.round(t.state.totalElapsed) : null);
                 if (!m && !sec) { toast('Enter a time or distance first'); return; }
@@ -1043,7 +1126,7 @@ function player(ctx, aw, { fresh = false } = {}) {
   function exerciseSheet(exId) {
     const e = ex(exId);
     const lst = (title, arr) => (arr && arr.length ? h('div', { class: 'stack sm' }, h('h4', null, title), h('ul', { class: 'wo-bullets' }, arr.map((x) => h('li', null, x)))) : null);
-    sheet({
+    psheet({
       title: e.name,
       content: h('div', { class: 'stack' },
         h('div', { class: 'chips' }, [CAT_LABEL[e.category] || e.category, e.pattern, e.double ? 'double bell' : null, e.unilateral ? 'unilateral' : null].filter(Boolean).map((x) => h('span', { class: 'pill' }, x))),
@@ -1057,7 +1140,7 @@ function player(ctx, aw, { fresh = false } = {}) {
   }
 
   function blocksSheet() {
-    const s = sheet({
+    const s = psheet({
       title: 'Blocks',
       content: ({ close }) => h('div', { class: 'stack' },
         h('div', { class: 'card flush' }, h('div', { class: 'list' }, W.blocks.map((b, i) => h('button', {
@@ -1076,7 +1159,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     let q = '', cat = 'all';
     const cats = ['all', ...new Set(all.map((e) => e.category).filter(Boolean))];
     const listEl = h('div', { class: 'list' });
-    const s = sheet({
+    const s = psheet({
       title: 'Add exercise', full: true,
       content: () => h('div', { class: 'stack' },
         h('label', { class: 'search' }, icon('search'), h('input', { type: 'search', placeholder: 'Search exercises', 'aria-label': 'Search exercises', on: { input: (e) => { q = e.target.value.toLowerCase(); draw(); } } })),
@@ -1109,7 +1192,7 @@ function player(ctx, aw, { fresh = false } = {}) {
 
   function endSheet() {
     const entries = aw.log.filter((l) => l.type === 'set' || l.type === 'cardio').length;
-    sheet({
+    psheet({
       title: 'End workout?',
       content: ({ close }) => h('div', { class: 'stack' },
         h('p', { class: 'muted' }, `${fmtDur(elapsed())} elapsed · ${entries} ${entries === 1 ? 'entry' : 'entries'} logged.`),
@@ -1156,7 +1239,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     let type = W.type;
     if (isFree) type = cardio.length && sets.length ? 'hybrid' : cardio.length ? 'run' : 'strength';
     return {
-      id: uid('s-'), date: todayISO(), workoutId: aw.workoutId === 'free' ? null : aw.workoutId, title: W.title || 'Workout', type: type || 'strength',
+      id: uid('s-'), date: todayISO(aw.startedAt ? new Date(aw.startedAt) : new Date()), workoutId: aw.workoutId === 'free' ? null : aw.workoutId, title: W.title || 'Workout', type: type || 'strength',
       startedAt: aw.startedAt, durationSec: Math.round(elapsed()), sets, cardio, rpe: 7, notes: '',
       readiness: aw.readiness ?? null, prs: [], ...(results.length ? { results } : {}), ...(aw.scaled ? { scaled: true } : {}),
     };
@@ -1170,7 +1253,7 @@ function player(ctx, aw, { fresh = false } = {}) {
     const prior = store.get().sessions || [];
     sess.prs = safe(() => coach.detectPRs?.(sess, prior), []) || [];
     if (aw.summary) { sess.rpe = aw.summary.rpe ?? 7; sess.notes = aw.summary.notes || ''; }
-    const vol = sess.sets.reduce((a, x) => a + setVolume(x), 0);
+    const vol = safe(() => coach.sessionVolumeKg?.(sess), null) ?? Math.round(sess.sets.reduce((a, x) => a + setVolume(x), 0));
     const cDist = sess.cardio.reduce((a, c) => a + (+c.distanceM || 0), 0);
     const cTime = sess.cardio.reduce((a, c) => a + (+c.timeSec || 0), 0);
     const u = units();

@@ -325,3 +325,6 @@ body.locked #app, body.locked .tabbar, body.locked #toast-root { visibility: hid
 .wk-dot .ico { width: 15px; height: 15px; }
 .stat .k .swatch { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
 .btn.primary:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.rings-row { grid-template-columns: repeat(5, 1fr); }
+.rings-row .ring-v { font-size: 15px; }
+.rings-row .ring-k { font-size: 10.5px; }

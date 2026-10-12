@@ -105,11 +105,14 @@ export function saveWeight(kg, date = todayISO()) {
     st.bodyweight = st.bodyweight.filter((b) => b.date !== date);
     st.bodyweight.push({ date, kg });
     st.bodyweight.sort((a, b) => a.date.localeCompare(b.date));
-    const latest = st.bodyweight.at(-1);
-    if (latest) st.profile.weightKg = latest.kg;
-    if (st.targets.auto) {
-      const t = safe(() => nutrition.computeTargets({ ...st.profile, weightKg: latest?.kg ?? kg }, { plan: st.plan }));
-      if (t) st.targets = { ...st.targets, ...t, auto: true };
+    // Targets follow the smoothed trend, and only when it has moved > 1 kg (no daily jitter).
+    const trend = safe(() => nutrition.weightTrend(st.bodyweight).at(-1)?.kg, null) ?? kg;
+    if (!(Math.abs(trend - (+st.profile.weightKg || 0)) <= 1)) {
+      st.profile.weightKg = Math.round(trend * 10) / 10;
+      if (st.targets.auto) {
+        const t = safe(() => nutrition.computeTargets(st.profile, { plan: st.plan }));
+        if (t) st.targets = { ...st.targets, ...t, auto: true };
+      }
     }
   });
 }
@@ -331,7 +334,7 @@ function ringsRow(s, today) {
   const units = s.profile.units;
   const wfd = s.plan ? safe(() => program.workoutForDate(s.plan, today), null) : null;
   const isTraining = !!wfd?.workout;
-  const t = safe(() => (nutrition.dayTargetsFor ? nutrition.dayTargetsFor(s, today) : nutrition.dayTargets(s.targets, isTraining)), null) || s.targets;
+  const t = safe(() => nutrition.dayTargetsFor(s, today), null) || s.targets;
   const tot = sel.totalsFor(s, today);
   const water = sel.waterFor(s, today);
   const done = sel.sessionsOn(s, today).length > 0;
@@ -341,13 +344,14 @@ function ringsRow(s, today) {
       main: done ? 'Done' : isTraining ? (s.activeWorkout ? 'Live' : 'To do') : 'Rest', sub: done ? 'session ✓' : isTraining ? '1 session' : 'recover', href: '#/train' },
     { k: 'Calories', icon: 'flame', color: 'var(--accent)', value: tot.kcal, max: t.kcal, main: num(tot.kcal), sub: `/ ${num(t.kcal)}`, href: '#/fuel' },
     { k: 'Protein', icon: 'zap', color: 'var(--protein)', value: tot.p, max: t.protein, main: num(tot.p), sub: `/ ${num(t.protein)} g`, href: '#/fuel' },
+    { k: 'Carbs', icon: 'fuel', color: 'var(--carbs)', value: tot.c, max: t.carbs, main: num(tot.c), sub: `/ ${num(t.carbs)} g`, href: '#/fuel' },
     { k: 'Water', icon: 'drop', color: 'var(--water)', value: water, max: t.waterMl, main: units === 'metric' ? num(water / 1000, 1) : num(water / 29.5735, 0),
       sub: units === 'metric' ? `/ ${num(t.waterMl / 1000, 1)} L` : `/ ${num(t.waterMl / 29.5735, 0)} oz`, href: '#/fuel' },
   ];
   return h('section', { class: 'card rings-card', 'aria-label': 'Daily rings' },
     h('div', { class: 'rings-row' },
       items.map((it) => h('a', { class: 'ring-item', href: it.href, 'aria-label': `${it.k}: ${it.main} ${it.sub}` },
-        h('div', { class: 'ring-ico' }, ring({ value: it.value, max: it.max || 1, size: 66, stroke: 7, color: it.color }), h('span', { class: 'ring-glyph', style: { color: it.color } }, icon(it.icon, 20))),
+        h('div', { class: 'ring-ico' }, ring({ value: it.value, max: it.max || 1, size: 56, stroke: 6, color: it.color }), h('span', { class: 'ring-glyph', style: { color: it.color } }, icon(it.icon, 17))),
         h('div', { class: 'ring-v num' }, it.main),
         h('div', { class: 'ring-k' }, it.sub ? it.sub : it.k),
         h('div', { class: 'ring-name' }, it.k)))));

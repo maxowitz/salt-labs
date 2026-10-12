@@ -5,7 +5,7 @@ import { ring, stackBar } from '../charts.js';
 import { STATIONS, predictRace, hyroxReadiness, paces } from '../engine/hyrox.js';
 import { generatePlan, TEMPLATES } from '../engine/program.js';
 import { EXERCISES } from '../data/exercises.js';
-import { saveSession, safeEx, typeBadge } from './session.js';
+import { saveSession, safeEx, typeBadge, once, arr, isoOk } from './session.js';
 import { exerciseSheet } from './library.js';
 
 const hx = { allSplits: false, open: new Set() };
@@ -236,9 +236,9 @@ export function benchmarkSheet(presetId) {
       field('Notes', notes),
       h('button', {
         class: 'btn primary block xl', on: {
-          click: () => {
+          click: once(() => {
             const t = parseDur(time.value);
-            if (!(t > 0)) { toast('Enter a time as mm:ss', { kind: 'danger' }); time.focus(); return; }
+            if (!(t > 0)) { toast('Enter a time as mm:ss', { kind: 'danger' }); time.focus(); return false; }
             const d = date.value || today;
             let sess;
             const base = { id: uid('s'), date: d, workoutId: null, startedAt: new Date(d + 'T12:00:00').toISOString(), durationSec: t, rpe: null, notes: notes.value.trim(), readiness: null, prs: [] };
@@ -256,7 +256,7 @@ export function benchmarkSheet(presetId) {
             sess = saveSession(sess);
             close();
             toast(sess.prs?.length ? `PR · ${sess.prs[0]}` : `Logged ${fmtDur(t)} ✓`, { kind: 'go' });
-          },
+          }),
         },
       }, icon('check'), 'Save time')),
   });

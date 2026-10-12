@@ -377,6 +377,19 @@ export function trainingLoad(sessions, todayISO) {
   return { acute: Math.round(acute), chronic: Math.round(chronic), ratio: Math.round(ratio * 100) / 100, status };
 }
 
+/** Canonical kettlebell volume for one logged set: kg × reps × 2 for double bells × 2 when reps are per side. */
+export function setVolumeKg(x) {
+  if (!x || !(+x.kg > 0) || !(+x.reps > 0)) return 0;
+  const ex = getExercise(x.exId);
+  if (ex.category !== 'kb' && !x.double) return 0;
+  return +x.kg * +x.reps * ((x.double ?? ex.double) ? 2 : 1) * (x.perSide ? 2 : 1);
+}
+
+/** Canonical session kettlebell volume (kg). Every screen must use this. */
+export function sessionVolumeKg(session) {
+  return Math.round((Array.isArray(session?.sets) ? session.sets : []).reduce((a, x) => a + setVolumeKg(x), 0));
+}
+
 export function weekSummary(sessions, startISO) {
   const out = { count: 0, minutes: 0, kbVolumeKg: 0, runM: 0, cardioM: 0 };
   for (const s of Array.isArray(sessions) ? sessions : []) {
@@ -388,7 +401,7 @@ export function weekSummary(sessions, startISO) {
     for (const x of s.sets || []) {
       if (!x) continue;
       const ex = getExercise(x.exId);
-      if (ex.category === 'kb' && +x.kg > 0 && +x.reps > 0) out.kbVolumeKg += +x.kg * +x.reps * (ex.double ? 2 : 1);
+      out.kbVolumeKg += setVolumeKg(x);
       if (+x.distanceM > 0 && ['run', 'erg', 'hyrox'].includes(ex.category) && ex.pattern === 'cardio') {
         out.cardioM += +x.distanceM;
         if (ex.category === 'run') out.runM += +x.distanceM;

@@ -49,19 +49,38 @@ export function toast(msg, opts = {}) {
   toastTimer = setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, opts.ms || 2600);
 }
 
+const openSheets = new Set();
+/** Close every open sheet (the router calls this on navigation so no sheet outlives its screen). */
+export function closeAllSheets() { for (const c of [...openSheets]) c({ restoreFocus: false }); }
+
 export function sheet({ title, content, onClose, full = false }) {
   const root = document.getElementById('sheet-root') || document.body;
   const prevFocus = document.activeElement;
   let closed = false;
-  const close = () => {
+  const close = ({ restoreFocus = true } = {}) => {
     if (closed) return; closed = true;
+    openSheets.delete(close);
+    // inert immediately: no double-submits or stray taps during the close animation
+    wrap.inert = true;
+    wrap.style.pointerEvents = 'none';
     wrap.classList.remove('open');
     document.removeEventListener('keydown', onKey);
     setTimeout(() => { wrap.remove(); if (!root.children.length) document.body.classList.remove('sheet-open'); }, 260);
     onClose?.();
-    prevFocus?.focus?.();
+    if (restoreFocus) prevFocus?.focus?.();
   };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const onKey = (e) => {
+    if (wrap !== root.lastElementChild) return; // only the top-most sheet reacts
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+    if (e.key === 'Tab') { // focus trap
+      const f = [...panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!panel.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    }
+  };
   const body = h('div', { class: 'sheet-body' });
   const panel = h('div', { class: 'sheet' + (full ? ' full' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title || 'Dialog' },
     h('div', { class: 'sheet-grip', 'aria-hidden': 'true' }),
@@ -72,6 +91,7 @@ export function sheet({ title, content, onClose, full = false }) {
   const wrap = h('div', { class: 'sheet-wrap' }, h('div', { class: 'sheet-scrim', on: { click: close } }), panel);
   append(body, [typeof content === 'function' ? content({ close }) : content]);
   root.append(wrap);
+  openSheets.add(close);
   document.body.classList.add('sheet-open');
   document.addEventListener('keydown', onKey);
   requestAnimationFrame(() => {
