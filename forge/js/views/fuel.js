@@ -34,6 +34,17 @@ function groupField(label, control) {
   return h('div', { class: 'field', role: 'group', 'aria-label': label }, h('span', { class: 'field-label' }, label), control);
 }
 
+// Deferred autofocus that never steals focus from a field the user is already typing in.
+function softFocus(el, ms = 60, select = false) {
+  setTimeout(() => {
+    if (!el?.isConnected) return;
+    const a = document.activeElement;
+    if (a && a !== el && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+    el.focus({ preventScroll: true });
+    if (select) { try { el.select(); } catch {} }
+  }, ms);
+}
+
 function allFoods(s) { return [...(s.customFoods || []), ...FOODS]; }
 function foodMap(s) { const m = new Map(); for (const f of allFoods(s)) if (f?.id && !m.has(f.id)) m.set(f.id, f); return m; }
 
@@ -251,7 +262,7 @@ function saveTemplate(ctx, meal, list) {
     h('p', { class: 'small muted' }, `${list.length} item${list.length > 1 ? 's' : ''} · ${num(sumEntries(list).kcal)} kcal. Find it under the Meals tab when adding food.`),
     h('button', { type: 'submit', class: 'btn primary block' }, 'Save meal')),
   });
-  setTimeout(() => { input.focus(); input.select(); }, 60);
+  softFocus(input, 60, true);
   return sh;
 }
 
@@ -430,7 +441,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       listEl);
     show(el);
     paintList();
-    setTimeout(() => searchInput?.focus({ preventScroll: true }), 80);
+    softFocus(searchInput, 80);
   }
 
   function foodRow(food) {
@@ -575,7 +586,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
         toast(`Removed ${food.name} from My Foods`, { action: { label: 'Undo', fn: () => store.update((s2) => { s2.customFoods = [snapshot, ...(s2.customFoods || [])]; }) } });
         back();
       } } }, icon('trash', 18), 'Delete from My Foods') : null), 'Food details');
-    setTimeout(() => { amt.input.focus({ preventScroll: true }); amt.input.select?.(); }, 60);
+    softFocus(amt.input, 60, true);
   }
 
   // ---------- quick add ----------
@@ -610,7 +621,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     h('button', { type: 'submit', class: 'btn primary block xl' }, icon('zap', 18), 'Quick add'));
     upd();
     show(el, 'Quick add');
-    setTimeout(() => f.kcal.focus({ preventScroll: true }), 60);
+    softFocus(f.kcal, 60);
   }
 
   // ---------- create food ----------
@@ -655,7 +666,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
     h('button', { type: 'submit', class: 'btn primary block xl' }, icon('check', 18), 'Save food'));
     f.barcode = el.querySelector('input[aria-label="Barcode"]');
     show(el, 'Create food');
-    setTimeout(() => (pre.name ? f.grams : f.name).focus({ preventScroll: true }), 60);
+    softFocus(pre.name ? f.grams : f.name, 60);
   }
 
   // ---------- barcode ----------
@@ -747,7 +758,7 @@ function openAddSheet(ctx, initialMeal, opts = {}) {
       h('p', { class: 'xs muted' }, 'Lookups use the free Open Food Facts database. Data is community-sourced — check it against the label.'));
     show(el, 'Scan barcode');
     cleanups.add(stopCam); cleanups.add(abort); // after show(): it runs and clears the previous page's cleanups
-    if (hasDetector) startCam(); else setTimeout(() => code.focus(), 60);
+    if (hasDetector) startCam(); else softFocus(code, 60);
   }
 
   // ---------- online search ----------
@@ -1129,7 +1140,7 @@ function customWater(ctx, imperial, add) {
         h('button', { type: 'button', class: 'btn ghost grow', on: { click: () => { const v = val(); if (v) { add(-v); close(); } } } }, icon('minus', 16), 'Remove'),
         h('button', { type: 'submit', class: 'btn primary grow' }, icon('plus', 16), 'Add'))),
   });
-  setTimeout(() => input.focus(), 60);
+  softFocus(input, 60);
 }
 
 // ---------------------------------------------------------------------------------------------
