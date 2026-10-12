@@ -118,6 +118,24 @@ const recent = (sessions, todayISO, days) => (sessions || []).filter((s) => {
   return d >= 0 && d < days;
 });
 
+// Physically possible effort? Rejects non-finite/negative values, > 300 km, > 24 h, runs faster than 2:30/km
+// and row/ski 500 m splits faster than 1:10. Missing distance or time (0/undefined) is allowed.
+const MODE_OF = { 'erg-row': 'row', 'hx-row': 'row', 'erg-ski': 'ski', 'hx-ski': 'ski', 'erg-bike': 'bike' };
+export function plausibleEffort(mode, distanceM, timeSec) {
+  const d = distanceM == null || distanceM === '' ? 0 : Number(distanceM);
+  const t = timeSec == null || timeSec === '' ? 0 : Number(timeSec);
+  if (!Number.isFinite(d) || !Number.isFinite(t) || d < 0 || t < 0) return false;
+  if (d > 300000 || t > 86400) return false;
+  if (d > 0 && t > 0) {
+    const m = MODE_OF[mode] || mode;
+    if (m === 'run' && t / (d / 1000) < 150) return false;
+    if ((m === 'row' || m === 'ski') && t / (d / 500) < 70) return false;
+  }
+  return true;
+}
+export const plausibleCardio = (c) => !!c && plausibleEffort(c.mode || 'run', c.distanceM, c.timeSec);
+export const plausibleSet = (x) => !!x && plausibleEffort(getExercise(x.exId).category === 'run' ? 'run' : x.exId, x.distanceM, x.timeSec);
+
 // Benchmark-quality run efforts in a session: time-trial templates, sessions/entries flagged `benchmark: true`,
 // and manual cardio logs (no workoutId). Training reps inside intervals/circuits/sims never count.
 export const TT_IDS = ['t-1k-tt', 't-5k-tt'];
@@ -126,11 +144,11 @@ export function benchmarkRuns(s) {
   if (!s) return out;
   const whole = s.benchmark === true || TT_IDS.includes(s.workoutId);
   for (const c of s.cardio || []) {
-    if (!c || (c.mode || 'run') !== 'run' || !(+c.distanceM > 0) || !(+c.timeSec > 0)) continue;
+    if (!c || (c.mode || 'run') !== 'run' || !(+c.distanceM > 0) || !(+c.timeSec > 0) || !plausibleCardio(c)) continue;
     if (whole || c.benchmark === true || !s.workoutId) out.push({ d: +c.distanceM, t: +c.timeSec, date: s.date });
   }
   for (const x of s.sets || []) {
-    if (!x || getExercise(x.exId).category !== 'run' || !(+x.distanceM > 0) || !(+x.timeSec > 0)) continue;
+    if (!x || getExercise(x.exId).category !== 'run' || !(+x.distanceM > 0) || !(+x.timeSec > 0) || !plausibleSet(x)) continue;
     if (whole || x.benchmark === true) out.push({ d: +x.distanceM, t: +x.timeSec, date: s.date });
   }
   return out;
@@ -143,9 +161,9 @@ const best = (list) => list.reduce((a, b) => (!a || b.t < a.t ? b : a), null);
 function ergEffort(sessions, mode, distance = 1000) {
   const out = [];
   for (const s of sessions || []) {
-    for (const c of s.cardio || []) if (c && c.mode === mode && near(+c.distanceM, distance) && +c.timeSec > 0) out.push({ t: +c.timeSec, date: s.date });
+    for (const c of s.cardio || []) if (c && c.mode === mode && near(+c.distanceM, distance) && +c.timeSec > 0 && plausibleCardio(c)) out.push({ t: +c.timeSec, date: s.date });
     const ids = mode === 'ski' ? ['erg-ski', 'hx-ski'] : ['erg-row', 'hx-row'];
-    for (const x of s.sets || []) if (x && ids.includes(x.exId) && near(+x.distanceM, distance) && +x.timeSec > 0) out.push({ t: +x.timeSec, date: s.date });
+    for (const x of s.sets || []) if (x && ids.includes(x.exId) && near(+x.distanceM, distance) && +x.timeSec > 0 && plausibleSet(x)) out.push({ t: +x.timeSec, date: s.date });
   }
   return best(out);
 }
@@ -271,8 +289,8 @@ export function predictRace(state = {}, todayISO) {
 function runKm(sessions, easyPace) {
   let m = 0;
   for (const s of sessions) {
-    for (const c of s.cardio || []) if (c && (c.mode || 'run') === 'run') m += +c.distanceM || ((+c.timeSec || 0) / easyPace) * 1000;
-    for (const x of s.sets || []) if (x && getExercise(x.exId).category === 'run') m += +x.distanceM || ((+x.timeSec || 0) / easyPace) * 1000;
+    for (const c of s.cardio || []) if (c && (c.mode || 'run') === 'run' && plausibleCardio(c)) m += +c.distanceM || ((+c.timeSec || 0) / easyPace) * 1000;
+    for (const x of s.sets || []) if (x && getExercise(x.exId).category === 'run' && plausibleSet(x)) m += +x.distanceM || ((+x.timeSec || 0) / easyPace) * 1000;
   }
   return m / 1000;
 }

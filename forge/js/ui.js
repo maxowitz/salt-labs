@@ -60,9 +60,9 @@ export function sheet({ title, content, onClose, full = false }) {
   const close = ({ restoreFocus = true } = {}) => {
     if (closed) return; closed = true;
     openSheets.delete(close);
-    // inert immediately: no double-submits or stray taps during the close animation
-    wrap.inert = true;
-    wrap.style.pointerEvents = 'none';
+    // The panel goes inert immediately (no double-submits); the scrim stays in place and swallows
+    // stray taps until the sheet is removed, so a second tap never lands on the screen underneath.
+    panel.inert = true;
     wrap.classList.remove('open');
     document.removeEventListener('keydown', onKey);
     setTimeout(() => { wrap.remove(); if (!root.children.length) document.body.classList.remove('sheet-open'); }, 260);

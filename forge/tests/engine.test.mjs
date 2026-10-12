@@ -566,3 +566,26 @@ test('P1-11: race-week openers sit ~3 days out, primer the day before', () => {
     assert.equal(titleOn(3), 'Race Openers', `${days}d`);
   }
 });
+
+test('impossible efforts are ignored by PRs, predictor, readiness and summaries', async () => {
+  const { plausibleEffort } = await import('../js/engine/hyrox.js');
+  assert.equal(plausibleEffort('run', 5000, 1200), true);
+  assert.equal(plausibleEffort('run', 1609344e3, 1), false, 'distance > 300 km');
+  assert.equal(plausibleEffort('run', 1000, 120), false, 'faster than 2:30/km');
+  assert.equal(plausibleEffort('run', 10000, 90000), false, '> 24 h');
+  assert.equal(plausibleEffort('row', 1000, 130), false, 'row split < 1:10/500 m');
+  assert.equal(plausibleEffort('row', 1000, 200), true);
+  assert.equal(plausibleEffort('run', NaN, 100), false);
+  assert.equal(plausibleEffort('run', Infinity, 0), false);
+  const bogus = { id: 'b', date: '2026-10-14', workoutId: null, durationSec: 1, cardio: [{ mode: 'run', distanceM: 1609344e3, timeSec: 1 }, { mode: 'run', distanceM: 1000, timeSec: 100 }, { mode: 'row', distanceM: 1000, timeSec: 60 }, { mode: 'run', distanceM: NaN, timeSec: 300 }], sets: [{ exId: 'run-1k', distanceM: 1000, timeSec: 60, benchmark: true }] };
+  const real = { id: 'r', date: '2026-10-10', workoutId: null, durationSec: 1800, cardio: [{ mode: 'run', distanceM: 5000, timeSec: 1500 }], sets: [] };
+  assert.deepEqual(detectPRs(bogus, [real]), []);
+  const base = predictRace({ profile: PROFILE, sessions: [real] }, '2026-10-15');
+  const withBogus = predictRace({ profile: PROFILE, sessions: [real, bogus] }, '2026-10-15');
+  assert.equal(withBogus.totalSec, base.totalSec);
+  const ws = weekSummary([bogus], '2026-10-12');
+  assert.equal(ws.runM, 0); assert.equal(ws.cardioM, 0);
+  assert.equal(weekSummary([{ ...real, date: '2026-10-12', durationSec: 1e12 }], '2026-10-12').minutes, 0);
+  const hr = hyroxReadiness({ profile: PROFILE, sessions: [bogus] }, '2026-10-15');
+  assert.ok(hr.parts[0].score < 100);
+});

@@ -3,7 +3,7 @@
 
 import { addDays, daysBetween } from '../store.js';
 import { getExercise } from '../data/exercises.js';
-import { benchmarkRuns } from './hyrox.js';
+import { benchmarkRuns, plausibleCardio, plausibleSet } from './hyrox.js';
 
 const EXP = ['beginner', 'intermediate', 'advanced'];
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -290,12 +290,12 @@ const near = (d, t) => Math.abs(d - t) <= t * 0.02;
 
 function runEntries(s) {
   const out = [];
-  for (const c of s?.cardio || []) if (c && (c.mode || 'run') === 'run' && +c.distanceM > 0) out.push({ d: +c.distanceM, t: +c.timeSec || 0 });
-  for (const x of s?.sets || []) if (x && getExercise(x.exId).category === 'run' && +x.distanceM > 0) out.push({ d: +x.distanceM, t: +x.timeSec || 0 });
+  for (const c of s?.cardio || []) if (c && (c.mode || 'run') === 'run' && +c.distanceM > 0 && plausibleCardio(c)) out.push({ d: +c.distanceM, t: +c.timeSec || 0 });
+  for (const x of s?.sets || []) if (x && getExercise(x.exId).category === 'run' && +x.distanceM > 0 && plausibleSet(x)) out.push({ d: +x.distanceM, t: +x.timeSec || 0 });
   return out;
 }
 // 1 km reps inside interval/circuit work (not benchmarks).
-const kmReps = (s) => (s?.sets || []).filter((x) => x && x.exId === 'run-1k' && !x.benchmark && near(+x.distanceM, 1000) && +x.timeSec > 0).map((x) => +x.timeSec);
+const kmReps = (s) => (s?.sets || []).filter((x) => x && x.exId === 'run-1k' && !x.benchmark && near(+x.distanceM, 1000) && +x.timeSec > 0 && plausibleSet(x)).map((x) => +x.timeSec);
 const swingTotal = (s) => (s?.sets || []).reduce((a, x) => a + (x && SWINGS.has(x.exId) ? (+x.reps || 0) : 0), 0);
 
 export function detectPRs(session, priorSessions = []) {
@@ -356,7 +356,8 @@ export function detectPRs(session, priorSessions = []) {
 }
 
 // ---------- Load & summaries ----------
-const sessionLoad = (s) => ((+s.durationSec || 0) / 60) * (Number.isFinite(+s.rpe) && s.rpe != null ? +s.rpe : 6);
+const durOf = (s) => { const d = +s?.durationSec; return Number.isFinite(d) && d > 0 && d <= 86400 ? d : 0; };
+const sessionLoad = (s) => (durOf(s) / 60) * (Number.isFinite(+s.rpe) && s.rpe != null ? +s.rpe : 6);
 
 export function trainingLoad(sessions, todayISO) {
   let acute = 0, chronicSum = 0;
@@ -397,18 +398,18 @@ export function weekSummary(sessions, startISO) {
     const d = daysBetween(startISO, s.date);
     if (d < 0 || d > 6) continue;
     out.count++;
-    out.minutes += (+s.durationSec || 0) / 60;
+    out.minutes += durOf(s) / 60;
     for (const x of s.sets || []) {
       if (!x) continue;
       const ex = getExercise(x.exId);
       out.kbVolumeKg += setVolumeKg(x);
-      if (+x.distanceM > 0 && ['run', 'erg', 'hyrox'].includes(ex.category) && ex.pattern === 'cardio') {
+      if (+x.distanceM > 0 && ['run', 'erg', 'hyrox'].includes(ex.category) && ex.pattern === 'cardio' && plausibleSet(x)) {
         out.cardioM += +x.distanceM;
         if (ex.category === 'run') out.runM += +x.distanceM;
       }
     }
     for (const c of s.cardio || []) {
-      if (!c || !(+c.distanceM > 0)) continue;
+      if (!c || !(+c.distanceM > 0) || !plausibleCardio(c)) continue;
       out.cardioM += +c.distanceM;
       if ((c.mode || 'run') === 'run') out.runM += +c.distanceM;
     }
