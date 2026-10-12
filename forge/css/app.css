@@ -503,3 +503,13 @@ body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* ---------- Shared ledger helpers (Phase B) ---------- */
+/* ruled row of stats: columns separated by hairlines, no tiles */
+.stat-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 12px; }
+.stat-row > .stat { padding: 10px 8px 10px 0; border-right: 1px solid var(--line); }
+.stat-row > .stat + .stat { padding-left: 10px; }
+.stat-row > .stat:last-child { border-right: 0; }
+.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 0; margin-right: 6px; vertical-align: 0; flex: none; }
+/* a section rule already separates; a ruled region directly under it doesn't need a second line */
+.section-head + .card, .section-head + .list, .section-head + .ledger { border-top: 0; padding-top: 0; }
