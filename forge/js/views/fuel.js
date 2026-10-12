@@ -1609,7 +1609,7 @@ function adaptiveCard(s, ctx) {
     if (res.suggestion && !coolDown) {
       const sg = res.suggestion;
       const rate = t.goalRateKgWk ?? s.profile.goalRateKgWk;
-      const goalTxt = s.profile.goal === 'maintain' ? 'maintain' : rate != null ? wkFmt(rate).replace('/wk', ' per week') : s.profile.goal === 'lose' ? '−20 %' : '+10 %';
+      const goalTxt = s.profile.goal === 'maintain' ? 'maintain' : rate != null ? wkFmt(rate).replace('/wk', ' per week') : s.profile.goal === 'lose' ? 'auto cut' : '+10 %';
       children.push(h('div', { class: 'callout fu-suggest' },
         h('div', { class: 'row between top' },
           h('div', null, h('div', { class: 'eyebrow' }, 'Suggested daily target (weekly average)'),

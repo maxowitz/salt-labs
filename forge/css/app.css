@@ -486,7 +486,7 @@ body.sheet-open #toast-root { bottom: auto; top: calc(12px + var(--safe-t)); }
 .callout.go { --c: var(--go); }
 .callout.info { --c: var(--info); }
 .callout.danger { --c: var(--danger); }
-.chart { width: 100%; max-width: 560px; height: auto; overflow: visible; }
+.chart { width: 100%; max-width: 420px; height: auto; overflow: visible; } /* caps SVG text scaling (viewBox ≈ 340) at desktop widths */
 .chart text { fill: var(--muted); font-size: 10px; font-family: var(--font-mono); }
 .skeleton { background: var(--surface-2); animation: pulse 1.2s steps(2, end) infinite; border-radius: 0; }
 .fade-in { animation: fadeIn .18s var(--ease) both; }

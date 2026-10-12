@@ -34,7 +34,7 @@ export const DIVISIONS = [
 ];
 
 export const GOALS = [
-  { value: 'lose', label: 'Lose fat', desc: 'About 20 % below maintenance, with high protein to keep muscle.' },
+  { value: 'lose', label: 'Lose fat', desc: 'A gentle cut — about 0.5 % of body weight a week on 4+ training days, so training doesn’t suffer. High protein keeps the muscle.' },
   { value: 'maintain', label: 'Maintain', desc: 'Fuel performance and recomposition at maintenance.' },
   { value: 'gain', label: 'Build muscle', desc: 'About 10 % above maintenance for a lean gain.' },
 ];
