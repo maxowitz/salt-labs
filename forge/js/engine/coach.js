@@ -96,7 +96,13 @@ function baselineKg(ex, profile) {
     const near = pool.reduce((a, b) => (Math.abs(b - target) < Math.abs(a - target) ? b : a));
     if (near <= target * 1.15) return near;
   }
-  return atOrBelow(pool, target * 1.08);
+  let kg = atOrBelow(pool, target * 1.08);
+  // Presses and get-ups start no lighter than the standard first bell when the athlete owns one at or below it.
+  if (ex.pattern === 'press' || ex.id === 'kb-tgu') {
+    const sb = pool.filter((b) => b <= startBell(profile)).pop();
+    if (sb != null && kg < sb) kg = sb;
+  }
+  return kg;
 }
 
 // Canonical first bells (StrongFirst-style): always acceptable for any KB lift at this level.
@@ -148,6 +154,16 @@ const isCareful = (ex) => CAREFUL.has(ex.id) || ex.pattern === 'press';
 // Block-kind families: progress only from like-for-like work. AMRAP totals never drive progression.
 const familyOf = (kind) => (kind === 'strength' ? 'strength' : ['emom', 'circuit', 'intervals', 'station', 'cardio'].includes(kind) ? 'conditioning' : kind || null);
 
+// Was this logged set a held (deload/taper/warm-up) prescription? set.hold, else the session's planned item.
+function setHeld(x, s, plan) {
+  if (x.hold === true) return true;
+  if (x.hold === false) return false;
+  const w = plan?.workouts?.[s.workoutId];
+  if (!w) return false;
+  for (const b of w.blocks || []) for (const it of b.items || []) if (it.exId === x.exId && (!x.blockKind || x.blockKind === b.kind)) return !!it.hold;
+  return false;
+}
+
 // Target reps the athlete was asked for on a logged set: set.targetReps → set.target → that session's planned item.
 function setTarget(x, s, plan) {
   if (+x.targetReps > 0) return +x.targetReps;
@@ -163,18 +179,21 @@ function setTarget(x, s, plan) {
 // The item's block kind comes from item.blockKind (stamped by the plan) or opts.blockKind.
 // History used: sets of the same exercise in the same family (strength vs conditioning); sets with
 // set.blockKind === 'amrap' are ignored; legacy sets without blockKind count only for strength items and only if reps ≤ 30.
+// Held sets (set.hold, or the session's planned item was `hold` — deload/taper/warm-up) never reset or drive progress.
 // Returns { kg, reason, earned }:
 //  - non-KB item, no bells, item.hold, AMRAP/warm-up/cool-down item, or no matching history → planned kg (no message).
-//  - last matching session at bell B (top bell that session):
-//    · a set below its target (set.targetReps, else that session's planned reps) → B, "Repeat this bell — own all reps first".
-//    · RPE ≥ 9 → B, "Last time was a grind — repeat this bell".
-//    · EARNED when every set at B reached the TOP OF THE RANGE (max(item.reps, default top: 15 swings/snatch/high pull,
-//      8 squat/press, 10 hinge/pull/lunge; TGU = ≥ 5 singles) with ≥ item.sets sets, at RPE ≤ 8 (≤ 7 for careful lifts),
-//      AND no bell increase for this lift in the last 14 days, AND (careful lifts: TGU, windmill, overhead carry,
-//      bottoms-up, armbar, SL-RDL, snatch, presses) the previous matching session also qualified, AND the next owned
-//      bell is ≤ 30% heavier for careful lifts / ≤ 50% otherwise → next owned bell, "Earned: …".
-//    · otherwise B, with an explanatory reason when relevant ("Same bell, more reps…", "Next bell is a big jump…").
-//  - result = max(that, planned) unless a repeat verdict applies; conditioning items never exceed planned + one size.
+//  - current bell C = heaviest non-held bell logged for this lift/context in the last 28 days (else the latest non-held).
+//    The latest non-held session L is evaluated at its top bell:
+//    · a set below its target (set.targetReps, else that session's planned reps) → min(planned, L bell), "Repeat this bell…".
+//    · RPE ≥ 9 → min(planned, L bell), "Last time was a grind — repeat this bell".
+//    · EARNED when L was at C and every set reached the TOP OF THE RANGE (max(item.reps, default top: 15 swings/snatch/
+//      high pull, 8 squat/press, 10 hinge/pull/lunge; TGU = max(3, item.sets) singles; 10 × 10 power swings) with
+//      ≥ item.sets sets, at RPE ≤ 8 (≤ 7 for careful lifts), AND no bell increase for this lift in the last 14 days,
+//      AND (careful lifts: TGU, windmill, overhead carry, bottoms-up, armbar, SL-RDL, snatch, presses) the previous
+//      non-held session also qualified at C, AND the next owned bell is one standard step (≤ +4 kg) or ≤ 30% heavier
+//      (careful) / ≤ +8 kg or ≤ 50% (others) → next owned bell, "Earned: … size up to X kg and stay there ~2 weeks".
+//    · otherwise max(C, planned) with an explanatory reason when relevant.
+//  - conditioning items never exceed planned + one size.
 export function liveItemAdvice(item, profile, sessions = [], opts = {}) {
   const planned = item?.kg != null ? +item.kg : null;
   const ex = getExercise(item?.exId);
@@ -187,20 +206,20 @@ export function liveItemAdvice(item, profile, sessions = [], opts = {}) {
   const fam = familyOf(kind);
   const plan = opts.plan || null;
 
-  // Matching history, oldest → newest: [{ s, sets }]
+  // Matching, non-held history, oldest → newest: [{ s, sets }]
   const hist = [];
   for (const s of (Array.isArray(sessions) ? sessions : []).filter((q) => q && Array.isArray(q.sets)).sort(byDate)) {
     const sets = s.sets.filter((x) => {
       if (!x || x.exId !== item.exId || !(+x.kg > 0)) return false;
       if (x.blockKind === 'amrap') return false;
-      if (x.blockKind) return !fam || familyOf(x.blockKind) === fam;
-      return (!fam || fam === 'strength') && (+x.reps || 0) <= 30; // legacy sets: strength context only
+      if (x.blockKind ? fam && familyOf(x.blockKind) !== fam : !((!fam || fam === 'strength') && (+x.reps || 0) <= 30)) return false;
+      return !setHeld(x, s, plan);
     });
     if (sets.length) hist.push({ s, sets });
   }
   if (!hist.length) return { kg: planned ?? suggestWeight(item.exId, profile, []), reason: '', earned: false };
 
-  const top = ex.id === 'kb-tgu' ? 5 : Math.max(+item.reps || 0, topReps(ex));
+  const top = ex.id === 'kb-tgu' ? Math.max(3, +item.sets || 1) : Math.max(+item.reps || 0, topReps(ex));
   const evalSession = ({ s, sets }) => {
     const B = Math.max(...sets.map((x) => +x.kg));
     const atB = sets.filter((x) => +x.kg === B);
@@ -208,38 +227,43 @@ export function liveItemAdvice(item, profile, sessions = [], opts = {}) {
     const rpe = rpes.length ? Math.max(...rpes) : (s.rpe != null && Number.isFinite(+s.rpe) ? +s.rpe : null);
     const missed = atB.some((x) => { const t = setTarget(x, s, plan); return t != null && (+x.reps || 0) < t; });
     let hitTop;
+    const minR = Math.min(...atB.map((x) => +x.reps || 0));
     if (ex.pattern === 'carry') hitTop = Math.max(...atB.map((x) => +x.distanceM || 0)) >= (+item.distanceM || 40);
     else if (ex.id === 'kb-tgu') hitTop = atB.reduce((a, x) => a + (+x.reps || 0), 0) >= top;
-    else if (/swing/.test(ex.id) && Math.min(...atB.map((x) => +x.reps || 0)) >= 10 && atB.length >= 10) hitTop = true; // 10 × 10 standard
-    else hitTop = atB.length >= (+item.sets || 1) && Math.min(...atB.map((x) => +x.reps || 0)) >= top;
+    else if (/swing/.test(ex.id) && minR >= 10 && atB.length >= 10) hitTop = true; // 10 × 10 standard
+    else hitTop = atB.length >= (+item.sets || 1) && minR >= top;
     const easyCap = isCareful(ex) ? 7 : 8;
     return { B, rpe, missed, hitTop, easy: hitTop && !missed && (rpe == null || rpe <= easyCap), date: s.date, reps: Math.max(...atB.map((x) => +x.reps || 0)) };
   };
   const last = evalSession(hist[hist.length - 1]);
-  const base = atOrBelow(pool, last.B);
+  const ref = opts.todayISO || last.date;
+  const within = (d, days) => d && ref && daysBetween(d, ref) >= 0 && daysBetween(d, ref) < days;
+  const recent = hist.filter(({ s }) => within(s.date, 28));
+  const cur = atOrBelow(pool, recent.length ? Math.max(...recent.flatMap(({ sets }) => sets.map((x) => +x.kg))) : last.B);
   const capCond = (kg) => (fam === 'conditioning' && planned != null ? Math.min(kg, nextUp(pool, planned)) : kg);
   const out = (kg, reason = '', earned = false) => ({ kg: capCond(kg), reason, earned });
+  const lastB = atOrBelow(pool, last.B);
 
-  if (last.missed) return out(planned != null ? Math.min(planned, base) : base, 'Repeat this bell — own all reps first');
-  if (last.rpe != null && last.rpe >= 9) return out(planned != null ? Math.min(planned, base) : base, 'Last time was a grind — repeat this bell');
+  if (last.missed) return out(planned != null ? Math.min(planned, lastB) : lastB, 'Repeat this bell — own all reps first');
+  if (last.rpe != null && last.rpe >= 9) return out(planned != null ? Math.min(planned, lastB) : lastB, 'Last time was a grind — repeat this bell');
 
-  const hold = Math.max(base, planned ?? 0);
-  if (!last.easy) {
-    const more = +item.reps > 0 && last.reps > 0 && +item.reps > last.reps && hold === base;
+  const hold = Math.max(cur, planned ?? 0);
+  if (!last.easy || lastB < cur) {
+    const more = +item.reps > 0 && last.reps > 0 && +item.reps > last.reps && hold === cur;
     return out(hold, more ? 'Same bell, more reps — that is this week’s progression' : '');
   }
-  const up = nextUp(pool, base);
-  if (up === base) return out(hold, 'Top owned bell — progress with reps, sets or less rest');
-  if (up > base * (isCareful(ex) ? 1.3 : 1.5)) return out(hold, 'Next bell is a big jump — add reps or a set first');
-  const ref = opts.todayISO || last.date;
-  const recentJump = hist.some(({ s, sets }) => s.date && ref && daysBetween(s.date, ref) < 14 && daysBetween(s.date, ref) >= 0 && sets.some((x) => +x.kg < base));
+  const up = nextUp(pool, cur);
+  if (up === cur) return out(hold, 'Top owned bell — progress with reps, sets or less rest');
+  const okStep = isCareful(ex) ? up - cur <= 4 || up <= cur * 1.3 : up - cur <= 8 || up <= cur * 1.5;
+  if (!okStep) return out(hold, 'Next bell is a big jump — add reps or a set first');
+  const recentJump = hist.some(({ s, sets }) => within(s.date, 14) && sets.some((x) => +x.kg < cur));
   if (recentJump) return out(hold, 'Bell went up recently — consolidate it for two weeks');
   if (isCareful(ex)) {
     const prev = hist.length > 1 ? evalSession(hist[hist.length - 2]) : null;
-    if (!prev || !prev.easy || prev.B !== last.B) return out(hold, 'One more easy session at this bell, then size up');
+    if (!prev || !prev.easy || atOrBelow(pool, prev.B) !== cur) return out(hold, 'One more easy session at this bell, then size up');
   }
   if (planned != null && planned >= up) return out(planned);
-  return out(up, 'Earned: top of the rep range, easy, two weeks at this bell', true);
+  return out(up, `Earned: easy at the top of the range — size up to ${up} kg and stay there ~2 weeks`, true);
 }
 
 export const liveItemWeight = (item, profile, sessions, opts) => liveItemAdvice(item, profile, sessions, opts).kg;

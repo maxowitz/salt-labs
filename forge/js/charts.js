@@ -72,7 +72,7 @@ export function lineChart({ series, width = 340, height = 160, xLabels = [], yFm
     svg.append(s('line', { x1: pad.l, x2: width - pad.r, y1: Y(v), y2: Y(v), stroke: 'var(--line)', 'stroke-width': 1 }));
     svg.append(txt(yFmt(v), { x: pad.l - 5, y: Y(v) + 3, 'text-anchor': 'end' }));
   }
-  for (const xl of xLabels) svg.append(txt(xl.label, { x: X(xl.x), y: height - 5, 'text-anchor': 'middle' }));
+  for (const xl of xLabels) { if (xl.x < x0 - 1e-9 || xl.x > x1 + 1e-9) continue; const px = X(xl.x); svg.append(txt(xl.label, { x: px, y: height - 5, 'text-anchor': px < pad.l + 20 ? 'start' : px > width - pad.r - 20 ? 'end' : 'middle' })); }
   if (goal != null) svg.append(s('line', { x1: pad.l, x2: width - pad.r, y1: Y(goal), y2: Y(goal), stroke: 'var(--go)', 'stroke-dasharray': '4 4', 'stroke-width': 1.2 }));
   for (const se of series) {
     const pts = [...se.points].sort((a, b) => a.x - b.x);

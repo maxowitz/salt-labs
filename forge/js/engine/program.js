@@ -386,7 +386,7 @@ function strengthSession(ctx, wk, focus, extra) {
   if (squatId === 'kb-goblet-squat' && reps < 5) { reps = 5; sets += 1; }
 
   // Press & row progress on their own: a bell step only when the next owned bell is ≤ 30% heavier; otherwise reps keep climbing.
-  const gentleStep = (id) => (step && ctx.bell(id, step) != null && ctx.bell(id, step) > (ctx.bell(id, 0) || 0) && ctx.bell(id, step) <= (ctx.bell(id, 0) || 0) * 1.3 ? step : 0);
+  const gentleStep = (id) => (step && ctx.bell(id, step) != null && ctx.bell(id, step) > (ctx.bell(id, 0) || 0) && ctx.bell(id, step) <= (ctx.bell(id, 0) || 0) * 1.3 && !tooHeavy(id, ctx.p, ctx.bell(id, step)) ? step : 0);
   const pStep = gentleStep(pressId), rStep = rowId === 'bw-pullup' ? 0 : gentleStep(rowId);
   let pReps;
   if (taper) pReps = 2; else if (deload || maint) pReps = 4;
@@ -435,7 +435,7 @@ function strengthSession(ctx, wk, focus, extra) {
       : 'Full-body heavy kettlebell strength: squat, press, pull, get-up. Reps first, then bell size.';
     blocks.push(B('strength', 'A · Squat', [s(squatId, { sets, reps, perSide: sqSide, restSec: rest, note: rungNote || 'RPE 7–8 — leave a rep or two' })]));
     blocks.push(B('strength', 'B · Press + pull superset', upper(), { notes: 'Alternate press and pull; rest after the pair.' }));
-    if (v % 2 === 0) blocks.push(B('strength', 'C · Turkish get-up', [s('kb-tgu', { sets: maint || taper || deload || extra === 'z' ? 2 : 3, reps: 1, perSide: true, restSec: 30 }, 0)]));
+    if (v % 2 === 0) blocks.push(B('strength', 'C · Turkish get-up', [s('kb-tgu', { sets: maint || taper || deload ? 2 : 3, reps: 1, perSide: true, restSec: 30 }, 0)]));
     else blocks.push(B('strength', 'C · Hinge', [s(ctx.pick('kb-double-deadlift', 'kb-suitcase-deadlift'), { sets: taper || deload || maint ? 2 : 3, reps: 6, perSide: !ctx.pairs, restSec: 60 })]));
     if (!maint && !taper && extra !== 'z') blocks.push(B('strength', 'D · Carry', [s(ctx.pick('kb-farmers-carry', 'kb-suitcase-carry'), { sets: deload ? 2 : 3, distanceM: 40, perSide: !ctx.pairs, restSec: 60 })]));
   }
@@ -847,9 +847,10 @@ const QFLOOR = {
   advanced: { k1: 5, vo2: 5, repMin: 10, tempoMin: 25 },
 };
 
-// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 20 min; 15 in deloads), long run
-// (floor max(30 min, 85% of the last loading week's long run)), hybrid rounds (floor 3), then quality — never below the experience floor (QFLOOR).
-function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, prevLongSec = null) {
+// Bring the week under `targetKm` by trimming, in order: easy runs/flush tails (floor 20 min; 15 in deloads),
+// hybrid rounds (floor 3), quality (never below QFLOOR), and last the long run (floor max(40 min, 90% of the
+// longest earlier loading long run)). If the floors bind, the week may exceed the cap — the cap is a guide.
+function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, maxLongSec = null) {
   const over = () => runKmOf(ctx, raws) > targetKm + 0.05;
   const blocks = raws.flatMap((w) => w.blocks);
   const fl = QFLOOR[ctx.exp];
@@ -877,7 +878,6 @@ function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, prevLongSec = nu
   const isQuality = (b) => b.kind === 'intervals' && !!runItem(b);
 
   if (over()) shrink(['run-easy'], () => easyFloorSec);
-  if (over()) { const orig = new Map(); for (const b of blocks) for (const it of b.items || []) if (it.exId === 'run-long') orig.set(it, it.timeSec); shrink(['run-long'], (it) => Math.max(1800, Math.round(((prevLongSec || orig.get(it)) * 0.85) / 300) * 300)); }
   cutRounds(isHybrid, () => 3);
   // Quality: fewer reps (1 km / VO2) or shorter reps (cruise/tempo), never below the floor.
   cutRounds(isQuality, (b) => (runItem(b).exId === 'run-1k' ? fl.k1 : runItem(b).exId === 'run-intervals' ? fl.vo2 : 99));
@@ -891,6 +891,10 @@ function capRunVolume(ctx, raws, targetKm, easyFloorSec = 1200, prevLongSec = nu
     const t = Math.max(floor, Math.round((it.timeSec * 0.8) / 60) * 60);
     q.title = q.title.replace(`${Math.round(it.timeSec / 60)} min`, `${Math.round(t / 60)} min`);
     it.timeSec = t; if (q.kind === 'intervals') q.workSec = t;
+  }
+  if (over()) {
+    const longFloor = Math.max(2400, Math.round(((maxLongSec || 0) * 0.9) / 300) * 300);
+    shrink(['run-long'], () => longFloor);
   }
 }
 
@@ -927,7 +931,7 @@ export function generatePlan(profile, startISO) {
 
   const slots = SLOTS[p.daysPerWeek];
   const weeks = [], workouts = {};
-  let L = 0, prevKm = null, prevLongSec = null;
+  let L = 0, prevKm = null, maxLongSec = null;
   const phaseLoad = {};
 
   for (let w = 0; w < nWeeks; w++) {
@@ -974,11 +978,11 @@ export function generatePlan(profile, startISO) {
     const guarded = !taper && !isRaceWeek && !lay.post;
     // The first Build week may reach +20% (new block, new session types); otherwise +15%.
     const firstBuild = phase === 'build' && pl === 0 && !deload;
-    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15), deload ? 900 : 1200, prevLongSec);
+    if (guarded && prevKm != null) capRunVolume(ctx, list, prevKm * (deload ? 0.7 : hasSim ? 1.25 : firstBuild ? 1.2 : 1.15), deload ? 900 : 1200, deload ? null : maxLongSec);
     if (guarded && !deload && !hasSim) {
       prevKm = runKmOf(ctx, list);
       const longs = list.flatMap((x) => x.blocks).flatMap((b) => b.items || []).filter((it) => it.exId === 'run-long').map((it) => it.timeSec);
-      if (longs.length) prevLongSec = Math.max(...longs);
+      if (longs.length) maxLongSec = Math.max(maxLongSec || 0, ...longs);
     }
 
     const days = [];
